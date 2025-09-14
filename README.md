@@ -4,6 +4,13 @@ Pipeline end‑to‑end per scraping, consolidamento e ranking dei mazzi con **M
 
 ---
 
+## Novità — 2025-09-14
+
+- **Report Excel per-deck ordinato per ranking** (top → bottom).
+- **Nuovo writer**: `mars/report.py::write_pairs_by_deck_report(...)` genera `00_Legenda`, `01_Summary` e un foglio per ciascun deck.
+- **Riordino post-scrittura dei fogli** via `utils/io.reorder_excel_sheets(path, sheet_order)` (richiede `openpyxl`).
+
+
 ## 📦 Struttura del progetto
 
 ```
@@ -28,18 +35,19 @@ ptcgp_ranking/
 │  ├─ meta.py               # blend meta/encounter con gap policy
 │  ├─ pipeline.py           # orchestrazione run_mars(...)
 │  ├─ posterior.py          # posteriori Beta–Binomiale (μ=0.5)
+│  ├─ report.py             # writer Excel: 00_Legenda, 01_Summary, fogli per-deck + riordino
 │  ├─ typing.py             # tipi / alias
 │  └─ validate_io.py        # validatori IO
 ├─ scraper/
 │  ├─ browser.py, session.py, decklist.py, matchups.py
 ├─ utils/
-│  ├─ io.py                 # ROUTES + writer CSV/plot (latest + versioned)
+│  ├─ io.py                 # ROUTES + writer CSV/plot/excel (+ reorder_excel_sheets)
 │  └─ display.py            # show_ranking / show_wr_heatmap
 ├─ outputs/
 │  ├─ Decklists/{raw, top_meta}
 │  ├─ MatchupData/{raw, flat}
 │  ├─ Matrices/{winrate, volumes, heatmap}
-│  └─ RankingData/MARS      # SOLO `mars_ranking_*.csv`
+│  └─ RankingData/MARS      # mars_ranking_*.csv + Report/
 ├─ 1_scrape_core_preview.ipynb
 ├─ 2_core_mars_preview.ipynb
 ├─ README.md
@@ -76,6 +84,10 @@ pip install -r requirements.txt
   - `wr_heatmap_T{K}_{YYYYmmdd_HHMMSS}.png`
 
 ---
+### Requisiti aggiuntivi
+
+- Aggiungi `openpyxl==3.1.*` al `requirements.txt` per il riordino dei fogli Excel.
+
 
 ## ⚙️ Configurazione (`config/config.yaml`)
 
@@ -237,6 +249,29 @@ Smoothing + MAS meta‑aware + BT regolarizzato (filtro/soft‑weight/armonica/r
 Step‑by‑step come da guida: osserva near_thresh, coverage, HHI, gamma auto; regola `LAMBDA_RIDGE` e `ALPHA_COMPOSITE` se necessario.
 
 ---
+
+## Report Excel per-deck (ordinato per ranking)
+
+Genera un workbook con `00_Legenda`, `01_Summary` e un foglio per ogni deck in **ordine di ranking**.
+
+```python
+from pathlib import Path
+from mars.report import write_pairs_by_deck_report
+
+versioned_path, latest_path, meta = write_pairs_by_deck_report(
+    ranking_df=df_rank_mars,          # >= Deck, Score_%
+    filtered_wr=filtered_wr,          # T×T %, diag NaN
+    n_dir=n_matrix_filtered,          # T×T N=W+L, diag NaN
+    p_blend=meta_weights_series,      # pesi MAS sull’asse
+    K_used=K_used,
+    score_flat=score_latest_flat,     # opzionale (abilita W/L/N e WR_real_% da flat)
+    mu=0.5,
+    gamma=gamma,                      # opzionale
+    out_dir=Path("outputs/RankingData/MARS/Report"),
+)
+print("Report scritto:", versioned_path, latest_path)
+```
+
 
 ## 📄 Contratti dati (Parte 2 Input)
 

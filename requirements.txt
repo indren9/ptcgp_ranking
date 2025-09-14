@@ -1,4 +1,4 @@
-﻿# PTCGP local notebook — minimal pinned requirements
+﻿# PTCGP Ranking — minimal pinned requirements
 pandas==2.2.2
 numpy==2.0.1
 scipy==1.14.1
@@ -16,3 +16,4 @@ Jinja2==3.1.4
 python-dotenv==1.0.1
 pyyaml==6.0.2
 types-PyYAML==6.0.12.20240808
+openpyxl>=3.1

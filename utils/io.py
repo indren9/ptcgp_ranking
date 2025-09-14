@@ -1,32 +1,27 @@
 # =============================================
-# PTCGP – Refactor D1: scraper + cache + routing
-# Target tree (already agreed)
-# ptcgp_ranking/
-#   config/{config.yaml, alias_map.json}
-#   scraper/{browser.py, session.py, decklist.py, matchups.py}
-#   core/{...}
-#   utils/{io.py, log.py, parse.py, timeit.py}
-#   outputs/...  (Decklists, MatchupData, Matrices)
-#   cache/requests
-#   logs/
+# utils/io.py — routing & versioned writes (CSV + plots + Excel)
 # =============================================
 
-# ──────────────────────────────────────────────────────────────────────────────
-# utils/io.py — routing & versioned writes (CSV + plots)
-# ──────────────────────────────────────────────────────────────────────────────
-
 from __future__ import annotations
+
 from pathlib import Path
 from dataclasses import dataclass
-from typing import Optional
-import json, hashlib, time
-import pandas as pd
+from typing import Optional, Dict, Iterable, Tuple
 
-# Minimal logger (fallback); in runtime you likely have a global logger already.
+import hashlib
+import time
 import logging
+import pandas as pd
+from datetime import datetime
+
+# Minimal logger (fallback); in runtime potresti avere già "ptcgp"
 log = logging.getLogger("ptcgp") if logging.getLogger("ptcgp").handlers else logging.getLogger(__name__)
 
-# Base dirs (call init_paths at program start)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Paths & init
+# ──────────────────────────────────────────────────────────────────────────────
+
 @dataclass
 class Paths:
     base: Path
@@ -43,7 +38,7 @@ def init_paths(base_dir: Path) -> Paths:
     out = base / "outputs"
     cache = base / "cache" / "requests"
     logs = base / "logs"
-    # Create required dirs idempotently
+
     for d in [
         out / "Decklists" / "raw",
         out / "Decklists" / "top_meta",
@@ -52,8 +47,9 @@ def init_paths(base_dir: Path) -> Paths:
         out / "Matrices" / "winrate",
         out / "Matrices" / "volumes",
         out / "Matrices" / "heatmap",
-        out / "RankingData" / "MARS",             # ← NEW
-        out / "RankingData" / "MARS" / "archives",# ← NEW
+        out / "RankingData" / "MARS",
+        out / "RankingData" / "MARS" / "archives",
+        out / "RankingData" / "MARS" / "Report",   # cartella report Excel
         cache,
         logs,
     ]:
@@ -62,63 +58,77 @@ def init_paths(base_dir: Path) -> Paths:
     return Paths(base=base, outputs=out, cache=cache, logs=logs)
 
 
-# ---- routing
-ROUTES = {
-    # CSV contract (esistenti)
+# ──────────────────────────────────────────────────────────────────────────────
+# Routing
+# ──────────────────────────────────────────────────────────────────────────────
+
+ROUTES: dict[str, tuple[str, ...]] = {
+    # CSV contract
     "decklist_raw": ("Decklists", "raw"),
     "top_meta_decklist": ("Decklists", "top_meta"),
     "matchup_score_table": ("MatchupData", "flat"),
     "filtered_wr": ("Matrices", "winrate"),
     "n_dir": ("Matrices", "volumes"),
 
-    # (esistente) top-meta già post-alias
+    # Top-meta già post-alias
     "top_meta_post_alias": ("Decklists", "top_meta"),
 
     # Plots
     "heatmap_topN": ("Matrices", "heatmap"),
 
-    # ── MARS outputs (SNELLITI) ───────────────────────────────────────────────
-    # Unico route ammesso: SOLO il ranking
+    # MARS outputs
     "mars_ranking": ("RankingData", "MARS"),
+
+    # Report per-deck (Excel multi-sheet)
+    "report": ("RankingData", "MARS", "Report"),
 }
 
 
 def _dest(paths: Paths, prefix: str) -> Path:
     """
     Risolve il percorso di destinazione per un dato 'prefix' di ROUTES.
+    Supporta route con 2 o più segmenti.
     """
     if prefix not in ROUTES:
         log.warning("[route] Prefix sconosciuto '%s' — invio a outputs/", prefix)
         return paths.outputs
-    top, sub = ROUTES[prefix]
-    return paths.outputs / top / sub
+    parts = ROUTES[prefix]
+    dest = paths.outputs
+    for p in parts:
+        dest = dest / p
+    return dest
 
 
 def _run_stamp() -> str:
-    """
-    Timestamp run-wide in formato YYYYmmdd_HHMMSS.
-    """
+    """Timestamp run-wide in formato YYYYmmdd_HHMMSS."""
     return time.strftime("%Y%m%d_%H%M%S")
 
 
-# Simple content hash helper (to detect changes of dataframe content)
+# ──────────────────────────────────────────────────────────────────────────────
+# Helpers
+# ──────────────────────────────────────────────────────────────────────────────
+
 def _df_content_hash(df: pd.DataFrame) -> str:
     """
     Hash stabile del contenuto di un DataFrame (CSV bytes senza index).
     Utile per decidere se scrivere una copia versionata.
     """
     as_csv = df.to_csv(index=False).encode("utf-8")
-    return hashlib.sha256(as_csv).hexdigest()[:16]
+    import hashlib as _hashlib  # locale per evitare shadowing
+    return _hashlib.sha256(as_csv).hexdigest()[:16]
 
 
-# ---- CSV writer: always update *_latest.csv, and add timestamped copy when changed == True
+# ──────────────────────────────────────────────────────────────────────────────
+# CSV writer
+# ──────────────────────────────────────────────────────────────────────────────
+
 def write_csv_versioned(
     df: pd.DataFrame,
-    base_dir: Path,
+    base_dir: Path | str,
     prefix: str,
     *,
     changed: bool,
-    index: bool = False
+    index: bool = False,
 ) -> Path:
     """
     Scrive sempre <prefix>_latest.csv e, se changed=True, aggiunge anche
@@ -142,23 +152,25 @@ def write_csv_versioned(
     return latest_path
 
 
-# ---- plot writers ------------------------------------------------------------
+# ──────────────────────────────────────────────────────────────────────────────
+# Plot writers
+# ──────────────────────────────────────────────────────────────────────────────
 
-def save_plot_timestamped(fig, base_dir: Path, prefix: str, *, fmt: str = "png", dpi: int = 300) -> Path:
+def save_plot_timestamped(fig, base_dir: Path | str, prefix: str, *, fmt: str = "png", dpi: int = 300) -> Path:
     """
     Salva SEMPRE un'immagine con timestamp: <prefix>_<timestamp>.<fmt>
     (Manteniamo per retro-compatibilità.)
     """
+    base_dir = Path(base_dir)
     base_dir.mkdir(parents=True, exist_ok=True)
     ts = _run_stamp()
     path = base_dir / f"{prefix}_{ts}.{fmt}"
     fig.savefig(path, dpi=dpi, bbox_inches="tight")
-    # Abbassiamo a DEBUG per evitare “doppio output” in notebook
     log.debug("Plot salvato (timestamped): %s", path)
     return path
 
 
-def save_plot_dual(fig, base_dir: Path, prefix: str, tag: str, *, fmt: str = "png", dpi: int = 300) -> tuple[Path, Path]:
+def save_plot_dual(fig, base_dir: Path | str, prefix: str, tag: str, *, fmt: str = "png", dpi: int = 300) -> tuple[Path, Path]:
     """
     Salva DUE copie del plot:
       1) <prefix>_latest.<fmt>              (sovrascritto ad ogni run)
@@ -180,8 +192,216 @@ def save_plot_dual(fig, base_dir: Path, prefix: str, tag: str, *, fmt: str = "pn
 
     fig.savefig(ts_path, dpi=dpi, bbox_inches="tight")
     fig.savefig(latest_path, dpi=dpi, bbox_inches="tight")
-
-    # ↓ abbassa a DEBUG per evitare il “doppio” log insieme a quello del notebook
     log.info("Plot salvato (timestamp + latest): %s | latest: %s", ts_path, latest_path)
     return ts_path, latest_path
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Excel writer (base)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def write_excel_versioned(
+    workbook: "dict[str, pd.DataFrame]",
+    base_dir: Path | str,
+    prefix: str,
+    *,
+    tag: str | None = None,
+    include_latest: bool = True,
+    also_versioned: bool = True,
+) -> tuple[Path | None, Path | None]:
+    """
+    Scrive un Excel multi-sheet mantenendo l'ordine dei fogli fornito.
+    Ritorna (ts_path, latest_path). Se una delle due copie non viene scritta, ritorna None su quella.
+    """
+    dest_dir = Path(base_dir)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    tag_part = f"_{tag}" if tag else ""
+    ts_name = f"{prefix}{tag_part}_{ts}.xlsx"
+    latest_name = f"{prefix}_latest.xlsx"
+
+    ts_path = dest_dir / ts_name if also_versioned else None
+    latest_path = dest_dir / latest_name if include_latest else None
+
+    # Seleziona engine disponibile
+    engine = None
+    for eng in ("openpyxl", "xlsxwriter"):
+        try:
+            __import__(eng)
+            engine = eng
+            break
+        except Exception:
+            continue
+    if engine is None:
+        engine = "openpyxl"
+
+    def _write(path: Path) -> None:
+        with pd.ExcelWriter(path, engine=engine) as xw:
+            for sheet_name, df in workbook.items():
+                df.to_excel(xw, sheet_name=sheet_name, index=False)
+
+    if ts_path is not None:
+        _write(ts_path)
+        log.info("Excel versionato: %s", ts_path)
+    if latest_path is not None:
+        _write(latest_path)
+        log.info("Excel latest: %s", latest_path)
+
+    return ts_path, latest_path
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Excel writer con styling (semafori gap, Top-K, Mirror, legenda colori)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def write_excel_versioned_styled(
+    workbook: "dict[str, pd.DataFrame]",
+    base_dir: "Path | str",
+    prefix: str,
+    *,
+    tag: "str | None" = None,
+    include_latest: bool = True,
+    also_versioned: bool = True,
+    top_k_contrib: int = 5,
+) -> "tuple[Path | None, Path | None]":
+    """
+    Come write_excel_versioned, ma aggiunge:
+      - semafori su gap_pp (rosso |gap|>=8; giallo 4–8) via FormulaRule
+      - evidenziazione Top-K su MAS_contrib_pp con Rule(type="top10") nativa
+      - colorazione riga 'Mirror' (grigio #CDCDCD) + 'Opponent' in corsivo
+      - swatch di colore nella colonna 'Colore' del foglio 00_Legenda
+    Compatibile con openpyxl 3.1.x (usa Rule + DifferentialStyle).
+    """
+    from datetime import datetime
+    from pathlib import Path
+    import pandas as pd
+
+    dest_dir = Path(base_dir)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    tag_part = f"_{tag}" if tag else ""
+    ts_name = f"{prefix}{tag_part}_{ts}.xlsx"
+    latest_name = f"{prefix}_latest.xlsx"
+
+    ts_path = dest_dir / ts_name if also_versioned else None
+    latest_path = dest_dir / latest_name if include_latest else None
+
+    engine = "openpyxl"
+
+    def _write_plain(path: Path) -> None:
+        with pd.ExcelWriter(path, engine=engine) as xw:
+            for sheet_name, df in workbook.items():
+                df.to_excel(xw, sheet_name=sheet_name, index=False)
+
+    def _style_in_place(path: Path) -> None:
+        try:
+            from openpyxl import load_workbook
+            from openpyxl.utils import get_column_letter
+            from openpyxl.styles import PatternFill, Font
+            from openpyxl.formatting.rule import FormulaRule, Rule
+            from openpyxl.styles.differential import DifferentialStyle
+        except Exception as e:
+            log.warning("openpyxl non disponibile per styling: %s", e)
+            return
+
+        wb = load_workbook(path)
+
+        for ws in wb.worksheets:
+            name = ws.title
+
+            # Header map
+            headers = {cell.value: idx for idx, cell in enumerate(ws[1], start=1) if isinstance(cell.value, str)}
+            max_row = ws.max_row
+            max_col = ws.max_column
+            if max_row < 2:
+                continue
+
+            # ===== Styling specifico per 00_Legenda: colonna 'Colore' come swatch =====
+            if name == "00_Legenda" and "Colore" in headers:
+                col_c = headers["Colore"]
+
+                # mapping chiave -> colore (ARGB)
+                cmap = {
+                    "RED":   "FFF2CBCB",  # rosso chiaro
+                    "YELLOW":"FFFFF2CC",  # giallo chiaro
+                    "GREEN": "FFD9EAD3",  # verde chiaro
+                    "GRAY":  "FFCDCDCD",  # grigio #CDCDCD
+                }
+
+                for r in range(2, max_row + 1):
+                    key_cell = ws.cell(row=r, column=col_c)
+                    key = key_cell.value
+                    if isinstance(key, str):
+                        key_norm = key.strip().upper()
+                        if key_norm in cmap:
+                            key_cell.fill = PatternFill(start_color=cmap[key_norm], end_color=cmap[key_norm], fill_type="solid")
+                            # opzionale: rimuovi il testo e lascia solo lo swatch
+                            key_cell.value = ""
+                # Non applicare altro styling alla legenda
+                continue
+
+            # ===== Fogli per-deck / Summary =====
+
+            # Semafori su gap_pp: rosso |gap|>=8; giallo 4–8
+            if "gap_pp" in headers:
+                col = headers["gap_pp"]
+                L = get_column_letter(col)
+                rng = f"{L}2:{L}{max_row}"
+
+                red_fill = PatternFill(start_color="FFF2CBCB", end_color="FFF2CBCB", fill_type="solid")
+                yellow_fill = PatternFill(start_color="FFFFF2CC", end_color="FFFFF2CC", fill_type="solid")
+
+                ws.conditional_formatting.add(rng, FormulaRule(formula=[f"ABS({L}2)>=8"], fill=red_fill))
+                ws.conditional_formatting.add(rng, FormulaRule(formula=[f"AND(ABS({L}2)>=4,ABS({L}2)<8)"], fill=yellow_fill))
+
+            # Top-K nativo su MAS_contrib_pp
+            if "MAS_contrib_pp" in headers and top_k_contrib and name not in ("00_Legenda", "01_Summary"):
+                col = headers["MAS_contrib_pp"]
+                L = get_column_letter(col)
+                rng = f"{L}2:{L}{max_row}"
+
+                dxf = DifferentialStyle(fill=PatternFill(start_color="FFD9EAD3",
+                                                         end_color="FFD9EAD3",
+                                                         fill_type="solid"))
+                rule = Rule(type="top10", rank=int(top_k_contrib), percent=False, bottom=False, dxf=dxf)
+                ws.conditional_formatting.add(rng, rule)
+
+            # Riga 'Mirror' in grigio su tutta la riga + Opponent in corsivo
+            opp_col = headers.get("Opponent")
+            if opp_col is not None and name not in ("00_Legenda", "01_Summary"):
+                gray = PatternFill(start_color="FFCDCDCD", end_color="FFCDCDCD", fill_type="solid")
+                for r in range(2, max_row + 1):
+                    cell = ws.cell(row=r, column=opp_col)
+                    if isinstance(cell.value, str) and cell.value.strip().lower() == "mirror":
+                        # Italic solo per la cella Opponent
+                        try:
+                            cell.font = Font(name=cell.font.name, sz=cell.font.sz, bold=cell.font.bold,
+                                             italic=True, vertAlign=cell.font.vertAlign,
+                                             underline=cell.font.underline, color=cell.font.color)
+                        except Exception:
+                            # fallback compatibile
+                            cell.font = cell.font.copy(italic=True)
+                        # Grigio su tutta la riga
+                        for c in range(1, max_col + 1):
+                            ws.cell(row=r, column=c).fill = gray
+
+        wb.save(path)
+
+    # Scrivi i file richiesti e applica styling
+    if ts_path is not None:
+        _write_plain(ts_path)
+        _style_in_place(ts_path)
+        log.info("Excel versionato (styled): %s", ts_path)
+    if latest_path is not None:
+        _write_plain(latest_path)
+        _style_in_place(latest_path)
+        log.info("Excel latest (styled): %s", latest_path)
+
+    return ts_path, latest_path
+
+# --- utils/io.py ---
+
+from pathlib import Path
 
