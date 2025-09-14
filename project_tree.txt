@@ -1,0 +1,102 @@
+﻿├── .gitignore
+├── .vscode\
+│   ├── settings.json
+├── 1_scrape_core_preview.ipynb
+├── 2_core_mars_preview.ipynb
+├── cache\
+│   ├── requests\
+├── config\
+│   ├── alias_map.json
+│   ├── config.yaml
+├── core\
+│   ├── __init__.py
+│   ├── __pycache__\
+│   │   ├── __init__.cpython-312.pyc
+│   │   ├── consolidate.cpython-312.pyc
+│   │   ├── matrices.cpython-312.pyc
+│   │   ├── nan_filter.cpython-312.pyc
+│   │   ├── normalize.cpython-312.pyc
+│   ├── consolidate.py
+│   ├── matrices.py
+│   ├── nan_filter.py
+│   ├── normalize.py
+├── data\
+│   ├── external\
+│   ├── raw\
+├── logs\
+├── mars\
+│   ├── __init__.py
+│   ├── __pycache__\
+│   │   ├── __init__.cpython-312.pyc
+│   │   ├── auto_k_cv.cpython-312.pyc
+│   │   ├── bt.cpython-312.pyc
+│   │   ├── composite.cpython-312.pyc
+│   │   ├── config.cpython-312.pyc
+│   │   ├── coverage.cpython-312.pyc
+│   │   ├── mas_lb.cpython-312.pyc
+│   │   ├── meta.cpython-312.pyc
+│   │   ├── pipeline.cpython-312.pyc
+│   │   ├── posterior.cpython-312.pyc
+│   │   ├── validate_io.cpython-312.pyc
+│   ├── auto_k_cv.py
+│   ├── bt.py
+│   ├── composite.py
+│   ├── config.py
+│   ├── coverage.py
+│   ├── mas_lb.py
+│   ├── meta.py
+│   ├── pipeline.py
+│   ├── posterior.py
+│   ├── validate_io.py
+├── outputs\
+│   ├── Decklists\
+│   │   ├── raw\
+│   │   │   ├── decklist_raw_latest.csv
+│   │   ├── top_meta\
+│   │   │   ├── top_meta_decklist_latest.csv
+│   ├── MatchupData\
+│   │   ├── flat\
+│   │   │   ├── score_20250913_191758.csv
+│   │   │   ├── score_latest.csv
+│   │   │   ├── score_pre_filter_20250913_191757.csv
+│   │   │   ├── score_pre_filter_latest.csv
+│   │   ├── raw\
+│   │   │   ├── matchup_raw_latest.csv
+│   ├── Matrices\
+│   │   ├── heatmap\
+│   │   │   ├── wr_heatmap_latest.png
+│   │   │   ├── wr_heatmap_T10_20250913_200223.png
+│   │   ├── volumes\
+│   │   │   ├── n_dir_20250913_191758.csv
+│   │   │   ├── n_dir_latest.csv
+│   │   ├── winrate\
+│   │   │   ├── filtered_wr_20250913_191758.csv
+│   │   │   ├── filtered_wr_latest.csv
+│   ├── RankingData\
+│   │   ├── MARS\
+│   │   │   ├── archives\
+│   │   │   ├── mars_ranking_20250913_200222.csv
+│   │   │   ├── mars_ranking_latest.csv
+├── project_tree.txt
+├── README.md
+├── requirements.txt
+├── scraper\
+│   ├── __init__.py
+│   ├── __pycache__\
+│   │   ├── __init__.cpython-312.pyc
+│   │   ├── browser.cpython-312.pyc
+│   │   ├── decklist.cpython-312.pyc
+│   │   ├── matchups.cpython-312.pyc
+│   │   ├── session.cpython-312.pyc
+│   ├── browser.py
+│   ├── decklist.py
+│   ├── matchups.py
+│   ├── session.py
+├── utils\
+│   ├── __init__.py
+│   ├── __pycache__\
+│   │   ├── __init__.cpython-312.pyc
+│   │   ├── display.cpython-312.pyc
+│   │   ├── io.cpython-312.pyc
+│   ├── display.py
+│   ├── io.py

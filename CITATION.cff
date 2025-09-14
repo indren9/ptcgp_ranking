@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "PTCGP Ranking — MARS"
+authors:
+  - family-names: "Visentin"
+    given-names: "Andrea"
+version: "0.1.0"
+date-released: "2025-09-13"
+license: "MIT"
+repository-code: "https://github.com/indren9/ptcgp_ranking"
+preferred-citation:
+  type: software
+  title: "PTCGP Ranking — MARS"
+  authors:
+    - family-names: "Visentin"
+      given-names: "Andrea"
+  year: 2025

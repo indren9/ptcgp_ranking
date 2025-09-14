@@ -1,0 +1,90 @@
+scraping:
+  base_url: "https://play.limitlesstcg.com"
+  decks_url: "https://play.limitlesstcg.com/decks?game=POCKET"
+  enable_http_cache: true
+  cache_ttl_min: 720
+  force_refresh: false
+  request_delay_sec: 5.0
+  max_retries: 3
+  backoff_factor: 0.7
+  timeout_sec: 20
+  user_agent: >-
+    Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
+    (KHTML, like Gecko) Chrome/126.0 Safari/537.36
+  selenium:
+    headless: true
+    wait_sec: 20
+
+top_meta:
+  threshold_pct: 80.0
+  ensure_at_least: 1
+
+alias:
+  apply: true
+  file: "config/alias_map.json"
+
+wr_policy:
+  tie_handling: "exclude"
+  mirror_diagonal: null
+
+nan_filter:
+  max_nan_ratio: 0.15
+  min_nan_allowed: 1
+  use_ceil: false
+
+saving:
+  include_time_when_changed: true
+
+paths:
+  output_dir: "outputs"
+  cache_dir: "cache/requests"
+  logs_dir: "logs"
+
+logging:
+  level: INFO
+
+mars:
+  MU: 0.5
+  Z_PENALTY: 1.2
+  ALPHA_COMPOSITE: 0.72
+
+  AUTO_GAMMA: false
+  GAMMA_META_BLEND: 0.30
+  GAMMA_MIN: 0.10
+  GAMMA_MAX: 0.60
+  GAMMA_BASE: 0.10
+  GAMMA_SLOPE: 1.5
+  META_GAP_POLICY: encounter
+
+  HALF_TIES: false
+  HALF_TIES_WEIGHT: 0.5
+
+  AUTO_K: true
+  K_MIN: 0.10
+  K_CONST_BOUNDS: [0.05, 50.0]
+  INSTANT_APPLY_K: true
+  K_BASE: 4.0
+  K_SCALE: 2.0
+  K_BASE_BOUNDS: [1.0, 12.0]
+  K_SCALE_BOUNDS: [0.5, 3.0]
+
+  RHO_TEST: 0.3333333333
+  BOOT_N: 50
+  SEED: 42
+  REL_TOL_LL: 0.001
+  EXPAND_LO_STEPS: 2
+  K_GRID_MULTS: [0.25, 0.5, 1.0, 2.0, 4.0]
+  BOOT_LOCAL_MULTS: [0.7071067812, 1.0, 1.4142135624]
+  MIN_TEST_IF_N_GE_4: 2
+  MIN_TRAIN_IF_N_GT_1: 1
+
+  N_MIN_BT_TARGET: 5
+  BT_SOFT_POWER: null
+  BT_NEAR_BAND: 0.10
+  BT_USE_HARMONIC_N: true
+  LAMBDA_RIDGE: 1.5
+  MAX_BT_ITER: 500
+  BT_TOL: 1.0e-6
+
+  EPS: 1.0e-12
+
