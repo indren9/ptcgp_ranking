@@ -6,6 +6,9 @@ Pipeline end‑to‑end per scraping, consolidamento e ranking dei mazzi con **M
 
 ## Novità — 2025-09-14
 
+- **Notebook 3 — `3_run_all.ipynb`**: notebook **end‑to‑end** che esegue in sequenza scraping/core prep (Notebook 1) e MARS/ranking/report (Notebook 2). Pensato per run completi e ripetibili, con output in `outputs/RankingData/MARS/Report/`.
+- **Riordino fogli automatico**: il writer in `mars/report.py` riordina i fogli Excel secondo il ranking (robusto a nomi sanificati/troncati), senza chiamate extra.
+
 - **Report Excel per-deck ordinato per ranking** (top → bottom).
 - **Nuovo writer**: `mars/report.py::write_pairs_by_deck_report(...)` genera `00_Legenda`, `01_Summary` e un foglio per ciascun deck.
 - **Riordino post-scrittura dei fogli** via `utils/io.reorder_excel_sheets(path, sheet_order)` (richiede `openpyxl`).
@@ -50,6 +53,7 @@ ptcgp_ranking/
 │  └─ RankingData/MARS      # mars_ranking_*.csv + Report/
 ├─ 1_scrape_core_preview.ipynb
 ├─ 2_core_mars_preview.ipynb
+├─ 3_run_all.ipynb
 ├─ README.md
 └─ requirements.txt
 ```
@@ -82,6 +86,12 @@ pip install -r requirements.txt
   La heatmap WR viene salvata in `outputs/Matrices/heatmap/` come:
   - `wr_heatmap_latest.png`
   - `wr_heatmap_T{K}_{YYYYmmdd_HHMMSS}.png`
+
+**Parte 3 — Run All (opzionale ma consigliato)**
+1. Apri `3_run_all.ipynb`.
+2. Seleziona il kernel della tua venv (Python: Select Interpreter).
+3. Esegui **Run All**.
+4. Verifica gli output in `outputs/RankingData/MARS/Report/` (file *versioned* e *latest*).
 
 ---
 ### Requisiti aggiuntivi
@@ -282,6 +292,36 @@ print("Report scritto:", versioned_path, latest_path)
 *(Opz.)* `top_meta_decklist_latest.csv` per il blend meta; `p_enc` = somma colonna di `n_dir` rinormalizzata.
 
 ---
+
+## 📓 Notebook 3 — `3_run_all.ipynb`
+
+Notebook **end‑to‑end** per eseguire l’intera pipeline in un colpo solo.
+
+**Pipeline eseguita (ordine):**
+1. **Scrape & caching** (Notebook 1): decklist/top‑meta e matchups da Limitless; salvataggi in `outputs/Decklists/` e `outputs/MatchupData/`.
+2. **Core prep**: aliasing, consolidamento score table filtrata, simmetrizzazione direzionale, costruzione matrici `filtered_wr` e `n_dir`, filtro NaN.
+3. **MARS** (Notebook 2): `AUTO_K‑CV`, MAS/LB/BT, `Score_%`.
+4. **Report Excel**: `write_pairs_by_deck_report(...)` con **riordino automatico** dei fogli secondo il ranking (top→bottom).
+
+**Prerequisiti:**
+- Ambiente attivo (venv) e dipendenze installate (`pip install -r requirements.txt`).
+- `openpyxl` presente (per Excel). 
+- File di config e alias pronti (`config/config.yaml`, `config/alias_map.json`).
+
+**Esecuzione:**
+1. Apri `3_run_all.ipynb`.
+2. Seleziona kernel della venv.
+3. `Run All`.
+
+**Output principali:**
+- Ranking: `outputs/RankingData/MARS/mars_ranking_latest.csv` (+ versionati).
+- Report: `outputs/RankingData/MARS/Report/pairs_by_deck_T{T}_MARS_{timestamp}.xlsx` e `pairs_by_deck_T{T}_latest.xlsx`.
+
+**Troubleshooting:**
+- *ImportError*: verifica il kernel/venv e `requirements.txt`.
+- *Excel non ordinato*: assicurati di usare il `report.py` aggiornato (riordino automatico robusto).
+- *Percorsi/permessi*: verifica i path in `utils/io.py` e che le cartelle esistano (il writer le crea se mancano).
+
 
 ## 🧭 ROUTES & salvataggi
 
