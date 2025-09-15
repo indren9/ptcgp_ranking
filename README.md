@@ -1,18 +1,24 @@
-# PTCGP Ranking — MARS (Meta‑Adjusted, Regularized Score)
+# PTCGP Ranking — MARS (Meta-Adjusted, Regularized Score)
 
-Pipeline end‑to‑end per scraping, consolidamento e ranking dei mazzi con **MARS**: un punteggio composito che combina posteriore Beta–Binomiale, **MAS/SE/LB**, **Bradley–Terry** robusto e blending **meta vs encounter**. Il progetto è notebook‑first, modulare e riproducibile.
+Pipeline end-to-end per scraping, consolidamento e ranking dei mazzi con **MARS**: un punteggio composito che combina posteriore Beta–Binomiale, **MAS/SE/LB**, **Bradley–Terry** robusto e blending **meta vs encounter**. Il progetto è notebook-first, modulare e riproducibile.
 
 ---
 
-## Novità — 2025-09-14
+## Novità — 2025-09-15
 
-- **Notebook 3 — `3_run_all.ipynb`**: notebook **end‑to‑end** che esegue in sequenza scraping/core prep (Notebook 1) e MARS/ranking/report (Notebook 2). Pensato per run completi e ripetibili, con output in `outputs/RankingData/MARS/Report/`.
-- **Riordino fogli automatico**: il writer in `mars/report.py` riordina i fogli Excel secondo il ranking (robusto a nomi sanificati/troncati), senza chiamate extra.
+- **Legenda come banner PNG**: generata in `mars/report.py` e **incollata** in `00_Legenda` (niente tabella di testo). Layout **verticale** e leggibile:
+  1) *Che cos’è* → 2) **01_Summary** (ranking) → 3) **Fogli per deck** (A→tutti) → 4) **Palette colori**.  
+  Il banner si adatta in larghezza (simile all’esempio), con wrapping automatico.
+- **Riordino fogli robusto**: `_reorder_excel_sheets_robust(...)` ordina i fogli secondo il ranking anche con nomi **sanificati/troncati/duplicati**.
+- **Semafori `gap_pp` affidabili**: lo styling dei fogli per-deck usa **CellIsRule** (>=8 / <=−8 **rosso**, e 4..8 / −8..−4 **giallo**) e prova a convertire testi numerici in numeri prima di applicare le regole.
+- **Colonne opzionali nei fogli per-deck**: puoi **escludere** `SE_dir_%`, `w_A(B)_%` e `MAS_contrib_pp` senza toccare i calcoli (vedi parametri del writer).
+- **Riga “Mirror”**: evidenziata in **grigio** su tutta la riga; `Opponent` in corsivo.
+- **Scrittura Excel atomica + retry** in `utils/io.write_excel_versioned_styled(...)`, con fallback su file `*_LOCKED_*.xlsx` se il target è bloccato (OneDrive/Excel aperto).
+- **Colonne leggenda** auto-larghezza & wrapping (Campo/Descrizione/Colore) e **swatch** colore in `00_Legenda`.
 
-- **Report Excel per-deck ordinato per ranking** (top → bottom).
-- **Nuovo writer**: `mars/report.py::write_pairs_by_deck_report(...)` genera `00_Legenda`, `01_Summary` e un foglio per ciascun deck.
-- **Riordino post-scrittura dei fogli** via `utils/io.reorder_excel_sheets(path, sheet_order)` (richiede `openpyxl`).
+> Nota: il precedente riordino via `utils.io.reorder_excel_sheets` non è più necessario — è interno al writer del report.
 
+---
 
 ## 📦 Struttura del progetto
 
@@ -36,15 +42,14 @@ ptcgp_ranking/
 │  ├─ diagnostics.py        # packing diagnosis per logs
 │  ├─ mas_lb.py             # MAS, SE, LB
 │  ├─ meta.py               # blend meta/encounter con gap policy
-│  ├─ pipeline.py           # orchestrazione run_mars(...)
+│  ├─ pipeline.py           # orchestratore run_mars(...)
 │  ├─ posterior.py          # posteriori Beta–Binomiale (μ=0.5)
-│  ├─ report.py             # writer Excel: 00_Legenda, 01_Summary, fogli per-deck + riordino
-│  ├─ typing.py             # tipi / alias
+│  ├─ report.py             # writer Excel + legenda-banner + riordino fogli
 │  └─ validate_io.py        # validatori IO
 ├─ scraper/
 │  ├─ browser.py, session.py, decklist.py, matchups.py
 ├─ utils/
-│  ├─ io.py                 # ROUTES + writer CSV/plot/excel (+ reorder_excel_sheets)
+│  ├─ io.py                 # ROUTES + writer CSV/plot/excel (styled & atomic)
 │  └─ display.py            # show_ranking / show_wr_heatmap
 ├─ outputs/
 │  ├─ Decklists/{raw, top_meta}
@@ -78,7 +83,7 @@ pip install -r requirements.txt
 - Output contrattuali:
   - `outputs/Matrices/winrate/filtered_wr_latest.csv` (T×T, diag=NaN)
   - `outputs/Matrices/volumes/n_dir_latest.csv`     (T×T, diag=NaN)
-  - `outputs/MatchupData/flat/score_latest.csv`     (post‑alias, **post‑filtro**, no mirror, entrambe direzioni)
+  - `outputs/MatchupData/flat/score_latest.csv`     (post-alias, **post-filtro**, no mirror, entrambe direzioni)
 
 3) **Notebook Parte 2 – MARS**
 - Carica gli output della Parte 1 e calcola ranking + diagnostiche display.
@@ -96,8 +101,16 @@ pip install -r requirements.txt
 ---
 ### Requisiti aggiuntivi
 
-- Aggiungi `openpyxl==3.1.*` al `requirements.txt` per il riordino dei fogli Excel.
+Aggiungi a `requirements.txt` (se non presenti):
+```
+openpyxl>=3.1,<3.2
+xlsxwriter>=3.2,<3.3     # consigliato per la scrittura
+pillow>=10,<11            # per il banner PNG della legenda
+matplotlib>=3.8,<3.9      # per il font manager usato nel banner
+```
+> Il writer prova automaticamente `xlsxwriter` e poi `openpyxl`. Lo styling (semafori / top-K / swatch) richiede `openpyxl` lato post-scrittura.
 
+---
 
 ## ⚙️ Configurazione (`config/config.yaml`)
 
@@ -141,7 +154,6 @@ mars:
   # Misc
   EPS: 1.0e-12
 ```
-
 La dataclass **`mars.config.MARSConfig`** accetta le stesse chiavi (MAIUSCOLE).
 
 ---
@@ -180,15 +192,15 @@ p_hat = (K / (N + K)) * 0.5  +  (N / (N + K)) * (W / N)
 ```
 Edge: `N_dir = 0` ⇒ esclusa da MAS; pareggi esclusi (opz. 0.5·T **prima** dello smoothing).
 
-#### 3.b) AUTO_K‑CV (un solo K per tutte le coppie, 100% data‑driven)
-- Celle off‑diag con `N_dir>0`; scala auto `beta_auto = sqrt(N_med * N_75)`.
-- Split proporzionale (ρ=1/3) con minimi garantiti; griglia log‑spaced e clip `[0.05, 50]` + `K_min`.
+#### 3.b) AUTO_K-CV (un solo K per tutte le coppie, 100% data-driven)
+- Celle off-diag con `N_dir>0`; scala auto `beta_auto = sqrt(N_med * N_75)`.
+- Split proporzionale (ρ=1/3) con minimi garantiti; griglia log-spaced e clip `[0.05, 50]` + `K_min`.
 - Scelta su LL predittiva OOF; tie → più piccolo. Espansione verso il basso se al bordo.
-- Bootstrap leggero (50×) → mediana/IQR/mode; regola finale: **best**, **boot‑clipped** o **boundary‑override**.
+- Bootstrap leggero (50×) → mediana/IQR/mode; regola finale: **best**, **boot-clipped** o **boundary-override**.
 - Log minimi: griglia/K*/K_used/motivo, `beta_auto`, `#expansions`, `ΔLL/100`, quantili di `r = K/(K+N)`, `r_small_median`.
 
-### 4) Step 2 — Pesi di meta `p(B)` (share ⊗ encounter, **auto‑gamma** opzionale)
-Gap‑recovery su top‑meta (encounter|proportional|uniform). Blend:
+### 4) Step 2 — Pesi di meta `p(B)` (share ⊗ encounter, **auto-gamma** opzionale)
+Blend:
 ```
 p(B) = (1 - gamma) * p_meta(B)  +  gamma * p_enc(B)
 ```
@@ -204,7 +216,7 @@ SE(A)  = sqrt( sum_B p(B)^2 * Var[p_hat(A→B)] )
 LB(A)  = MAS(A) - z * SE(A)
 ```
 
-### 6) Step 4 — Bradley–Terry (filtro adattivo + soft‑weight, armonica ON)
+### 6) Step 4 — Bradley–Terry (filtro adattivo + soft-weight, armonica ON)
 Filtro su `s_bar ≥ s_min` con `s = N/(N+K_used)` e `s_min = N_min/(N_min+K_used)`.  
 Pesi:
 ```
@@ -220,13 +232,13 @@ Standardizza `LB` e `BT` → `z(LB)`, `z(BT)`:
 z_comp = alpha * z(LB) + (1 - alpha) * z(BT)
 Score_% = 100 * Phi( z_comp / sqrt(2) )
 ```
-Tie‑break: **LB%**, poi **BT%**, poi **N_eff/Coverage**.
+Tie-break: **LB%**, poi **BT%**, poi **N_eff/Coverage**.
 
 ### 8) Colonne in output
 `Deck`, `Score_%`, `MAS_%`, `LB_%`, `BT_%`, `SE_%`, `N_eff`, `Opp_used`, `Opp_total`, `Coverage_%`.
 
 ### 9) Diagnostica utile
-`corr(z(LB), z(BT))`, breakdown `MAS`, `TV` & `gamma` per meta blend, leverage edges/top‑5 e per deck, gate recap (`N_MIN_BT_TARGET`, `K_used`, `s_min`).
+`corr(z(LB), z(BT))`, breakdown `MAS`, `TV` & `gamma` per meta blend, leverage edges/top-5 e per deck, gate recap (`N_MIN_BT_TARGET`, `K_used`, `s_min`).
 
 ### 10) Default consigliati (rapidi)
 ```
@@ -238,7 +250,7 @@ AUTO_GAMMA opzionale; se off → GAMMA_META_BLEND = 0.30
 GAMMA_BASE/SLOPE/MIN/MAX = 0.10 / 1.5 / 0.10 / 0.60
 # Bradley–Terry
 N_MIN_BT_TARGET = 5
-BT_SOFT_POWER = None   # auto‑cont (~[1.5, 2.1]); 1.6 se fisso
+BT_SOFT_POWER = None   # auto-cont (~[1.5, 2.1]); 1.6 se fisso
 BT_USE_HARMONIC_N = True
 BT_NEAR_BAND = 0.10
 LAMBDA_RIDGE = 1.5
@@ -246,17 +258,17 @@ LAMBDA_RIDGE = 1.5
 
 ### 11) Edge case
 Buchi A→B rinormalizzati; righe vuote → MAS non informativo (resta BT).  
-Assi non allineati → intersezione. Top‑meta assente → p_meta uniforme.
+Assi non allineati → intersezione. Top-meta assente → p_meta uniforme.
 
 ### 12) Perché funziona
-Smoothing + MAS meta‑aware + BT regolarizzato (filtro/soft‑weight/armonica/ridge) + mix α → ranking **stabile**, **discriminante**, **meta‑sensibile**.
+Smoothing + MAS meta-aware + BT regolarizzato (filtro/soft-weight/armonica/ridge) + mix α → ranking **stabile**, **discriminante**, **meta-sensibile**.
 
 ### 13) Pattern da leggere
 `BT%` alto / `MAS%` basso = forte “assoluto”, meta sfavorevole.  
 `LB% << MAS%` = incertezza (SE alta). Coverage bassa → prudenza.
 
-### 14) Mini‑workflow di tuning
-Step‑by‑step come da guida: osserva near_thresh, coverage, HHI, gamma auto; regola `LAMBDA_RIDGE` e `ALPHA_COMPOSITE` se necessario.
+### 14) Mini-workflow di tuning
+Osserva near_thresh, coverage, HHI, gamma auto; regola `LAMBDA_RIDGE` e `ALPHA_COMPOSITE` se necessario.
 
 ---
 
@@ -277,15 +289,29 @@ versioned_path, latest_path, meta = write_pairs_by_deck_report(
     score_flat=score_latest_flat,     # opzionale (abilita W/L/N e WR_real_% da flat)
     mu=0.5,
     gamma=gamma,                      # opzionale
+    include_posterior_se=False,       # per nascondere SE_dir_% nei fogli per-deck
+    include_binom_se=True,
+    include_counts=True,
+    include_self_row=True,
+    # per NON creare colonne di peso/contributo nei fogli per-deck:
+    include_weight_col=False,
+    include_mas_contrib_col=False,
     out_dir=Path("outputs/RankingData/MARS/Report"),
 )
 print("Report scritto:", versioned_path, latest_path)
 ```
 
+### Styling applicato automaticamente
+- **gap_pp**: rosso se `|gap_pp| ≥ 8`, giallo se `4 ≤ |gap_pp| < 8` (valido anche se Excel ha celle in formato testo con numeri).
+- **Top-K** su `MAS_contrib_pp` (se presente) via regola nativa `top10` (rank=K).
+- **Mirror**: intera riga grigia; `Opponent` in corsivo.
+- **00_Legenda**: colonne con larghezze ottimizzate, wrapping su Campo/Descrizione e **swatch** nella colonna `Colore`.
+
+---
 
 ## 📄 Contratti dati (Parte 2 Input)
 
-- `filtered_wr` (T×T): WR direzionali A→B in %, **diag=NaN**, asse = top‑meta post‑alias.
+- `filtered_wr` (T×T): WR direzionali A→B in %, **diag=NaN**, asse = top-meta post-alias.
 - `n_dir` (T×T): volumi W+L, **diag=NaN**, stesso asse.
 - `score_latest.csv` (flat): `Deck A, Deck B, W, L, T, N, WR_dir` (+ `Winrate` alias di `WR_dir`).
 
@@ -295,33 +321,29 @@ print("Report scritto:", versioned_path, latest_path)
 
 ## 📓 Notebook 3 — `3_run_all.ipynb`
 
-Notebook **end‑to‑end** per eseguire l’intera pipeline in un colpo solo.
+Notebook **end-to-end** per eseguire l’intera pipeline in un colpo solo.
 
 **Pipeline eseguita (ordine):**
-1. **Scrape & caching** (Notebook 1): decklist/top‑meta e matchups da Limitless; salvataggi in `outputs/Decklists/` e `outputs/MatchupData/`.
+1. **Scrape & caching** (Notebook 1): decklist/top-meta e matchups; salvataggi in `outputs/Decklists/` e `outputs/MatchupData/`.
 2. **Core prep**: aliasing, consolidamento score table filtrata, simmetrizzazione direzionale, costruzione matrici `filtered_wr` e `n_dir`, filtro NaN.
-3. **MARS** (Notebook 2): `AUTO_K‑CV`, MAS/LB/BT, `Score_%`.
-4. **Report Excel**: `write_pairs_by_deck_report(...)` con **riordino automatico** dei fogli secondo il ranking (top→bottom).
+3. **MARS** (Notebook 2): `AUTO_K-CV`, MAS/LB/BT, `Score_%`.
+4. **Report Excel**: `write_pairs_by_deck_report(...)` con **riordino automatico** dei fogli secondo il ranking (top→bottom) e **banner legenda**.
 
 **Prerequisiti:**
 - Ambiente attivo (venv) e dipendenze installate (`pip install -r requirements.txt`).
 - `openpyxl` presente (per Excel). 
 - File di config e alias pronti (`config/config.yaml`, `config/alias_map.json`).
 
-**Esecuzione:**
-1. Apri `3_run_all.ipynb`.
-2. Seleziona kernel della venv.
-3. `Run All`.
-
 **Output principali:**
 - Ranking: `outputs/RankingData/MARS/mars_ranking_latest.csv` (+ versionati).
 - Report: `outputs/RankingData/MARS/Report/pairs_by_deck_T{T}_MARS_{timestamp}.xlsx` e `pairs_by_deck_T{T}_latest.xlsx`.
 
 **Troubleshooting:**
-- *ImportError*: verifica il kernel/venv e `requirements.txt`.
-- *Excel non ordinato*: assicurati di usare il `report.py` aggiornato (riordino automatico robusto).
-- *Percorsi/permessi*: verifica i path in `utils/io.py` e che le cartelle esistano (il writer le crea se mancano).
+- *ImportError*: verifica kernel/venv e dipendenze.
+- *Excel non ordinato / colori assenti*: usa il `report.py` e `utils/io.py` aggiornati; verifica `openpyxl` installato.
+- *Percorsi/permessi*: controlla i path in `utils/io.py`; le cartelle vengono create se mancano.
 
+---
 
 ## 🧭 ROUTES & salvataggi
 
@@ -334,30 +356,9 @@ Notebook **end‑to‑end** per eseguire l’intera pipeline in un colpo solo.
 
 ---
 
-## 👀 Utilities per notebook
-
-- `utils.display.show_ranking(...)` — anteprima Top‑N.  
-- `utils.display.show_wr_heatmap(...)` — heatmap WR (opz. salvataggio).
-
----
-
 ## 🔁 Riproducibilità
 
 Seed (`SEED`) in AUTO_K; pipeline deterministica; logging pulito in INFO.
-
----
-
-## 🩺 Troubleshooting
-
-File Parte 1 mancanti / shape mismatch / `corr` NaN: vedi note nella sezione precedente.
-
----
-
-## 🛣️ Roadmap (breve)
-
-- Export opzionale diagnosi come JSON.  
-- Mini‑benchmark locale.  
-- Parametrizzare notebook → CLI opzionale.
 
 ---
 
@@ -366,17 +367,11 @@ File Parte 1 mancanti / shape mismatch / `corr` NaN: vedi note nella sezione pre
 **MIT** — vedi file [`LICENSE`](LICENSE).  
 Copyright (c) 2025 Andrea Visentin.
 
-Se riusi il codice, mantieni **copyright** e **testo della licenza** nei file distribuiti.
-
 **Attribuzione consigliata / citazione**  
-Se citi il progetto in tesi, paper o post, puoi usare questo formato minimale:
 > Visentin, A. (2025). *PTCGP Ranking — MARS*. MIT License. https://github.com/indren9/ptcgp_ranking
 
-Sono inclusi anche:
-- `CITATION.cff` per strumenti come GitHub/Zenodo;
-- `NOTICE` con disclaimer su marchi e fonti dati.
+---
 
 ## 👤 Autore & Contatti
 
 Andrea Visentin · GitHub: https://github.com/indren9
-Issue tracker: usa le *Issues* del repo una volta pubblicato: https://github.com/indren9/ptcgp_ranking

@@ -9,21 +9,20 @@ import logging
 import numpy as np
 import pandas as pd
 
-from utils.io import write_excel_versioned_styled  # lascia il writer
-# NOTA: useremo un riordino robusto interno (non dipende più da utils.io.reorder_excel_sheets)
+from utils.io import write_excel_versioned_styled  # writer con styling/CF
 
 LOGGER = logging.getLogger("ptcgp")
-
 _PCT = 100.0
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Helpers base
+# ──────────────────────────────────────────────────────────────────────────────
 def _sanitize_sheet_name(name: str) -> str:
     """Excel: max 31 char, no []:*?/\\ ."""
     bad = set('[]:*?/\\')
     safe = "".join(ch for ch in str(name) if ch not in bad).strip()
-    if not safe:
-        safe = "Sheet"
-    return safe[:31]
+    return (safe or "Sheet")[:31]
 
 
 def _ensure_axis(df: pd.DataFrame, axis: Iterable[str]) -> pd.DataFrame:
@@ -39,8 +38,7 @@ def _wr_real_from_score(score_flat: pd.DataFrame, axis: Iterable[str]) -> pd.Dat
         raise ValueError(f"score_flat mancano colonne: {sorted(missing)}")
 
     wr_pivot = (
-        score_flat
-        .astype({"Deck A": "string", "Deck B": "string"})
+        score_flat.astype({"Deck A": "string", "Deck B": "string"})
         .pivot(index="Deck A", columns="Deck B", values="WR_dir")
     )
     wr_pivot = _ensure_axis(wr_pivot, axis)
@@ -58,16 +56,13 @@ def _counts_from_score(score_flat: pd.DataFrame, axis: Iterable[str]) -> Tuple[p
     W = (
         score_flat.pivot(index="Deck A", columns="Deck B", values="W")
         .reindex(index=axis, columns=axis)
-        .fillna(0.0)
-        .astype(float)
+        .fillna(0.0).astype(float)
     )
     L = (
         score_flat.pivot(index="Deck A", columns="Deck B", values="L")
         .reindex(index=axis, columns=axis)
-        .fillna(0.0)
-        .astype(float)
+        .fillna(0.0).astype(float)
     )
-    # Diagonale coerente
     np.fill_diagonal(W.values, np.nan)
     np.fill_diagonal(L.values, np.nan)
     return W, L
@@ -81,10 +76,9 @@ def _posterior_from_wr_n(
     K: float,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Posteriori Beta su ogni cella A→B usando p_obs e N_dir:
-      a = mu*K + W,  b = (1-mu)*K + L,  con W = p_obs*N_dir, L = (1-p_obs)*N_dir
-    Restituisce:
-      p_hat_% (T×T) e SE_dir_% (T×T) = 100*sqrt(Var[Beta(a,b)]).
+    Posteriori Beta su ogni cella A→B usando p_obs e N:
+      a = mu*K + W,  b = (1-mu)*K + L, con W = p_obs*N, L = (1-p_obs)*N
+    Restituisce: p_hat_% (T×T) e SE_dir_% (T×T) = 100*sqrt(Var[Beta(a,b)]).
     """
     if set(wr_dir_pct.columns) != set(n_dir.columns) or set(wr_dir_pct.index) != set(n_dir.index):
         raise ValueError("wr_dir_pct e n_dir non condividono lo stesso asse.")
@@ -103,10 +97,7 @@ def _posterior_from_wr_n(
     return (p_hat * _PCT), (se * _PCT)
 
 
-def _se_binom_from_wr_n(
-    wr_dir_pct: pd.DataFrame,
-    n_dir: pd.DataFrame,
-) -> pd.DataFrame:
+def _se_binom_from_wr_n(wr_dir_pct: pd.DataFrame, n_dir: pd.DataFrame) -> pd.DataFrame:
     """SE binomiale della proporzione osservata: 100·sqrt(p(1-p)/N_dir). NaN se N_dir==0."""
     p = wr_dir_pct / _PCT
     N = n_dir.astype(float)
@@ -129,29 +120,33 @@ def _weights_row_for_A(p_blend: pd.Series, A: str, axis: Iterable[str]) -> pd.Se
     return w
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Tabelle per-deck + Legenda (data-only; nessun I/O)
+# ──────────────────────────────────────────────────────────────────────────────
 def make_pairs_by_deck_tables(
+    *,
     filtered_wr: pd.DataFrame,         # T×T, % direzionali A→B, diag NaN
     n_dir: pd.DataFrame,               # T×T, W+L direzionali, diag NaN
     p_blend: pd.Series,                # pesi meta-blend su asse (stessi della MAS)
     K_used: float,
-    *,
     score_flat: Optional[pd.DataFrame] = None,  # se presente, WR_real_% e conteggi da qui
     mu: float = 0.5,
-    include_posterior_se: bool = True,
+    include_posterior_se: bool = False,        # default OFF come richiesto
     include_binom_se: bool = True,
     gamma: Optional[float] = None,
-    include_counts: bool = True,            # aggiunge colonne W, L, N quando disponibili
-    sort_by: Optional[str] = None,          # ignorato se global_order è passato
+    include_counts: bool = True,               # aggiunge colonne W, L, N quando disponibili
+    sort_by: Optional[str] = None,             # ignorato se global_order è passato
     global_order: Optional[Iterable[str]] = None,  # ordine righe fisso (es. ranking)
-    include_self_row: bool = True,          # inserisce riga del deck A come "Mirror"
+    include_self_row: bool = True,             # inserisce riga del deck A come "Mirror"
     mirror_label: str = "Mirror",
+    include_weight_col: bool = False,          # w_A(B)_% (default OFF)
+    include_mas_contrib_col: bool = False,     # MAS_contrib_pp (default OFF)
 ) -> Tuple["OrderedDict[str, pd.DataFrame]", pd.DataFrame, Dict]:
     """
     Costruisce:
-      - sheets_by_deck: {A -> DataFrame (T righe se include_self_row=True altrimenti T−1)
-                         con ordine righe fisso = global_order (se passato) altrimenti axis}
-      - legend_df: foglio 00_Legenda (con sezione "Legenda colori")
-      - meta: info utili a naming/tag/controlli
+      - sheets_by_deck: {A -> DataFrame}
+      - legend_df: legenda completa (usata per il banner PNG)
+      - meta: info varie
     """
     axis: list[str] = list(filtered_wr.columns)
     filtered_wr = filtered_wr.reindex(index=axis, columns=axis)
@@ -167,17 +162,10 @@ def make_pairs_by_deck_tables(
         W_mat, L_mat = (None, None)
 
     # Posteriori + SE posterior (Beta)
-    p = wr_real_pct / 100.0
-    N = n_dir.astype(float)
-    a = mu * K_used + (p * N)
-    b = (1.0 - mu) * K_used + ((1.0 - p) * N)
-    denom = a + b
-    p_hat_pct = (a / denom) * 100.0
-    se_post_pct = np.sqrt((a * b) / (denom.pow(2) * (denom + 1.0))) * 100.0
+    p_hat_pct, se_post_pct = _posterior_from_wr_n(wr_real_pct, n_dir, mu=mu, K=K_used)
 
     # SE binomiale
-    with np.errstate(divide="ignore", invalid="ignore"):
-        se_binom_pct = np.sqrt(np.clip(p * (1.0 - p) / N, 0.0, None)) * 100.0
+    se_binom_pct = _se_binom_from_wr_n(wr_real_pct, n_dir)
 
     # Ordine fisso righe (uguale per tutti i fogli)
     order = list(global_order) if global_order is not None else list(axis)
@@ -185,21 +173,21 @@ def make_pairs_by_deck_tables(
     sheets: "OrderedDict[str, pd.DataFrame]" = OrderedDict()
     for A in axis:
         rows = []
-        w_row = _weights_row_for_A(p_blend, A, axis)
+        need_weights = include_weight_col or include_mas_contrib_col
+        w_row = _weights_row_for_A(p_blend, A, axis) if need_weights else None
+
         for B in order:
             # Riga Mirror
             if B == A and include_self_row:
                 row = {"Opponent": mirror_label}
                 if include_counts and (W_mat is not None) and (L_mat is not None):
                     row.update({"W": pd.NA, "L": pd.NA, "N": pd.NA})
-                # tutti vuoti/NaN e 0 per i pesi/contributi
-                row.update({
-                    "WR_real_%": np.nan,
-                    "p_hat_%": np.nan,
-                })
+                row.update({"WR_real_%": np.nan, "p_hat_%": np.nan})
                 if include_posterior_se: row["SE_dir_%"] = np.nan
                 if include_binom_se:     row["SE_binom_%"] = np.nan
-                row.update({"gap_pp": np.nan, "w_A(B)_%": 0.0, "MAS_contrib_pp": 0.0})
+                row["gap_pp"] = np.nan
+                if include_weight_col:      row["w_A(B)_%"] = 0.0
+                if include_mas_contrib_col: row["MAS_contrib_pp"] = 0.0
                 rows.append(row)
                 continue
             if B == A and not include_self_row:
@@ -218,8 +206,15 @@ def make_pairs_by_deck_tables(
             if include_posterior_se: row["SE_dir_%"] = se_post_pct.loc[A, B]
             if include_binom_se:     row["SE_binom_%"] = se_binom_pct.loc[A, B]
 
-            wB = float(w_row.loc[B]) * 100.0
-            row.update({"gap_pp": (ph_ab - wr_ab), "w_A(B)_%": wB, "MAS_contrib_pp": (wB * ph_ab / 100.0)})
+            row["gap_pp"] = (ph_ab - wr_ab)
+
+            if need_weights:
+                wB = float(w_row.loc[B]) * _PCT
+                if include_weight_col:
+                    row["w_A(B)_%"] = wB
+                if include_mas_contrib_col:
+                    row["MAS_contrib_pp"] = (wB * ph_ab / _PCT)
+
             rows.append(row)
 
         df = pd.DataFrame(rows)
@@ -237,40 +232,68 @@ def make_pairs_by_deck_tables(
 
         sheets[A] = df
 
-    # Legend + sezione "Legenda colori" (colonna 'Colore' riempita dallo styled writer)
-    legend_rows = [
-        ("Che cos'è", "Workbook con 1 foglio per deck A; righe = tutti i deck nell'ordine fisso (ranking)."),
-        ("Unità", "Percentuali con 2 decimali; _pp = punti percentuali; W/L/N sono conteggi direzionali."),
-        ("W,L,N", "W=wins, L=losses, N=W+L (direzionali A→B, da score_latest)."),
-        ("WR_real_%", "Winrate osservata post-alias/post-filtro (score_latest), 100·W/(W+L)."),
-        ("p_hat_%", "Posteriore Beta-Binomiale con μ=0.5 e K_used: 100·(W+μK)/(W+L+K)."),
-        ("SE_dir_%", "Deviazione standard (in %) del posteriore Beta; definita anche con N piccolo."),
-        ("SE_binom_%", "SE frequentista: 100·sqrt(p(1−p)/N_dir) con p=WR_real_/100; NaN se N_dir=0."),
-        ("gap_pp", "p_hat_% − WR_real_% (quanto corregge lo smoothing)."),
-        ("w_A(B)_%", "Peso di B nella MAS di A (pesi meta-blend rinormalizzati su B≠A, somma≈100)."),
-        ("MAS_contrib_pp", "100·w_A(B)·p̂(A→B); la somma per foglio ricostruisce MAS_% di A."),
-        ("Mirror", "La riga del deck A è marcata come 'Mirror' (campi vuoti)."),
+    # ---------- LEGENDA (testo “catchy”) ----------
+    # Copertina: Che cos'è
+    catchy = (f"Questo file presenta il ranking dei Top {len(axis)} mazzi in '01_Summary'. "
+              "Poi trovi un foglio per ogni mazzo A: A contro tutti gli altri, nello stesso ordine del ranking.")
+    # Colonne dei fogli per-deck (solo quelle effettivamente presenti)
+    per_deck_rows = [
+        ("Unità", "Percentuali con 2 decimali. 'pp' = punti percentuali. W/L/N sono conteggi direzionali (A→B)."),
+        ("W,L,N", "W=vittorie, L=sconfitte, N=W+L (A→B; i pareggi non entrano nella WR osservata)."),
+        ("WR_real_%", "Winrate osservata: 100·W/(W+L), dopo alias e filtri."),
+        ("p_hat_%", "Winrate corretta per pochi dati: 100·(W+μK)/(W+L+K), con μ=0.5 e K scelto automaticamente."),
+        ("SE_binom_%", "Errore standard della WR osservata: 100·√(p·(1−p)/N_dir). NaN se N_dir=0."),
+        ("gap_pp", "Correzione applicata: p_hat_% − WR_real_% (positiva = alza; negativa = abbassa)."),
+        ("Mirror", "Riga del mazzo A contro se stesso (per leggibilità): campi vuoti."),
     ]
-    legend_df = pd.DataFrame(legend_rows, columns=["Campo", "Descrizione"])
-    legend_df.loc[len(legend_df)] = ["Parametri run", f"T={len(axis)}; mu={mu}; K_used={K_used}" + (f"; gamma={gamma}" if gamma is not None else "")]
-    legend_df.loc[len(legend_df)] = ["Convenzioni", "Ordine righe fisso per tutti i fogli."]
+    if include_posterior_se:
+        per_deck_rows.insert(4, ("SE_dir_%", "Incertezza della stima corretta (dev. standard); definita anche con N piccolo)."))
+    if include_weight_col:
+        per_deck_rows.insert(-1, ("w_A(B)_%", "Quanto pesa il mazzo B nella media di A (pesi meta-blend; sommano ≈100 su B≠A)."))
+    if include_mas_contrib_col:
+        per_deck_rows.insert(-1, ("MAS_contrib_pp", "Contributo di B alla resa attesa di A: w_A(B)% × p_hat_% / 100. La somma ricostruisce MAS_% di A."))
 
-    # Legenda colori (colonna 'Colore' valorizzata a testo, il writer la colora)
-    if "Colore" not in legend_df.columns:
-        legend_df["Colore"] = pd.NA
-    legend_colors = pd.DataFrame(
-        [
-            {"Campo": "|gap_pp| ≥ 8",          "Descrizione": "Criticità alta",        "Colore": "RED"},
-            {"Campo": "4 ≤ |gap_pp| < 8",      "Descrizione": "Criticità media",       "Colore": "YELLOW"},
-            {"Campo": "Top-K MAS_contrib_pp",  "Descrizione": "Top contributori (K=5)","Colore": "GREEN"},
-            {"Campo": "Mirror",                "Descrizione": "Riga del deck stesso",  "Colore": "GRAY"},
-        ],
-        columns=["Campo", "Descrizione", "Colore"],
+    legend_df = pd.DataFrame(
+        [("Che cos'è", catchy)] + per_deck_rows
+        + [("Parametri run", f"T={len(axis)}; mu={mu}; K_used={K_used}" + (f"; gamma={gamma}" if gamma is not None else "")),
+           ("Convenzioni", "Stesso ordine righe per tutti i fogli (quello del ranking).")],
+        columns=["Campo", "Descrizione"]
     )
+    legend_df["Colore"] = pd.NA
+
+    # Sezione ranking (01_Summary)
+    ranking_legend_rows = [
+        ("Deck", "Nome del mazzo (già unificato con gli alias)."),
+        ("Score_%", "Voto finale (0–100): mix di LB_% (stima prudente) e BT_% (forza dagli scontri diretti)."),
+        ("MAS_%", "Resa attesa contro il meta attuale: media pesata delle chance di vittoria."),
+        ("SE_%", "Margine d’incertezza su MAS_%: alto = dati scarsi o molto variabili."),
+        ("LB_%", "Stima prudente: MAS_% − z·SE_% (z≈1.2). Penalizza chi ha pochi dati."),
+        ("BT_%", "Forza dagli scontri diretti (modello Bradley–Terry robusto ai buchi)."),
+        ("Coverage_%", "Copertura dei matchup osservati: % di avversari affrontati sul totale."),
+        ("N_eff", "Volume totale considerato: somma di W+L su tutti gli avversari."),
+        ("Opp_used / Opp_total", "Avversari distinti affrontati / avversari totali nel report."),
+    ]
+    ranking_legend_df = pd.DataFrame(ranking_legend_rows, columns=["Campo", "Descrizione"])
+    ranking_legend_df["Colore"] = pd.NA
+
+    # Legenda colori
+    color_rows = [
+        {"Campo": "|gap_pp| ≥ 8",     "Descrizione": "Scostamento forte (attenzione)",  "Colore": "RED"},
+        {"Campo": "4 ≤ |gap_pp| < 8", "Descrizione": "Scostamento moderato",            "Colore": "YELLOW"},
+        {"Campo": "Mirror",           "Descrizione": "Riga del mazzo stesso",           "Colore": "GRAY"},
+    ]
+    if include_mas_contrib_col:
+        color_rows.insert(2, {"Campo": "Top-K MAS_contrib_pp", "Descrizione": "Contributi principali (K=5)", "Colore": "GREEN"})
+    legend_colors = pd.DataFrame(color_rows, columns=["Campo", "Descrizione", "Colore"])
+
     legend_df = pd.concat(
-        [legend_df,
-         pd.DataFrame([{"Campo": "", "Descrizione": "Legenda colori", "Colore": pd.NA}]),
-         legend_colors],
+        [
+            legend_df,
+            pd.DataFrame([{"Campo": "", "Descrizione": "Legenda ranking (01_Summary)", "Colore": pd.NA}]),
+            ranking_legend_df,
+            pd.DataFrame([{"Campo": "", "Descrizione": "Legenda colori", "Colore": pd.NA}]),
+            legend_colors,
+        ],
         ignore_index=True
     )
 
@@ -286,22 +309,16 @@ def make_pairs_by_deck_tables(
     return sheets, legend_df, meta
 
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Summary + Workbook (data-only)
+# ──────────────────────────────────────────────────────────────────────────────
 def build_summary_sheet(ranking_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Costruisce il foglio 01_Summary dal ranking MARS:
-      colonne chiave: Deck, Score_%, MAS_%, LB_%, BT_%, SE_%, N_eff, Opp_used, Coverage_%
-    Ordinate per Score_% decrescente.
-    """
-    keep_cols = [
-        "Deck", "Score_%", "MAS_%", "LB_%", "BT_%", "SE_%",
-        "N_eff", "Opp_used", "Opp_total", "Coverage_%"
-    ]
+    """Costruisce il foglio 01_Summary dal ranking MARS (ordinato per Score_%)."""
+    keep_cols = ["Deck", "Score_%", "MAS_%", "LB_%", "BT_%", "SE_%", "N_eff", "Opp_used", "Opp_total", "Coverage_%"]
     cols = [c for c in keep_cols if c in ranking_df.columns]
-    df = (ranking_df.loc[:, cols]
-          .copy()
+    df = (ranking_df.loc[:, cols].copy()
           .sort_values("Score_%", ascending=False, kind="mergesort")
           .reset_index(drop=True))
-    # Rounding leggero
     for c in ("Score_%", "MAS_%", "LB_%", "BT_%", "SE_%", "Coverage_%"):
         if c in df.columns:
             df[c] = pd.to_numeric(df[c], errors="coerce").round(2)
@@ -312,13 +329,15 @@ def prepare_workbook(
     sheets_by_deck: "OrderedDict[str, pd.DataFrame]",
     legend_df: pd.DataFrame,
     summary_df: Optional[pd.DataFrame] = None,
+    *,
+    include_legend_table: bool = False,
 ) -> "OrderedDict[str, pd.DataFrame]":
     """
-    Inserisce '00_Legenda' come primo foglio e, se fornito, '01_Summary' come secondo.
-    Poi un foglio per ogni deck A (nome sanificato).
+    Inserisce '00_Legenda' come primo foglio (vuoto se include_legend_table=False)
+    e, se fornito, '01_Summary' come secondo. Poi un foglio per ogni deck A.
     """
     workbook: "OrderedDict[str, pd.DataFrame]" = OrderedDict()
-    workbook["00_Legenda"] = legend_df.copy()
+    workbook["00_Legenda"] = legend_df.copy() if include_legend_table else pd.DataFrame({"": []})
     if summary_df is not None:
         workbook["01_Summary"] = summary_df.copy()
     for deck, df in sheets_by_deck.items():
@@ -326,13 +345,226 @@ def prepare_workbook(
     return workbook
 
 
-# ---------- NUOVO: riordino robusto direttamente sull'xlsx scritto ----------
+# ──────────────────────────────────────────────────────────────────────────────
+# Banner (PNG) + embed su 00_Legenda
+# ──────────────────────────────────────────────────────────────────────────────
+def _render_legend_banner_png(
+    legend_df: pd.DataFrame,
+    png_path: Path,
+    *,
+    width: int = 1500,        # ~ larghezza dello screenshot allegato (modificabile)
+    margin: int = 60
+) -> Path:
+    """
+    Banner PNG in layout VERTICALE:
+      1) Che cos'è (callout)
+      2) 01_Summary (ranking)
+      3) Fogli per deck (A→tutti)
+      4) Legenda colori
+
+    - Deduplica 'Mirror' nella sezione Fogli per deck (tiene solo la prima occorrenza).
+    - Wrapping testo dinamico; palette soft.
+    """
+    from PIL import Image, ImageDraw, ImageFont
+    import matplotlib.font_manager as fm
+
+    # Palette
+    COLS = {
+        "RED": "#F2CBCB",
+        "YELLOW": "#FFF2CC",
+        "GREEN": "#D9EAD3",
+        "GRAY": "#CDCDCD",
+        "TEXT": "#222222",
+        "SUB": "#444444",
+        "BG": "#FFFFFF",
+        "CALLOUT": "#F7F7F7",
+        "BORDER": "#DDDDDD",
+    }
+
+    # Font loader
+    def _load_font(weight="regular", size=18):
+        fp = fm.findfont(
+            fm.FontProperties(
+                family="DejaVu Sans",
+                weight=("bold" if weight == "bold" else "regular"),
+            )
+        )
+        return ImageFont.truetype(fp, size=size)
+
+    f_title = _load_font("bold", 36)
+    f_h2    = _load_font("bold", 24)
+    f_key   = _load_font("bold", 18)
+    f_txt   = _load_font("regular", 18)
+    f_meta  = _load_font("regular", 16)
+
+    # Canvas (height grande, poi crop)
+    W = int(width)
+    H = 3000
+    M = int(margin)
+    img = Image.new("RGB", (W, H), COLS["BG"])
+    d = ImageDraw.Draw(img)
+
+    # Wrap helper
+    def draw_wrapped(text, font, x, y, max_w, color, line_spacing=6):
+        if not text:
+            return y
+        words = str(text).split()
+        lines, cur = [], ""
+        for w in words:
+            test = (cur + " " + w).strip()
+            if d.textlength(test, font=font) <= max_w:
+                cur = test
+            else:
+                if cur:
+                    lines.append(cur)
+                cur = w
+        if cur:
+            lines.append(cur)
+        ascent, descent = font.getmetrics()
+        line_h = ascent + descent + line_spacing
+        for ln in lines:
+            d.text((x, y), ln, font=font, fill=color)
+            y += line_h
+        return y
+
+    # ── Estratti dalla legend_df ──────────────────────────────────────────────
+    get = lambda campo: legend_df.loc[
+        legend_df["Campo"].astype(str) == campo, "Descrizione"
+    ]
+    che_text = (get("Che cos'è").iloc[0] if not get("Che cos'è").empty else "")
+
+    pr = get("Parametri run")
+    param_text = (pr.iloc[0] if not pr.empty else None)
+
+    desc = legend_df["Descrizione"].fillna("").astype(str)
+    is_sep_rank  = desc.str.startswith("Legenda ranking")
+    is_sep_color = desc.eq("Legenda colori")
+    idx_rank  = is_sep_rank[is_sep_rank].index.tolist()
+    idx_color = is_sep_color[is_sep_color].index.tolist()
+
+    # 01_Summary items
+    ranking_items = []
+    if idx_rank and idx_color and idx_color[0] > idx_rank[0]:
+        ranking_items = (
+            legend_df.iloc[idx_rank[0] + 1 : idx_color[0]][["Campo", "Descrizione"]]
+            .dropna(how="all")
+            .to_dict("records")
+        )
+
+    # Fogli per deck items (solo campi effettivi e senza duplicati, in ordine)
+    per_deck_order = [
+        "Unità", "W,L,N", "WR_real_%", "p_hat_%", "SE_binom_%", "gap_pp", "Mirror", "Convenzioni"
+    ]
+    if "SE_dir_%" in legend_df["Campo"].values:
+        per_deck_order.insert(4, "SE_dir_%")
+    if "w_A(B)_% " in legend_df["Campo"].values or "w_A(B)_%".encode():  # robusto a eventuali refusi
+        per_deck_order.insert(-2, "w_A(B)_%")
+    if "MAS_contrib_pp" in legend_df["Campo"].values:
+        per_deck_order.insert(-2, "MAS_contrib_pp")
+
+    per_deck_df = legend_df[legend_df["Campo"].isin(per_deck_order)][["Campo", "Descrizione"]]
+    # dedup (es. 'Mirror' doppio): tieni la prima occorrenza
+    per_deck_df = per_deck_df.drop_duplicates(subset=["Campo"], keep="first")
+    per_deck_df["order"] = per_deck_df["Campo"].apply(lambda c: per_deck_order.index(c))
+    per_deck_df = per_deck_df.sort_values("order").drop(columns="order")
+    per_deck_items = per_deck_df.to_dict("records")
+
+    # Colori
+    color_block = legend_df.loc[
+        legend_df["Colore"].isin(["RED", "YELLOW", "GREEN", "GRAY"]),
+        ["Campo", "Descrizione", "Colore"],
+    ]
+
+    # ── Layout verticale ─────────────────────────────────────────────────────
+    x = M
+    y = M
+    max_w = W - 2 * M
+
+    # Titolo
+    d.text((x, y), "Legenda — come leggere il report per-deck", font=f_title, fill=COLS["TEXT"])
+    y += f_title.getmetrics()[0] + f_title.getmetrics()[1] + 16
+    if param_text:
+        y = draw_wrapped(f"Parametri run: {param_text}", f_meta, x, y, max_w, COLS["SUB"], 4) + 8
+
+    # 1) Che cos'è (callout)
+    d.text((x, y), "Che cos'è", font=f_h2, fill=COLS["TEXT"])
+    y += f_h2.getmetrics()[0] + f_h2.getmetrics()[1] + 10
+    box_h = 140
+    d.rounded_rectangle([x, y, x + max_w, y + box_h], radius=14, fill=COLS["CALLOUT"], outline=COLS["BORDER"])
+    draw_wrapped(che_text, f_txt, x + 16, y + 14, max_w - 32, COLS["TEXT"])
+    y = y + box_h + 18
+
+    # 2) 01_Summary
+    d.text((x, y), "01_Summary (ranking)", font=f_h2, fill=COLS["TEXT"])
+    y += f_h2.getmetrics()[0] + f_h2.getmetrics()[1] + 10
+    key_w = 260
+    for row in ranking_items:
+        campo, descr = str(row["Campo"]), str(row["Descrizione"])
+        d.text((x, y), campo, font=f_key, fill=COLS["TEXT"])
+        y = draw_wrapped(descr, f_txt, x + key_w, y, max_w - key_w, COLS["TEXT"]) + 6
+
+    y += 6
+
+    # 3) Fogli per deck
+    d.text((x, y), "Fogli per deck (A→tutti)", font=f_h2, fill=COLS["TEXT"])
+    y += f_h2.getmetrics()[0] + f_h2.getmetrics()[1] + 10
+    for row in per_deck_items:
+        campo, descr = str(row["Campo"]), str(row["Descrizione"])
+        d.text((x, y), campo, font=f_key, fill=COLS["TEXT"])
+        y = draw_wrapped(descr, f_txt, x + key_w, y, max_w - key_w, COLS["TEXT"]) + 6
+
+    y += 6
+
+    # 4) Legenda colori
+    d.text((x, y), "Legenda colori", font=f_h2, fill=COLS["TEXT"])
+    y += f_h2.getmetrics()[0] + f_h2.getmetrics()[1] + 12
+    sw_w, sw_h = 68, 36
+    for _, r in color_block.iterrows():
+        label, descr, key = r["Campo"], r["Descrizione"], r["Colore"]
+        d.rounded_rectangle([x, y, x + sw_w, y + sw_h], radius=8, fill=COLS.get(key, "#EEEEEE"), outline="#999999")
+        d.text((x + sw_w + 14, y), str(label), font=f_key, fill=COLS["TEXT"])
+        y = draw_wrapped(str(descr), f_txt, x + sw_w + 14, y + f_key.getmetrics()[0] + f_key.getmetrics()[1] + 6,
+                         max_w - (sw_w + 14), COLS["TEXT"]) + 12
+
+    # Crop finale alla height usata
+    used_h = min(H, y + M)
+    img = img.crop((0, 0, W, used_h))
+    png_path.parent.mkdir(parents=True, exist_ok=True)
+    img.save(png_path)
+    return png_path
+
+
+def _embed_banner_on_legend(
+    excel_path: Path | str,
+    png_path: Path,
+    *,
+    sheet_name: str = "00_Legenda",
+    rows_padding: int = 36,
+    wipe_sheet: bool = True,
+) -> None:
+    from openpyxl import load_workbook
+    from openpyxl.drawing.image import Image as XLImage
+
+    p = Path(excel_path)
+    wb = load_workbook(p)
+    ws = wb[sheet_name] if sheet_name in wb.sheetnames else wb.worksheets[0]
+
+    if wipe_sheet:
+        for r in ws.iter_rows(min_row=1, max_row=ws.max_row, min_col=1, max_col=ws.max_column):
+            for c in r:
+                c.value = None
+    if rows_padding > 0:
+        ws.insert_rows(1, amount=int(rows_padding))
+
+    ws.add_image(XLImage(str(png_path)), "A1")
+    wb.save(p)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Riordino fogli post-scrittura (robusto)
+# ──────────────────────────────────────────────────────────────────────────────
 def _reorder_excel_sheets_robust(excel_path: Path | str, desired_decks: list[str]) -> None:
-    """
-    Riordina i fogli dell'xlsx in modo robusto usando l'elenco 'desired_decks' (nomi deck originali).
-    Gestisce differenze dovute a sanificazione, troncamento a 31 char e duplicazioni possibili.
-    Mantiene '00_Legenda' primo e '01_Summary' secondo (se presenti).
-    """
+    """Riordina i fogli secondo desired_decks; preserva 00_Legenda e 01_Summary in testa."""
     from openpyxl import load_workbook
 
     p = Path(excel_path)
@@ -343,55 +575,41 @@ def _reorder_excel_sheets_robust(excel_path: Path | str, desired_decks: list[str
     def sanitize(s: str) -> str:
         return _sanitize_sheet_name(s)
 
-    # Obiettivo: mappare ogni desired → un titolo esistente, evitando riusi
     used = set()
     mapped_titles: list[str] = []
 
-    # Prefissi fissi
-    if "00_Legenda" in title2ws:
-        mapped_titles.append("00_Legenda"); used.add("00_Legenda")
-    if "01_Summary" in title2ws:
-        mapped_titles.append("01_Summary"); used.add("01_Summary")
+    for fixed in ("00_Legenda", "01_Summary"):
+        if fixed in title2ws:
+            mapped_titles.append(fixed); used.add(fixed)
 
-    # Candidati deck (sanificati)
     desired_san = [sanitize(d) for d in desired_decks]
-
     for d in desired_san:
-        # 1) match esatto
         exact = [t for t in existing_titles if t == d and t not in used]
         if exact:
             mapped_titles.append(exact[0]); used.add(exact[0]); continue
-
-        # 2) match con suffissi Excel (es. 'Name', 'Name1', 'Name (2)')
-        #    prova startswith/strip numeri/parentesi
         starts = [t for t in existing_titles if t.startswith(d) and t not in used]
         if starts:
             mapped_titles.append(starts[0]); used.add(starts[0]); continue
-
-        # 3) match "contenuto" case-insensitive (ultima spiaggia)
         lower = d.lower()
         contains = [t for t in existing_titles if (lower in t.lower()) and t not in used]
         if contains:
             mapped_titles.append(contains[0]); used.add(contains[0]); continue
-
-        # Se non trovato, salta (comparirà in coda tra i rimanenti)
         LOGGER.warning("Reorder: nessun foglio trovato per '%s' (sanificato).", d)
 
-    # Aggiungi fogli rimanenti non mappati per non perdere nulla
     for t in existing_titles:
         if t not in mapped_titles:
             mapped_titles.append(t)
 
-    # Applica riordino
-    ordered = [title2ws[t] for t in mapped_titles]
-    wb._sheets = ordered  # uso intenzionale dell'attributo privato, standard in openpyxl per riordinare
+    wb._sheets = [title2ws[t] for t in mapped_titles]  # openpyxl: riordino
     wb.save(p)
 
 
-# === End-to-end: scrive l'Excel e riordina i fogli secondo il ranking ===
+# ──────────────────────────────────────────────────────────────────────────────
+# End-to-end: scrive l'Excel, inserisce il banner, riordina i fogli
+# ──────────────────────────────────────────────────────────────────────────────
 def write_pairs_by_deck_report(
     *,
-    ranking_df: pd.DataFrame,          # deve avere almeno colonne: Deck, Score_%
+    ranking_df: pd.DataFrame,          # deve avere almeno: Deck, Score_%
     filtered_wr: pd.DataFrame,
     n_dir: pd.DataFrame,
     p_blend: pd.Series,
@@ -399,17 +617,18 @@ def write_pairs_by_deck_report(
     score_flat: Optional[pd.DataFrame] = None,
     mu: float = 0.5,
     gamma: Optional[float] = None,
-    include_posterior_se: bool = True,
+    include_posterior_se: bool = False,      # default OFF
     include_binom_se: bool = True,
     include_counts: bool = True,
     include_self_row: bool = True,
+    include_weight_col: bool = False,
+    include_mas_contrib_col: bool = False,
     out_dir: Path | str = "outputs/RankingData/MARS/Report",
     base_name: Optional[str] = None,   # default: pairs_by_deck_T{T}_MARS
 ) -> Tuple[Path, Path, Dict]:
     """
-    Costruisce i fogli per-deck, aggiunge Legenda/Summary, scrive due file (versioned & latest)
-    e poi RIORDINA i fogli Excel nel medesimo ordine del ranking (top→bottom), in modo robusto.
-    Ritorna: (versioned_path, latest_path, meta)
+    Genera i fogli per-deck, aggiunge 00_Legenda (solo banner) + 01_Summary,
+    scrive l'Excel (versioned + latest), EMBED banner, RIORDINA fogli per ranking.
     """
     # Ordine del ranking (top→bottom)
     if not {"Deck", "Score_%"} <= set(ranking_df.columns):
@@ -418,7 +637,7 @@ def write_pairs_by_deck_report(
         ranking_df.sort_values("Score_%", ascending=False, kind="mergesort")["Deck"].astype(str).tolist()
     )
 
-    # Costruzione tabelle per-deck con ordine righe fissato = ranking
+    # Tabelle & legenda
     sheets_by_deck, legend_df, meta = make_pairs_by_deck_tables(
         filtered_wr=filtered_wr,
         n_dir=n_dir,
@@ -432,34 +651,59 @@ def write_pairs_by_deck_report(
         include_counts=include_counts,
         global_order=ranking_order,
         include_self_row=include_self_row,
+        include_weight_col=include_weight_col,
+        include_mas_contrib_col=include_mas_contrib_col,
     )
 
-    # Summary dal ranking
+    # Summary
     summary_df = build_summary_sheet(ranking_df)
 
-    # Workbook con nomi fogli già sanificati
-    workbook = prepare_workbook(sheets_by_deck, legend_df, summary_df)
+    # Workbook (sheet '00_Legenda' vuoto: poi embed PNG)
+    workbook = prepare_workbook(sheets_by_deck, legend_df, summary_df, include_legend_table=False)
 
     # Naming & scrittura
     T = meta.get("T", len(sheets_by_deck))
-    out_dir = Path(out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = Path(out_dir); out_dir.mkdir(parents=True, exist_ok=True)
     if base_name is None:
         base_name = f"pairs_by_deck_T{T}_MARS"
 
-    versioned_path, latest_path = write_excel_versioned_styled(
-        workbook,                 # dict: {sheet_name: DataFrame}
-        base_dir=out_dir,
-        base_name=base_name,
-        style=True
-    )
+    # Writer robusto
+    res = None
+    try:
+        res = write_excel_versioned_styled(
+            workbook=workbook,
+            base_dir=out_dir,
+            prefix=base_name,
+            tag=None,
+            include_latest=True,
+            also_versioned=True,
+            top_k_contrib=5,
+        )
+    except TypeError as e:
+        LOGGER.warning("write_excel_versioned_styled signature mismatch: %s — userò fallback base.", e)
 
-    # Riordino robusto (usa i nomi realmente presenti nell'xlsx)
+    if not (isinstance(res, tuple) and len(res) == 2):
+        from utils.io import write_excel_versioned
+        versioned_path, latest_path = write_excel_versioned(
+            workbook=workbook,
+            base_dir=out_dir,
+            prefix=base_name,
+            tag=None,
+            include_latest=True,
+            also_versioned=True,
+        )
+    else:
+        versioned_path, latest_path = res
+
+    # Banner su 00_Legenda
+    banner_png = _render_legend_banner_png(legend_df, out_dir / "legend_latest.png")
+    for p in (versioned_path, latest_path):
+        if p:
+            _embed_banner_on_legend(p, banner_png, sheet_name="00_Legenda", rows_padding=36)
+
+    # Riordino fogli secondo ranking
     _reorder_excel_sheets_robust(versioned_path, ranking_order)
     _reorder_excel_sheets_robust(latest_path, ranking_order)
 
-    LOGGER.info(
-        "Report: riordinati i fogli per ranking (top→bottom) [robusto] | versioned=%s | latest=%s",
-        versioned_path, latest_path
-    )
+    LOGGER.info("Report scritto e riordinato | versioned=%s | latest=%s", versioned_path, latest_path)
     return Path(versioned_path), Path(latest_path), meta

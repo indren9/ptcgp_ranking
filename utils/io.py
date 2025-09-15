@@ -201,7 +201,7 @@ def save_plot_dual(fig, base_dir: Path | str, prefix: str, tag: str, *, fmt: str
 # ──────────────────────────────────────────────────────────────────────────────
 
 def write_excel_versioned(
-    workbook: "dict[str, pd.DataFrame]",
+    workbook: dict[str, pd.DataFrame],
     base_dir: Path | str,
     prefix: str,
     *,
@@ -256,26 +256,26 @@ def write_excel_versioned(
 # ──────────────────────────────────────────────────────────────────────────────
 
 def write_excel_versioned_styled(
-    workbook: "dict[str, pd.DataFrame]",
-    base_dir: "Path | str",
+    workbook: dict[str, pd.DataFrame],
+    base_dir: Path | str,
     prefix: str,
     *,
-    tag: "str | None" = None,
+    tag: str | None = None,
     include_latest: bool = True,
     also_versioned: bool = True,
     top_k_contrib: int = 5,
-) -> "tuple[Path | None, Path | None]":
+) -> tuple[Path | None, Path | None]:
     """
     Come write_excel_versioned, ma aggiunge:
-      - semafori su gap_pp (rosso |gap|>=8; giallo 4–8) via FormulaRule
+      - semafori su gap_pp (rosso |gap|>=8; giallo 4–8) con CellIsRule (robusto)
       - evidenziazione Top-K su MAS_contrib_pp con Rule(type="top10") nativa
       - colorazione riga 'Mirror' (grigio #CDCDCD) + 'Opponent' in corsivo
       - swatch di colore nella colonna 'Colore' del foglio 00_Legenda
-    Compatibile con openpyxl 3.1.x (usa Rule + DifferentialStyle).
+
+    In più: scrittura ATOMICA con retry/fallback per evitare PermissionError su Windows/OneDrive.
     """
-    from datetime import datetime
-    from pathlib import Path
-    import pandas as pd
+    import os
+    import tempfile
 
     dest_dir = Path(base_dir)
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -288,120 +288,204 @@ def write_excel_versioned_styled(
     ts_path = dest_dir / ts_name if also_versioned else None
     latest_path = dest_dir / latest_name if include_latest else None
 
-    engine = "openpyxl"
+    # Preferisci xlsxwriter per la scrittura; fallback a openpyxl se non installato
+    engine = None
+    for eng in ("xlsxwriter", "openpyxl"):
+        try:
+            __import__(eng)
+            engine = eng
+            break
+        except Exception:
+            continue
+    if engine is None:
+        engine = "openpyxl"
 
-    def _write_plain(path: Path) -> None:
-        with pd.ExcelWriter(path, engine=engine) as xw:
-            for sheet_name, df in workbook.items():
-                df.to_excel(xw, sheet_name=sheet_name, index=False)
+    # ------- helper: scrittura atomica con retry -------
+    def _atomic_write(path: Path, *, retries: int = 6, backoff_s: float = 0.7) -> Path:
+        """
+        Scrive il workbook su file temporaneo (stessa cartella) e poi os.replace -> path.
+        Se il target è lockato, tenta più volte; se persiste, salva come fallback '*_LOCKED_YYYYmmdd_HHMMSS.xlsx'.
+        Ritorna il path effettivamente scritto (può essere il fallback).
+        """
+        # crea un tmp nello stesso folder per avere os.replace atomico
+        fd, tmp_name = tempfile.mkstemp(dir=dest_dir, prefix=path.stem + "_", suffix=".tmp.xlsx")
+        os.close(fd)
+        tmp = Path(tmp_name)
 
-    def _style_in_place(path: Path) -> None:
+        # scrivi sul tmp
+        try:
+            with pd.ExcelWriter(tmp, engine=engine) as xw:
+                for sheet_name, df in workbook.items():
+                    df.to_excel(xw, sheet_name=sheet_name, index=False)
+        except Exception:
+            try:
+                tmp.unlink(missing_ok=True)
+            finally:
+                raise
+
+        # replace con retry
+        last_exc: Exception | None = None
+        for i in range(max(1, retries)):
+            try:
+                os.replace(tmp, path)  # atomic on Windows too
+                return path
+            except PermissionError as e:
+                last_exc = e
+                time.sleep(backoff_s * (1.8 ** i))
+
+        # fallback name se lock persiste
+        fallback = path.with_name(f"{path.stem}_LOCKED_{datetime.now().strftime('%Y%m%d_%H%M%S')}{path.suffix}")
+        try:
+            os.replace(tmp, fallback)
+        except Exception:
+            # extrema ratio: copia e rimuovi il tmp
+            import shutil
+            shutil.copy2(tmp, fallback)
+            tmp.unlink(missing_ok=True)
+        log.warning("write_excel_versioned_styled: target lockato: %s → salvato come fallback: %s", path, fallback)
+        return fallback
+
+    # ------- helper: styling in-place con retry -------
+    def _style_in_place(path: Path, *, retries: int = 6, backoff_s: float = 0.7) -> None:
+        """Applica styling in-place con retry su lock; NO-OP se lock persistente o openpyxl assente."""
         try:
             from openpyxl import load_workbook
             from openpyxl.utils import get_column_letter
-            from openpyxl.styles import PatternFill, Font
-            from openpyxl.formatting.rule import FormulaRule, Rule
+            from openpyxl.styles import PatternFill, Font, Alignment
+            from openpyxl.formatting.rule import CellIsRule, Rule
             from openpyxl.styles.differential import DifferentialStyle
         except Exception as e:
             log.warning("openpyxl non disponibile per styling: %s", e)
             return
 
-        wb = load_workbook(path)
+        last_exc: Exception | None = None
+        for i in range(max(1, retries)):
+            try:
+                wb = load_workbook(path)
+                for ws in wb.worksheets:
+                    name = ws.title
 
-        for ws in wb.worksheets:
-            name = ws.title
+                    # Header map
+                    headers = {cell.value: idx for idx, cell in enumerate(ws[1], start=1) if isinstance(cell.value, str)}
+                    max_row = ws.max_row
+                    max_col = ws.max_column
+                    if max_row < 2:
+                        continue
 
-            # Header map
-            headers = {cell.value: idx for idx, cell in enumerate(ws[1], start=1) if isinstance(cell.value, str)}
-            max_row = ws.max_row
-            max_col = ws.max_column
-            if max_row < 2:
-                continue
+                    # ===== Styling specifico per 00_Legenda =====
+                    if name == "00_Legenda":
+                        # Larghezze colonne: Campo / Descrizione / Colore
+                        if "Campo" in headers:
+                            ws.column_dimensions[get_column_letter(headers["Campo"])].width = 26
+                        if "Descrizione" in headers:
+                            ws.column_dimensions[get_column_letter(headers["Descrizione"])].width = 92
+                        if "Colore" in headers:
+                            ws.column_dimensions[get_column_letter(headers["Colore"])].width = 12
 
-            # ===== Styling specifico per 00_Legenda: colonna 'Colore' come swatch =====
-            if name == "00_Legenda" and "Colore" in headers:
-                col_c = headers["Colore"]
+                        # Wrap & allineamento verticale in alto su Campo/Descrizione
+                        wrap_top = Alignment(wrap_text=True, vertical="top", horizontal="left")
+                        for col_name in ("Campo", "Descrizione"):
+                            col_idx = headers.get(col_name)
+                            if col_idx is None:
+                                continue
+                            for r in range(1, max_row + 1):
+                                ws.cell(row=r, column=col_idx).alignment = wrap_top
 
-                # mapping chiave -> colore (ARGB)
-                cmap = {
-                    "RED":   "FFF2CBCB",  # rosso chiaro
-                    "YELLOW":"FFFFF2CC",  # giallo chiaro
-                    "GREEN": "FFD9EAD3",  # verde chiaro
-                    "GRAY":  "FFCDCDCD",  # grigio #CDCDCD
-                }
+                        # Swatch di colore nella colonna 'Colore'
+                        if "Colore" in headers:
+                            col_c = headers["Colore"]
+                            cmap = {
+                                "RED":   "FFF2CBCB",  # rosso chiaro
+                                "YELLOW":"FFFFF2CC",  # giallo chiaro
+                                "GREEN": "FFD9EAD3",  # verde chiaro
+                                "GRAY":  "FFCDCDCD",  # grigio #CDCDCD
+                            }
+                            for r in range(2, max_row + 1):
+                                key_cell = ws.cell(row=r, column=col_c)
+                                key = key_cell.value
+                                if isinstance(key, str):
+                                    key_norm = key.strip().upper()
+                                    if key_norm in cmap:
+                                        key_cell.fill = PatternFill(
+                                            start_color=cmap[key_norm],
+                                            end_color=cmap[key_norm],
+                                            fill_type="solid",
+                                        )
+                                        key_cell.value = ""  # cella come swatch
+                        # Passa al prossimo foglio
+                        continue
 
-                for r in range(2, max_row + 1):
-                    key_cell = ws.cell(row=r, column=col_c)
-                    key = key_cell.value
-                    if isinstance(key, str):
-                        key_norm = key.strip().upper()
-                        if key_norm in cmap:
-                            key_cell.fill = PatternFill(start_color=cmap[key_norm], end_color=cmap[key_norm], fill_type="solid")
-                            # opzionale: rimuovi il testo e lascia solo lo swatch
-                            key_cell.value = ""
-                # Non applicare altro styling alla legenda
-                continue
+                    # ===== Fogli per-deck / Summary =====
 
-            # ===== Fogli per-deck / Summary =====
+                    # Semafori su gap_pp (robusti con CellIsRule)
+                    if "gap_pp" in headers:
+                        col = headers["gap_pp"]
+                        L = get_column_letter(col)
+                        rng = f"{L}2:{L}{max_row}"
 
-            # Semafori su gap_pp: rosso |gap|>=8; giallo 4–8
-            if "gap_pp" in headers:
-                col = headers["gap_pp"]
-                L = get_column_letter(col)
-                rng = f"{L}2:{L}{max_row}"
+                        red_fill    = PatternFill(start_color="FFF2CBCB", end_color="FFF2CBCB", fill_type="solid")
+                        yellow_fill = PatternFill(start_color="FFFFF2CC", end_color="FFFFF2CC", fill_type="solid")
 
-                red_fill = PatternFill(start_color="FFF2CBCB", end_color="FFF2CBCB", fill_type="solid")
-                yellow_fill = PatternFill(start_color="FFFFF2CC", end_color="FFFFF2CC", fill_type="solid")
+                        # Coercizione soft: se Excel vede stringhe, prova a convertirle in numeri
+                        for r_ in range(2, max_row + 1):
+                            c = ws.cell(row=r_, column=col)
+                            if isinstance(c.value, str):
+                                try:
+                                    c.value = float(c.value.replace(",", "."))
+                                except Exception:
+                                    pass
 
-                ws.conditional_formatting.add(rng, FormulaRule(formula=[f"ABS({L}2)>=8"], fill=red_fill))
-                ws.conditional_formatting.add(rng, FormulaRule(formula=[f"AND(ABS({L}2)>=4,ABS({L}2)<8)"], fill=yellow_fill))
+                        # 4 regole: >= 8, <= -8, [4..8], [-8..-4]
+                        ws.conditional_formatting.add(rng, CellIsRule(operator="greaterThanOrEqual", formula=["8"],   fill=red_fill))
+                        ws.conditional_formatting.add(rng, CellIsRule(operator="lessThanOrEqual",    formula=["-8"],  fill=red_fill))
+                        ws.conditional_formatting.add(rng, CellIsRule(operator="between",            formula=["4","8"],     fill=yellow_fill))
+                        ws.conditional_formatting.add(rng, CellIsRule(operator="between",            formula=["-8","-4"],  fill=yellow_fill))
 
-            # Top-K nativo su MAS_contrib_pp
-            if "MAS_contrib_pp" in headers and top_k_contrib and name not in ("00_Legenda", "01_Summary"):
-                col = headers["MAS_contrib_pp"]
-                L = get_column_letter(col)
-                rng = f"{L}2:{L}{max_row}"
+                    # Top-K nativo su MAS_contrib_pp (solo fogli per-deck)
+                    if "MAS_contrib_pp" in headers and top_k_contrib and name not in ("00_Legenda", "01_Summary"):
+                        col = headers["MAS_contrib_pp"]
+                        L = get_column_letter(col)
+                        rng = f"{L}2:{L}{max_row}"
 
-                dxf = DifferentialStyle(fill=PatternFill(start_color="FFD9EAD3",
-                                                         end_color="FFD9EAD3",
-                                                         fill_type="solid"))
-                rule = Rule(type="top10", rank=int(top_k_contrib), percent=False, bottom=False, dxf=dxf)
-                ws.conditional_formatting.add(rng, rule)
+                        dxf = DifferentialStyle(fill=PatternFill(start_color="FFD9EAD3",
+                                                                 end_color="FFD9EAD3",
+                                                                 fill_type="solid"))
+                        rule = Rule(type="top10", rank=int(top_k_contrib), percent=False, bottom=False, dxf=dxf)
+                        ws.conditional_formatting.add(rng, rule)
 
-            # Riga 'Mirror' in grigio su tutta la riga + Opponent in corsivo
-            opp_col = headers.get("Opponent")
-            if opp_col is not None and name not in ("00_Legenda", "01_Summary"):
-                gray = PatternFill(start_color="FFCDCDCD", end_color="FFCDCDCD", fill_type="solid")
-                for r in range(2, max_row + 1):
-                    cell = ws.cell(row=r, column=opp_col)
-                    if isinstance(cell.value, str) and cell.value.strip().lower() == "mirror":
-                        # Italic solo per la cella Opponent
-                        try:
-                            cell.font = Font(name=cell.font.name, sz=cell.font.sz, bold=cell.font.bold,
-                                             italic=True, vertAlign=cell.font.vertAlign,
-                                             underline=cell.font.underline, color=cell.font.color)
-                        except Exception:
-                            # fallback compatibile
-                            cell.font = cell.font.copy(italic=True)
-                        # Grigio su tutta la riga
-                        for c in range(1, max_col + 1):
-                            ws.cell(row=r, column=c).fill = gray
+                    # Riga 'Mirror' in grigio su tutta la riga + Opponent in corsivo
+                    opp_col = headers.get("Opponent")
+                    if opp_col is not None and name not in ("00_Legenda", "01_Summary"):
+                        gray = PatternFill(start_color="FFCDCDCD", end_color="FFCDCDCD", fill_type="solid")
+                        for r_ in range(2, max_row + 1):
+                            cell = ws.cell(row=r_, column=opp_col)
+                            if isinstance(cell.value, str) and cell.value.strip().lower() == "mirror":
+                                try:
+                                    cell.font = Font(
+                                        name=cell.font.name, sz=cell.font.sz, bold=cell.font.bold,
+                                        italic=True, vertAlign=cell.font.vertAlign,
+                                        underline=cell.font.underline, color=cell.font.color
+                                    )
+                                except Exception:
+                                    cell.font = cell.font.copy(italic=True)
+                                for c_ in range(1, max_col + 1):
+                                    ws.cell(row=r_, column=c_).fill = gray
 
-        wb.save(path)
+                wb.save(path)
+                return
+            except PermissionError as e:
+                last_exc = e
+                time.sleep(backoff_s * (1.8 ** i))
+        log.warning("Styling saltato per lock persistente sul file: %s (ultimo errore: %s)", path, last_exc)
 
-    # Scrivi i file richiesti e applica styling
+    # Scrivi i file richiesti con ATOMIC WRITE e applica styling
     if ts_path is not None:
-        _write_plain(ts_path)
+        ts_path = _atomic_write(ts_path)
         _style_in_place(ts_path)
         log.info("Excel versionato (styled): %s", ts_path)
     if latest_path is not None:
-        _write_plain(latest_path)
+        latest_path = _atomic_write(latest_path)
         _style_in_place(latest_path)
         log.info("Excel latest (styled): %s", latest_path)
 
     return ts_path, latest_path
-
-# --- utils/io.py ---
-
-from pathlib import Path
-

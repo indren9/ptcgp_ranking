@@ -60,6 +60,9 @@ cache/requests/**/*
 outputs/
 outputs/**/*
 !outputs/.gitkeep
+project_tree.txt
+project_tree_*.txt
+
 
 # If you also want to keep empty structure for data/, use .gitkeep:
 data/raw/
