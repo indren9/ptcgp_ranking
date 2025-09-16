@@ -19,6 +19,15 @@
     "Tapu Koko ex Oricorio"
   ],
   "Ho-Oh ex Lugia ex": [
-    "Lugia ex Ho-Oh ex"
+    "Lugia ex Ho-Oh ex",
+    "Ho-Oh ex Lugia ex"
+  ],
+  "Arceus ex Oricorio": [
+    "Arceus ex Pichu",
+    "Arceus ex Oricorio"
+  ],
+  "Raikou ex Tapu Koko ex": [
+    "Raikou ex Tapu Koko ex",
+    "Tapu Koko ex Raikou ex"
   ]
 }
