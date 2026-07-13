@@ -11,7 +11,7 @@ def _z(s: pd.Series) -> pd.Series:
 
 def compose(lb_pct: pd.Series, bt_pct: pd.Series, alpha: float) -> pd.Series:
     """
-    Combina z(LB) e z(BT) con peso alpha in z_comp, quindi mappa a Score_% in [0,100].
+    Combine z(LB) and z(BT) with alpha weight into z_comp, then map to Score_% in [0,100].
     """
     z = alpha * _z(lb_pct) + (1.0 - alpha) * _z(bt_pct)
     return 100.0 * 0.5 * (1.0 + pd.Series([erf(val / sqrt(2.0)) for val in z], index=z.index))

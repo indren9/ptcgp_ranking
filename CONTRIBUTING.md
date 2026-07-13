@@ -1,58 +1,54 @@
-# CONTRIBUTING.md — ptcgp_ranking
+# Contributing
 
-Grazie per il tuo interesse! Questo progetto è pubblicato da **Andrea Visentin** con licenza **MIT**.  
-Per proporre modifiche o idee segui i passaggi sotto. Manteniamo il flusso semplice e amichevole.
+Thanks for your interest in the project. PTCGP Ranking - MARS is published by
+Andrea Visentin under the MIT License.
 
-## 1) Come proporre cambiamenti
-**Preferito:** *fork → branch → Pull Request (PR)*
-1. Fai il **fork** della repo su GitHub.
-2. **Clona** il tuo fork in locale ed entra nella cartella.
-3. Crea un **branch** descrittivo (es. `fix/wr-symmetry` o `feat/auto-k`).
-4. Fai commit piccoli e chiari (vedi §3) e **push** sul tuo fork.
-5. Apri una **Pull Request** verso `main` della repo originale, spiegando **cosa** e **perché**.
+## Workflow
 
-> Se sei collaboratore della repo principale, evita il push diretto su `main`: usa comunque branch + PR.
+1. Fork the repository.
+2. Clone your fork locally.
+3. Create a feature branch with a short descriptive name.
+4. Make focused changes and keep generated outputs out of the commit.
+5. Open a pull request against `main` and explain what changed and why.
 
-## 2) Ambiente di sviluppo (setup rapido)
-- Python 3.10+ consigliato.
-- Crea un ambiente virtuale e installa le dipendenze:
-  ```bash
-  python -m venv .venv
-  # Windows
-  .venv\Scripts\activate
-  # macOS/Linux
-  source .venv/bin/activate
+## Development Setup
 
-  pip install -U pip
-  pip install -r requirements.txt
-  ```
-- Apri i notebook/py in VS Code. Se usi i notebook, **evita di committare output pesanti**; per grafici grandi salva su `outputs/` (già ignorato dal `.gitignore`).
+```bash
+python -m venv .venv
 
-## 3) Stile di codice e commit
-- **PEP8** + **type hints** dove sensato.
-- Nomi chiari, funzioni pure dove possibile, logging ragionato (livello **INFO** per i passaggi chiave).
-- **Commit**: messaggi in forma imperativa e breve (es. `Fix: impone simmetria WR` / `Feat: AUTO_K con CV`).  
-  Facoltativo: schema *Conventional Commits* (`feat:`, `fix:`, `docs:`…).
+# Windows
+. .venv/Scripts/activate
 
-## 4) Dati, marchi e sicurezza
-- **Non** includere nel repo dati proprietari o derivazioni non consentite dai ToS di terzi (es. dump completi). Mantieni solo **codice** e **contratti di output** minimi.
-- **Mai** committare credenziali/token (le cartelle `outputs/`, `cache/` e simili sono già ignorate).
-- I marchi citati (es. Pokémon™) restano dei rispettivi proprietari; il progetto è non affiliato (vedi `NOTICE`).
+# macOS/Linux
+source .venv/bin/activate
 
-## 5) Licenza dei contributi
-Inviando una PR accetti che il tuo contributo sia rilasciato sotto la **licenza MIT** del progetto, a beneficio di tutti gli utenti.
+pip install -r requirements.txt
+pytest -q
+```
 
-## 6) Linee guida per PR
-- Descrivi il **problema** e come la PR lo risolve.
-- Aggiungi screenshot/log **minimali** se utile alle diagnostiche.
-- Mantieni le PR **coese** (piccole > grandi). Se tocchi più moduli indipendenti, valuta PR separate.
-- Spunta la checklist:
-  - [ ] Il codice esegue localmente.
-  - [ ] Non introduce regressioni evidenti sui notebook/contratti Parte 1 (scraping+prep) e Parte 2 (MARS).
-  - [ ] Non aggiunge file pesanti o dati di terzi al repository.
-  - [ ] Rispetta lo stile del progetto (nomi chiari, PEP8, logging essenziale).
+Use the notebooks for inspection and preview, but avoid committing heavy
+notebook outputs. Large generated files should live under ignored folders such
+as `outputs/`, `cache/`, or `logs/`.
 
-## 7) Domande o problemi
-Apri una **Issue** su GitHub: descrivi in poche righe il contesto, i passi per riprodurre e l’output atteso.
+## Code Expectations
 
-Buon lavoro e grazie per il contributo!
+- Keep pull requests cohesive and easy to review.
+- Prefer existing project patterns over new abstractions.
+- Add or update tests when changing behavior.
+- Keep public documentation and user-facing messages in English.
+- Preserve compatibility wrappers unless the removal is intentional and tested.
+- Do not commit credentials, tokens, personal cache data, or generated analysis
+  outputs.
+
+## Legal Notes
+
+Pokemon and related names are trademarks of their respective owners. This
+project is unaffiliated with them; see `NOTICE`.
+
+By opening a pull request, you agree that your contribution is released under
+the repository MIT License.
+
+## Issues
+
+Open a GitHub issue with a short description, reproduction steps, expected
+behavior, and relevant logs or output paths.

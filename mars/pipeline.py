@@ -15,22 +15,23 @@ def run_mars(filtered_wr: pd.DataFrame, n_dir: pd.DataFrame,
              top_meta_df: pd.DataFrame | None,
              cfg: MARSConfig) -> tuple[pd.DataFrame, dict, pd.DataFrame, pd.DataFrame]:
     """
-    Orchestrazione MARS: validazione → pesi meta → AUTO-K → posteriori → MAS/LB → BT → composito.
-    Ritorna: (mars_ranking, diag, coverage_df, missing_pairs_long).
+    MARS orchestration: validation -> meta weights -> AUTO-K -> posteriors
+    -> MAS/LB -> BT -> composite.
+    Returns: (mars_ranking, diag, coverage_df, missing_pairs_long).
     """
-    # Validator minimo
+    # Minimal validator.
     v = validate_contract(filtered_wr, n_dir)
     if not v.get("ok", False):
         raise ValueError(f"Contract validation failed: {v['issues']}")
 
     axis = list(filtered_wr.index)
 
-    # Pesi meta
+    # Meta weights.
     p_weights, meta_info = blend_meta(axis, n_dir, top_meta_df, cfg)
 
-    # Conteggi direzionali: per ora deriviamo da score_flat se fornito, altrimenti fallback (NO I/O qui)
+    # Directional counts come from score_flat; no I/O in this function.
     if score_flat is None or score_flat.empty:
-        raise ValueError("score_flat (post-filtro) mancante: MARS richiede W/L reali per AUTO-K.")
+        raise ValueError("Missing post-filter score_flat: MARS requires real W/L counts for AUTO-K.")
     # Expect: Deck A/B, W, L
     S = score_flat.pivot_table(index="Deck A", columns="Deck B", values="W", aggfunc="sum").reindex(index=axis, columns=axis)
     F = score_flat.pivot_table(index="Deck A", columns="Deck B", values="L", aggfunc="sum").reindex(index=axis, columns=axis)
@@ -39,7 +40,7 @@ def run_mars(filtered_wr: pd.DataFrame, n_dir: pd.DataFrame,
     # AUTO-K
     auto_k = auto_k_cv(S, F, N, cfg); K_used = float(auto_k["K_used"])
 
-    # Posteriori + MAS/LB
+    # Posteriors + MAS/LB.
     p_hat, var_hat = posterior_dir(S, F, K_used, cfg)
     mas_df = mas_se_lb(p_hat, var_hat, p_weights, N, cfg)
 

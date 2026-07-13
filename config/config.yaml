@@ -1,10 +1,34 @@
+source:
+  provider: limitless
+  game: POCKET
+  format:
+    mode: auto   # auto | code
+    code: ""     # when mode=code, force the Limitless format, e.g. "standard"
+
 scraping:
   base_url: "https://play.limitlesstcg.com"
   decks_url: "https://play.limitlesstcg.com/decks?game=POCKET"
+
+  # Set/expansion selection.
+  set:
+    mode: auto   # auto | code
+    code: ""     # when mode=code, put the set code here, e.g. "A4a"
+
+  # Expansion catalog cache (HTTP).
+  expansions_cache:
+    ttl_days_fixed: null
+    burst_enabled: true
+    burst_days: 2
+    burst_cap_hours: 12
+    last10_days_hours: 24
+    last3_days_hours: 6
+    jitter_frac: 0.10
+
   enable_http_cache: true
   cache_ttl_min: 720
   force_refresh: false
   request_delay_sec: 5.0
+  request_delay_jitter_frac: 0.25
   max_retries: 3
   backoff_factor: 0.7
   timeout_sec: 20
@@ -19,6 +43,20 @@ top_meta:
   threshold_pct: 80.0
   ensure_at_least: 1
 
+analysis:
+  candidate_pool:
+    # null = use all scraped decks for the core as well.
+    # 80.0 = historical behavior: candidate pool up to 80% cumulative share,
+    #        then iterative NaN filtering inside that pool.
+    share_pct: 80.0
+  wildcard_pass:
+    enabled: false
+    # No minimum share threshold: wildcards are low-play by definition.
+    # For a true wildcard exploration, also set top_meta.threshold_pct: null.
+    # Warning: with rate=5s and 1000+ decks, an uncached run can exceed 80 minutes.
+    min_coverage_vs_core_pct: 60.0
+    min_n_vs_core: 50
+
 alias:
   apply: true
   file: "config/alias_map.json"
@@ -28,12 +66,25 @@ wr_policy:
   mirror_diagonal: null
 
 nan_filter:
+  # fixed replicates the historical criterion: cumulative candidate pool,
+  # then a fixed NaN threshold.
+  # dynamic remains available for experiments, but it is not the recommended
+  # default together with analysis.candidate_pool.share_pct.
+  mode: fixed   # fixed | dynamic
   max_nan_ratio: 0.15
   min_nan_allowed: 1
   use_ceil: false
+  dynamic:
+    min_nan_ratio: 0.15
+    max_nan_ratio: 0.50
+    step: 0.05
+    target_share_pct: 80.0
+    min_axis_count: null
 
 saving:
   include_time_when_changed: true
+  filename_prefix_with_set: false        # set already lives in <GAME>/<FORMAT>/<CODE>__<NAME>
+  duplicate_legacy_latest: true          # also write the historical unprefixed latest name
 
 paths:
   output_dir: "outputs"
@@ -45,7 +96,7 @@ logging:
 
 mars:
   MU: 0.5
-  Z_PENALTY: 1.2
+  Z_PENALTY: 1.96
   ALPHA_COMPOSITE: 0.72
 
   AUTO_GAMMA: false
@@ -87,4 +138,3 @@ mars:
   BT_TOL: 1.0e-6
 
   EPS: 1.0e-12
-

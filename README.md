@@ -1,377 +1,326 @@
-# PTCGP Ranking — MARS (Meta-Adjusted, Regularized Score)
+# PTCGP Ranking - MARS
 
-Pipeline end-to-end per scraping, consolidamento e ranking dei mazzi con **MARS**: un punteggio composito che combina posteriore Beta–Binomiale, **MAS/SE/LB**, **Bradley–Terry** robusto e blending **meta vs encounter**. Il progetto è notebook-first, modulare e riproducibile.
+End-to-end deck ranking pipeline for Limitless TCG data. It scrapes decklists
+and matchup pages, builds directional win-rate matrices, filters sparse axes,
+and ranks decks with **MARS**: a meta-adjusted, regularized score that combines
+Bayesian smoothing, MAS/SE/LB, Bradley-Terry strength, and meta-vs-encounter
+weighting.
 
----
+The project now uses one Python pipeline as the source of truth. Notebooks are
+kept as friendly run and preview interfaces.
 
-## Novità — 2025-09-15
+## What Is Included
 
-- **Legenda come banner PNG**: generata in `mars/report.py` e **incollata** in `00_Legenda` (niente tabella di testo). Layout **verticale** e leggibile:
-  1) *Che cos’è* → 2) **01_Summary** (ranking) → 3) **Fogli per deck** (A→tutti) → 4) **Palette colori**.  
-  Il banner si adatta in larghezza (simile all’esempio), con wrapping automatico.
-- **Riordino fogli robusto**: `_reorder_excel_sheets_robust(...)` ordina i fogli secondo il ranking anche con nomi **sanificati/troncati/duplicati**.
-- **Semafori `gap_pp` affidabili**: lo styling dei fogli per-deck usa **CellIsRule** (>=8 / <=−8 **rosso**, e 4..8 / −8..−4 **giallo**) e prova a convertire testi numerici in numeri prima di applicare le regole.
-- **Colonne opzionali nei fogli per-deck**: puoi **escludere** `SE_dir_%`, `w_A(B)_%` e `MAS_contrib_pp` senza toccare i calcoli (vedi parametri del writer).
-- **Riga “Mirror”**: evidenziata in **grigio** su tutta la riga; `Opponent` in corsivo.
-- **Scrittura Excel atomica + retry** in `utils/io.write_excel_versioned_styled(...)`, con fallback su file `*_LOCKED_*.xlsx` se il target è bloccato (OneDrive/Excel aperto).
-- **Colonne leggenda** auto-larghezza & wrapping (Campo/Descrizione/Colore) e **swatch** colore in `00_Legenda`.
+- Multi-game Limitless support for Pokemon TCG Pocket and Pokemon TCG.
+- Automatic or configured set/format resolution.
+- Polite scraping with cache, retry, delay, jitter, and timing diagnostics.
+- Candidate-pool and NaN coverage diagnostics.
+- MARS ranking output as CSV.
+- Win-rate heatmap output.
+- Styled Excel matchup report with summary, per-deck sheets, legend cover, and
+  atomic write/retry handling for locked files.
+- CLI, Python API, and notebook entry points.
+- Unit tests for routing, scraping adapters, reporting, pipeline behavior, and
+  core matrix contracts.
 
-> Nota: il precedente riordino via `utils.io.reorder_excel_sheets` non è più necessario — è interno al writer del report.
+## Project Layout
 
----
-
-## 📦 Struttura del progetto
-
-```
+```text
 ptcgp_ranking/
-├─ config/
-│  ├─ alias_map.json
-│  └─ config.yaml
-├─ core/
-│  ├─ consolidate.py        # alias, simmetrizzazione, score table filtrata
-│  ├─ matrices.py           # build matrici W/L/T/WR e n_dir
-│  ├─ nan_filter.py         # filtro NaN iterativo sugli assi
-│  └─ normalize.py          # util di normalizzazione (alias/main)
-├─ mars/
-│  ├─ auto_k_cv.py          # AUTO_K-CV (log-lik predittiva OOF)
-│  ├─ bt.py                 # Bradley–Terry robusto (filtro/pesi/MM ridge)
-│  ├─ composite.py          # z-score mix e Score_%
-│  ├─ config.py             # dataclass MARSConfig
-│  ├─ core.py               # helpers comuni
-│  ├─ coverage.py           # coverage & missing analysis
-│  ├─ diagnostics.py        # packing diagnosis per logs
-│  ├─ mas_lb.py             # MAS, SE, LB
-│  ├─ meta.py               # blend meta/encounter con gap policy
-│  ├─ pipeline.py           # orchestratore run_mars(...)
-│  ├─ posterior.py          # posteriori Beta–Binomiale (μ=0.5)
-│  ├─ report.py             # writer Excel + legenda-banner + riordino fogli
-│  └─ validate_io.py        # validatori IO
-├─ scraper/
-│  ├─ browser.py, session.py, decklist.py, matchups.py
-├─ utils/
-│  ├─ io.py                 # ROUTES + writer CSV/plot/excel (styled & atomic)
-│  └─ display.py            # show_ranking / show_wr_heatmap
-├─ outputs/
-│  ├─ Decklists/{raw, top_meta}
-│  ├─ MatchupData/{raw, flat}
-│  ├─ Matrices/{winrate, volumes, heatmap}
-│  └─ RankingData/MARS      # mars_ranking_*.csv + Report/
-├─ 1_scrape_core_preview.ipynb
-├─ 2_core_mars_preview.ipynb
-├─ 3_run_all.ipynb
-├─ README.md
-└─ requirements.txt
+|-- cli/
+|   `-- deck_ranking.py
+|-- config/
+|   |-- alias_map.json
+|   |-- config.yaml
+|   |-- config_tcg.yaml
+|   |-- config_tcg_wildcard.yaml
+|   `-- loader.py
+|-- core/
+|   |-- consolidate.py
+|   |-- matrices.py
+|   |-- nan_diagnostics.py
+|   |-- nan_filter.py
+|   `-- normalize.py
+|-- domain/
+|   `-- expansions.py
+|-- mars/
+|   |-- auto_k_cv.py
+|   |-- bt.py
+|   |-- composite.py
+|   |-- config.py
+|   |-- coverage.py
+|   |-- mas_lb.py
+|   |-- meta.py
+|   |-- pipeline.py
+|   |-- posterior.py
+|   |-- report.py
+|   `-- validate_io.py
+|-- notebooks/
+|   |-- deck_ranking_run_all.ipynb
+|   `-- deck_ranking_run_all_dev.ipynb
+|-- pipelines/
+|   `-- deck_ranking.py
+|-- reporting/
+|   |-- excel.py
+|   |-- logs.py
+|   |-- plots.py
+|   `-- tables.py
+|-- scraper/
+|   `-- compatibility wrappers for older imports
+|-- sources/
+|   `-- limitless/
+|       |-- browser.py
+|       |-- client.py
+|       |-- constants.py
+|       `-- pages/
+|           |-- decks.py
+|           `-- sets.py
+|-- storage/
+|   |-- paths.py
+|   |-- routing.py
+|   `-- writers.py
+|-- tests/
+|-- utils/
+|   `-- compatibility and display helpers
+|-- MARS_explained.md
+|-- project_tree.txt
+|-- pytest.ini
+`-- requirements.txt
 ```
 
----
+## Quick Start
 
-## 🚀 Quick start
+Create a virtual environment and install dependencies:
 
-1) **Ambiente**
 ```bash
 python -m venv .venv
+
 # Windows
 . .venv/Scripts/activate
+
 # macOS/Linux
 source .venv/bin/activate
 
 pip install -r requirements.txt
 ```
 
-2) **Notebook Parte 1 – Scrape & Core preview**
-- Esegue scraping, alias+aggregazione, costruzione matrici, filtro NaN.
-- Output contrattuali:
-  - `outputs/Matrices/winrate/filtered_wr_latest.csv` (T×T, diag=NaN)
-  - `outputs/Matrices/volumes/n_dir_latest.csv`     (T×T, diag=NaN)
-  - `outputs/MatchupData/flat/score_latest.csv`     (post-alias, **post-filtro**, no mirror, entrambe direzioni)
+Run the default Pocket pipeline:
 
-3) **Notebook Parte 2 – MARS**
-- Carica gli output della Parte 1 e calcola ranking + diagnostiche display.
-- Salvataggi: **solo** `outputs/RankingData/MARS/mars_ranking_latest.csv` (+ copia versionata).  
-  La heatmap WR viene salvata in `outputs/Matrices/heatmap/` come:
-  - `wr_heatmap_latest.png`
-  - `wr_heatmap_T{K}_{YYYYmmdd_HHMMSS}.png`
-
-**Parte 3 — Run All (opzionale ma consigliato)**
-1. Apri `3_run_all.ipynb`.
-2. Seleziona il kernel della tua venv (Python: Select Interpreter).
-3. Esegui **Run All**.
-4. Verifica gli output in `outputs/RankingData/MARS/Report/` (file *versioned* e *latest*).
-
----
-### Requisiti aggiuntivi
-
-Aggiungi a `requirements.txt` (se non presenti):
+```bash
+python -m cli.deck_ranking run --config config/config.yaml
 ```
-openpyxl>=3.1,<3.2
-xlsxwriter>=3.2,<3.3     # consigliato per la scrittura
-pillow>=10,<11            # per il banner PNG della legenda
-matplotlib>=3.8,<3.9      # per il font manager usato nel banner
+
+Run Pokemon TCG:
+
+```bash
+python -m cli.deck_ranking run --config config/config_tcg.yaml --progress
 ```
-> Il writer prova automaticamente `xlsxwriter` e poi `openpyxl`. Lo styling (semafori / top-K / swatch) richiede `openpyxl` lato post-scrittura.
 
----
+Run the exploratory TCG wildcard profile:
 
-## ⚙️ Configurazione (`config/config.yaml`)
+```bash
+python -m cli.deck_ranking run --config config/config_tcg_wildcard.yaml --progress
+```
+
+The CLI supports stage skips:
+
+```bash
+python -m cli.deck_ranking run --config config/config.yaml --skip-scrape --skip-report
+```
+
+Available skip flags are `--skip-scrape`, `--skip-core`, `--skip-mars`,
+`--skip-heatmap`, and `--skip-report`.
+
+## Notebook Workflow
+
+Open `notebooks/deck_ranking_run_all.ipynb`, select the project virtual
+environment as kernel, and choose a profile in the first cell:
+
+```python
+GAME_PROFILE = "pocket"        # Pokemon TCG Pocket
+GAME_PROFILE = "tcg"           # Pokemon TCG
+GAME_PROFILE = "tcg_wildcard"  # Pokemon TCG with full scrape + wildcard appendix
+```
+
+Run all cells. The notebook calls `run_deck_ranking(...)`, then previews the
+resolved source, output paths, diagnostics, ranking, heatmap, and wildcard
+appendix when available.
+
+`notebooks/deck_ranking_run_all_dev.ipynb` is reserved for local development. It
+sets `PTCGP_I_KNOW_FAST_SCRAPE_IS_FOR_DEV_ONLY=1` in the current session so
+matchup scraping can skip delay while working from cache or test data.
+
+## Python API
+
+```python
+from pipelines.deck_ranking import run_deck_ranking
+
+result = run_deck_ranking(
+    config_path="config/config.yaml",
+    run_scrape=True,
+    run_mars=True,
+    run_heatmap=True,
+    run_report=True,
+    show_progress=True,
+)
+```
+
+`result.outputs` contains written file paths, `result.frames` contains the main
+DataFrames, and `result.diagnostics` contains source scope, NaN diagnostics,
+scrape timing, MARS diagnostics, and wildcard summaries.
+
+## Configuration
+
+The default Pocket config is `config/config.yaml`.
 
 ```yaml
+source:
+  provider: limitless
+  game: POCKET
+  format:
+    mode: auto
+    code: ""
+
 logging:
   level: INFO
 
-mars:
-  # Posterior / LB / Composite
-  MU: 0.5
-  Z_PENALTY: 1.2
-  ALPHA_COMPOSITE: 0.72
+scraping:
+  request_delay_sec: 5.0
+  request_delay_jitter_frac: 0.25
 
-  # META blend
-  AUTO_GAMMA: false
-  GAMMA_META_BLEND: 0.30
-  GAMMA_MIN: 0.10
-  GAMMA_MAX: 0.60
-  GAMMA_BASE: 0.10
-  GAMMA_SLOPE: 1.5
-  META_GAP_POLICY: encounter   # proportional | uniform | encounter
+paths:
+  output_dir: outputs
 
-  # AUTO-K
-  AUTO_K: true
-  K_MIN: 0.10
-  K_CONST_BOUNDS: [0.05, 50.0]
-  INSTANT_APPLY_K: true
-  REL_TOL_LL: 0.001
-  BETA_EXPANSIONS: 2
-  SEED: 42
+top_meta:
+  threshold_pct: 80.0
+  ensure_at_least: 1
 
-  # BT
-  N_MIN_BT_TARGET: 5
-  BT_SOFT_POWER: null          # null => auto-continuo
-  BT_NEAR_BAND: 0.10
-  BT_USE_HARMONIC_N: true
-  LAMBDA_RIDGE: 1.5
-  MAX_BT_ITER: 500
-  BT_TOL: 1e-6
+analysis:
+  candidate_pool:
+    share_pct: 80.0
+  wildcard_pass:
+    enabled: false
+    min_coverage_vs_core_pct: 60.0
+    min_n_vs_core: 50
 
-  # Misc
-  EPS: 1.0e-12
-```
-La dataclass **`mars.config.MARSConfig`** accetta le stesse chiavi (MAIUSCOLE).
-
----
-
-## 🧠 MARS — versione “spiegata bene”
-
-> Un ranking dei mazzi **stabile ma discriminante** che combina resa nel meta reale (oggi) e forza intrinseca dai matchup, anche con dati incompleti.
-
-### 0) Cosa fa in una frase
-Calcola per ogni mazzo un punteggio unico (`Score_%`) miscelando **MAS** (resa vs meta), **BT%** (forza “assoluta” dal grafo dei confronti) e prudenza via **smoothing Bayes** con **`LB = MAS − z · SE`**.
-
-### 1) Input (già allineati)
-- `filtered_wr` (T×T): winrate direzionali A→B in %, **T esclusi**; diagonale `NaN`.
-- `n_dir` (T×T): volumi `N_dir = W + L`, coerenti con l’asse WR.
-- Opzionali: `df_top_meta(_post_alias)`, `df_matchups_agg` (`Deck A,B,W,L,T,N`).
-
-**Convenzioni**
-- `WR(A→B) = W / (W + L)`, T esclusi.  
-- Diagonale (mirror) non usata.  
-- Asse già filtrato (stesso sottoinsieme per WR e N).
-
-### 2) Notazione rapida
-`p_hat(A→B)`, `p(B)`, `MAS(A)`, `SE(A)`, `LB(A)`, `BT%(A)`, `Score_%(A)` come nel glossario standard.
-
-### 3) Step 1 — Smoothing Bayes per coppia (Beta–Binomiale, μ = 0.5)
-Prior `Beta(mu*K, (1-mu)*K)` su `N_dir = W + L`. Posteriori in chiuso:
-```
-a = W + mu*K
-b = L + (1 - mu)*K
-p_hat = (W + mu*K) / (N_dir + K)
-Var[p_hat] = (a * b) / ((a + b)^2 * (a + b + 1))
-```
-Forma di shrink:
-```
-p_hat = (K / (N + K)) * 0.5  +  (N / (N + K)) * (W / N)
-```
-Edge: `N_dir = 0` ⇒ esclusa da MAS; pareggi esclusi (opz. 0.5·T **prima** dello smoothing).
-
-#### 3.b) AUTO_K-CV (un solo K per tutte le coppie, 100% data-driven)
-- Celle off-diag con `N_dir>0`; scala auto `beta_auto = sqrt(N_med * N_75)`.
-- Split proporzionale (ρ=1/3) con minimi garantiti; griglia log-spaced e clip `[0.05, 50]` + `K_min`.
-- Scelta su LL predittiva OOF; tie → più piccolo. Espansione verso il basso se al bordo.
-- Bootstrap leggero (50×) → mediana/IQR/mode; regola finale: **best**, **boot-clipped** o **boundary-override**.
-- Log minimi: griglia/K*/K_used/motivo, `beta_auto`, `#expansions`, `ΔLL/100`, quantili di `r = K/(K+N)`, `r_small_median`.
-
-### 4) Step 2 — Pesi di meta `p(B)` (share ⊗ encounter, **auto-gamma** opzionale)
-Blend:
-```
-p(B) = (1 - gamma) * p_meta(B)  +  gamma * p_enc(B)
-```
-In MAS rinormalizza per riga sui soli avversari osservati:
-```
-w_A(B) = p(B) / sum_{C in Obs(A)} p(C)
+nan_filter:
+  mode: fixed
+  max_nan_ratio: 0.15
+  min_nan_allowed: 1
 ```
 
-### 5) Step 3 — MAS, SE, LB
-```
-MAS(A) = sum_B p(B) * p_hat(A→B)
-SE(A)  = sqrt( sum_B p(B)^2 * Var[p_hat(A→B)] )
-LB(A)  = MAS(A) - z * SE(A)
+Use `config/config_tcg.yaml` for a normal Pokemon TCG run and
+`config/config_tcg_wildcard.yaml` for an exploratory run that scrapes the full
+decklist and reports wildcard candidates without changing the main MARS ranking.
+
+## Output Layout
+
+Outputs are scoped by game, format, and set:
+
+```text
+outputs/<GAME>/<FORMAT>/<CODE>__<NAME>/
+|-- decklists/
+|   |-- raw/
+|   `-- top_meta/
+|-- matchups/
+|   |-- raw/
+|   `-- scores/
+|-- matrices/
+|   |-- heatmaps/
+|   |-- match_counts/
+|   `-- winrate/
+|-- diagnostics/
+|   |-- nan_filter/
+|   `-- wildcards/
+|-- rankings/
+|   `-- mars/
+`-- reports/
+    `-- mars/
 ```
 
-### 6) Step 4 — Bradley–Terry (filtro adattivo + soft-weight, armonica ON)
-Filtro su `s_bar ≥ s_min` con `s = N/(N+K_used)` e `s_min = N_min/(N_min+K_used)`.  
-Pesi:
-```
-n_eff = n_base * (s_bar)^gamma     # gamma = BT_SOFT_POWER (auto-cont se None, ~[1.5, 2.1])
-```
-`n_base`: **armonica** se doppia direzione, altrimenti media.  
-Stima MM con **ridge** (`LAMBDA_RIDGE`), normalizza `pi` (gmean=1), squash in `%` (sigmoide).  
-Diagnostica: kept/dropped, near_thresh%, s_bar_median_kept, coverage min/med, HHI_lev(base), gamma, harmonic.
+Important latest files:
 
-### 7) Step 5 — Composito finale (`Score_%`)
-Standardizza `LB` e `BT` → `z(LB)`, `z(BT)`:
-```
+- `matchups/scores/matchup_scores_latest.csv`
+- `matrices/winrate/winrate_matrix_latest.csv`
+- `matrices/match_counts/match_count_matrix_latest.csv`
+- `matrices/heatmaps/wr_heatmap_latest.png`
+- `rankings/mars/mars_ranking_latest.csv`
+- `reports/mars/mars_matchup_report_latest.xlsx`
+
+`paths.output_dir` can be relative to the repository root or an absolute path
+outside the repository, which is useful for heavy outputs on OneDrive or another
+drive.
+
+## MARS In Short
+
+MARS ranks each deck by blending two signals:
+
+- **LB**: a conservative meta-adjusted score, computed from smoothed matchup
+  win probabilities as `MAS - z * SE`.
+- **BT%**: a regularized Bradley-Terry strength estimate over the matchup graph.
+
+The final score standardizes both signals and blends them:
+
+```text
 z_comp = alpha * z(LB) + (1 - alpha) * z(BT)
-Score_% = 100 * Phi( z_comp / sqrt(2) )
-```
-Tie-break: **LB%**, poi **BT%**, poi **N_eff/Coverage**.
-
-### 8) Colonne in output
-`Deck`, `Score_%`, `MAS_%`, `LB_%`, `BT_%`, `SE_%`, `N_eff`, `Opp_used`, `Opp_total`, `Coverage_%`.
-
-### 9) Diagnostica utile
-`corr(z(LB), z(BT))`, breakdown `MAS`, `TV` & `gamma` per meta blend, leverage edges/top-5 e per deck, gate recap (`N_MIN_BT_TARGET`, `K_used`, `s_min`).
-
-### 10) Default consigliati (rapidi)
-```
-MU = 0.5
-Z_PENALTY = 1.2
-ALPHA_COMPOSITE = 0.72
-# Meta
-AUTO_GAMMA opzionale; se off → GAMMA_META_BLEND = 0.30
-GAMMA_BASE/SLOPE/MIN/MAX = 0.10 / 1.5 / 0.10 / 0.60
-# Bradley–Terry
-N_MIN_BT_TARGET = 5
-BT_SOFT_POWER = None   # auto-cont (~[1.5, 2.1]); 1.6 se fisso
-BT_USE_HARMONIC_N = True
-BT_NEAR_BAND = 0.10
-LAMBDA_RIDGE = 1.5
+Score_% = 100 * Phi(z_comp / sqrt(2))
 ```
 
-### 11) Edge case
-Buchi A→B rinormalizzati; righe vuote → MAS non informativo (resta BT).  
-Assi non allineati → intersezione. Top-meta assente → p_meta uniforme.
+See `MARS_explained.md` for the full method notes.
 
-### 12) Perché funziona
-Smoothing + MAS meta-aware + BT regolarizzato (filtro/soft-weight/armonica/ridge) + mix α → ranking **stabile**, **discriminante**, **meta-sensibile**.
+## Wildcard Diagnostics
 
-### 13) Pattern da leggere
-`BT%` alto / `MAS%` basso = forte “assoluto”, meta sfavorevole.  
-`LB% << MAS%` = incertezza (SE alta). Coverage bassa → prudenza.
+The normal ranking uses a candidate pool based on cumulative meta share
+(`analysis.candidate_pool.share_pct`, default `80.0`). The wildcard profile can
+scrape the full decklist, keep the main core comparable, and report excluded
+decks that have enough evidence against the core.
 
-### 14) Mini-workflow di tuning
-Osserva near_thresh, coverage, HHI, gamma auto; regola `LAMBDA_RIDGE` e `ALPHA_COMPOSITE` se necessario.
+For Pokemon TCG, the notebook separates:
 
----
+- `evidence_tier`: coverage and volume against the core.
+- `performance_tier`: weighted win rate against the core.
+- `promotion_tier`: readable categories such as `high_confidence_candidate`,
+  `watchlist`, and `not_recommended`.
 
-## Report Excel per-deck (ordinato per ranking)
+These categories are diagnostics only. They do not automatically promote decks
+into the MARS ranking.
 
-Genera un workbook con `00_Legenda`, `01_Summary` e un foglio per ogni deck in **ordine di ranking**.
+## Development
 
-```python
-from pathlib import Path
-from mars.report import write_pairs_by_deck_report
+Run the test suite:
 
-versioned_path, latest_path, meta = write_pairs_by_deck_report(
-    ranking_df=df_rank_mars,          # >= Deck, Score_%
-    filtered_wr=filtered_wr,          # T×T %, diag NaN
-    n_dir=n_matrix_filtered,          # T×T N=W+L, diag NaN
-    p_blend=meta_weights_series,      # pesi MAS sull’asse
-    K_used=K_used,
-    score_flat=score_latest_flat,     # opzionale (abilita W/L/N e WR_real_% da flat)
-    mu=0.5,
-    gamma=gamma,                      # opzionale
-    include_posterior_se=False,       # per nascondere SE_dir_% nei fogli per-deck
-    include_binom_se=True,
-    include_counts=True,
-    include_self_row=True,
-    # per NON creare colonne di peso/contributo nei fogli per-deck:
-    include_weight_col=False,
-    include_mas_contrib_col=False,
-    out_dir=Path("outputs/RankingData/MARS/Report"),
-)
-print("Report scritto:", versioned_path, latest_path)
+```bash
+pytest -q
 ```
 
-### Styling applicato automaticamente
-- **gap_pp**: rosso se `|gap_pp| ≥ 8`, giallo se `4 ≤ |gap_pp| < 8` (valido anche se Excel ha celle in formato testo con numeri).
-- **Top-K** su `MAS_contrib_pp` (se presente) via regola nativa `top10` (rank=K).
-- **Mirror**: intera riga grigia; `Opponent` in corsivo.
-- **00_Legenda**: colonne con larghezze ottimizzate, wrapping su Campo/Descrizione e **swatch** nella colonna `Colore`.
+`pytest.ini` uses `.pytest_tmp` as local base temp so tests do not depend on the
+user-level Windows temp directory.
 
----
+Regenerate the project tree:
 
-## 📄 Contratti dati (Parte 2 Input)
+```bash
+python utils/make_project_tree.py
+```
 
-- `filtered_wr` (T×T): WR direzionali A→B in %, **diag=NaN**, asse = top-meta post-alias.
-- `n_dir` (T×T): volumi W+L, **diag=NaN**, stesso asse.
-- `score_latest.csv` (flat): `Deck A, Deck B, W, L, T, N, WR_dir` (+ `Winrate` alias di `WR_dir`).
+Before committing:
 
-*(Opz.)* `top_meta_decklist_latest.csv` per il blend meta; `p_enc` = somma colonna di `n_dir` rinormalizzata.
+```bash
+git status --short
+pytest -q
+rg -n "[àèéìòù]" README.md CONTRIBUTING.md MARS_explained.md docs config -i
+```
 
----
+## License
 
-## 📓 Notebook 3 — `3_run_all.ipynb`
+MIT. See `LICENSE`.
 
-Notebook **end-to-end** per eseguire l’intera pipeline in un colpo solo.
-
-**Pipeline eseguita (ordine):**
-1. **Scrape & caching** (Notebook 1): decklist/top-meta e matchups; salvataggi in `outputs/Decklists/` e `outputs/MatchupData/`.
-2. **Core prep**: aliasing, consolidamento score table filtrata, simmetrizzazione direzionale, costruzione matrici `filtered_wr` e `n_dir`, filtro NaN.
-3. **MARS** (Notebook 2): `AUTO_K-CV`, MAS/LB/BT, `Score_%`.
-4. **Report Excel**: `write_pairs_by_deck_report(...)` con **riordino automatico** dei fogli secondo il ranking (top→bottom) e **banner legenda**.
-
-**Prerequisiti:**
-- Ambiente attivo (venv) e dipendenze installate (`pip install -r requirements.txt`).
-- `openpyxl` presente (per Excel). 
-- File di config e alias pronti (`config/config.yaml`, `config/alias_map.json`).
-
-**Output principali:**
-- Ranking: `outputs/RankingData/MARS/mars_ranking_latest.csv` (+ versionati).
-- Report: `outputs/RankingData/MARS/Report/pairs_by_deck_T{T}_MARS_{timestamp}.xlsx` e `pairs_by_deck_T{T}_latest.xlsx`.
-
-**Troubleshooting:**
-- *ImportError*: verifica kernel/venv e dipendenze.
-- *Excel non ordinato / colori assenti*: usa il `report.py` e `utils/io.py` aggiornati; verifica `openpyxl` installato.
-- *Percorsi/permessi*: controlla i path in `utils/io.py`; le cartelle vengono create se mancano.
-
----
-
-## 🧭 ROUTES & salvataggi
-
-`utils/io.py` centralizza le destinazioni.
-- `filtered_wr` → `outputs/Matrices/winrate/`
-- `n_dir`      → `outputs/Matrices/volumes/`
-- `matchup_score_table` → `outputs/MatchupData/flat/`
-- `mars_ranking` → **solo** `outputs/RankingData/MARS/`
-- **Heatmap** WR → `outputs/Matrices/heatmap/` (`wr_heatmap_latest.png`, `wr_heatmap_T{K}_{YYYYmmdd_HHMMSS}.png`)
-
----
-
-## 🔁 Riproducibilità
-
-Seed (`SEED`) in AUTO_K; pipeline deterministica; logging pulito in INFO.
-
----
-
-## 📜 Licenza
-
-**MIT** — vedi file [`LICENSE`](LICENSE).  
 Copyright (c) 2025 Andrea Visentin.
 
-**Attribuzione consigliata / citazione**  
-> Visentin, A. (2025). *PTCGP Ranking — MARS*. MIT License. https://github.com/indren9/ptcgp_ranking
+Suggested citation:
 
----
+> Visentin, A. (2025). PTCGP Ranking - MARS. MIT License.
+> https://github.com/indren9/ptcgp_ranking
 
-## 👤 Autore & Contatti
+## Author
 
-Andrea Visentin · GitHub: https://github.com/indren9
+Andrea Visentin - GitHub: https://github.com/indren9

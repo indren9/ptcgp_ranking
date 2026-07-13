@@ -1,69 +1,101 @@
 .\
-├── config\
-│   ├── alias_map.json
-│   └── config.yaml
-├── core\
-│   ├── consolidate.py
-│   ├── matrices.py
-│   ├── nan_filter.py
-│   └── normalize.py
-├── data\
-│   ├── external\
-│   └── raw\
-├── logs\
-├── mars\
-│   ├── auto_k_cv.py
-│   ├── bt.py
-│   ├── composite.py
-│   ├── config.py
-│   ├── coverage.py
-│   ├── mas_lb.py
-│   ├── meta.py
-│   ├── pipeline.py
-│   ├── posterior.py
-│   ├── report.py
-│   └── validate_io.py
-├── outputs\
-│   ├── Decklists\
-│   │   ├── raw\
-│   │   │   └── decklist_raw_latest.csv
-│   │   └── top_meta\
-│   │       └── top_meta_decklist_latest.csv
-│   ├── MatchupData\
-│   │   ├── flat\
-│   │   │   ├── score_latest.csv
-│   │   │   └── score_pre_filter_latest.csv
-│   │   └── raw\
-│   │       └── matchup_raw_latest.csv
-│   ├── Matrices\
-│   │   ├── heatmap\
-│   │   │   └── wr_heatmap_latest.png
-│   │   ├── volumes\
-│   │   │   └── n_dir_latest.csv
-│   │   └── winrate\
-│   │       └── filtered_wr_latest.csv
-│   └── RankingData\
-│       └── MARS\
-│           ├── archives\
-│           ├── Report\
-│           │   └── pairs_by_deck_T25_latest.xlsx
-│           └── mars_ranking_latest.csv
-├── scraper\
-│   ├── browser.py
-│   ├── decklist.py
-│   ├── matchups.py
-│   └── session.py
-├── utils\
-│   ├── clean_outputs.py
-│   ├── display.py
-│   └── io.py
-├── 1_scrape_core_preview.ipynb
-├── 2_core_mars_preview.ipynb
-├── 3_run_all.ipynb
-├── CITATION.cff
-├── CONTRIBUTING.md
-├── LICENSE
-├── MARS_explained.md
-├── NOTICE
-├── README.md
-└── requirements.txt
+|-- cli\
+|   `-- deck_ranking.py
+|-- config\
+|   |-- alias_map.json
+|   |-- config.yaml
+|   |-- config_tcg.yaml
+|   |-- config_tcg_wildcard.yaml
+|   `-- loader.py
+|-- core\
+|   |-- consolidate.py
+|   |-- matrices.py
+|   |-- nan_diagnostics.py
+|   |-- nan_filter.py
+|   `-- normalize.py
+|-- data\
+|   |-- external\
+|   `-- raw\
+|-- docs\
+|   `-- refactor_roadmap.md
+|-- domain\
+|   `-- expansions.py
+|-- logs\
+|-- mars\
+|   |-- auto_k_cv.py
+|   |-- bt.py
+|   |-- composite.py
+|   |-- config.py
+|   |-- coverage.py
+|   |-- mas_lb.py
+|   |-- meta.py
+|   |-- pipeline.py
+|   |-- posterior.py
+|   |-- report.py
+|   `-- validate_io.py
+|-- notebooks\
+|   |-- deck_ranking_run_all.ipynb
+|   `-- deck_ranking_run_all_dev.ipynb
+|-- pipelines\
+|   `-- deck_ranking.py
+|-- reporting\
+|   |-- excel.py
+|   |-- logs.py
+|   |-- plots.py
+|   `-- tables.py
+|-- scraper\
+|   |-- sets\
+|   |   |-- api.py
+|   |   |-- cache_ttl.py
+|   |   |-- catalog.py
+|   |   |-- html_parse.py
+|   |   |-- models.py
+|   |   |-- selenium_scan.py
+|   |   `-- url.py
+|   |-- browser.py
+|   |-- decklist.py
+|   |-- decklist_expansion.py
+|   |-- matchups.py
+|   `-- session.py
+|-- sources\
+|   `-- limitless\
+|       |-- pages\
+|       |   |-- decks.py
+|       |   `-- sets.py
+|       |-- browser.py
+|       |-- client.py
+|       `-- constants.py
+|-- storage\
+|   |-- paths.py
+|   |-- routing.py
+|   `-- writers.py
+|-- tests\
+|   |-- test_cli_deck_ranking.py
+|   |-- test_core_matrices.py
+|   |-- test_expansion_auto_fallback.py
+|   |-- test_limitless_browser.py
+|   |-- test_limitless_client.py
+|   |-- test_logging_noise.py
+|   |-- test_nan_diagnostics.py
+|   |-- test_nan_filter.py
+|   |-- test_pipeline_deck_ranking.py
+|   |-- test_reporting_imports.py
+|   |-- test_reporting_logs.py
+|   |-- test_reporting_plots.py
+|   |-- test_reporting_tables.py
+|   |-- test_sources_limitless.py
+|   `-- test_storage_routing.py
+|-- utils\
+|   |-- clean_outputs.py
+|   |-- config.py
+|   |-- display.py
+|   |-- expansion_routing.py
+|   `-- io.py
+|-- CITATION.cff
+|-- CONTRIBUTING.md
+|-- LICENSE
+|-- MARS_explained.md
+|-- NOTICE
+|-- pytest.ini
+|-- README.md
+`-- requirements.txt

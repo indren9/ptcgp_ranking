@@ -10,27 +10,27 @@ def posterior_dir(
     cfg: MARSConfig,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Posteriori Beta–Binomiali e varianza direzionale con prior Beta(mu*K, (1-mu)*K).
+    Beta-Binomial posteriors and directional variance with prior Beta(mu*K, (1-mu)*K).
 
     Parameters
     ----------
     S_dir, F_dir : pd.DataFrame
-        Matrici (asse identico) con conteggi W e L per direzione A→B (off-diag).
+        Matrices on the same axis with W and L counts for each A->B direction.
     K_used : float
-        K unico selezionato da AUTO-K-CV.
+        Single K selected by AUTO-K-CV.
     cfg : MARSConfig
-        Configurazione (usa MU ed EPS).
+        Configuration using MU and EPS.
 
     Returns
     -------
     p_hat : pd.DataFrame
-        Stima p̂(A→B) = (W + mu*K) / (W + L + K) con diag=NaN.
+        Estimate p_hat(A->B) = (W + mu*K) / (W + L + K), with diag=NaN.
     var_hat : pd.DataFrame
-        Varianza della Beta posterior: (αβ)/((α+β)^2 * (α+β+1)) con diag=NaN.
+        Beta posterior variance: (alpha*beta)/((alpha+beta)^2 * (alpha+beta+1)), with diag=NaN.
     """
     axis = list(S_dir.index)
 
-    # Matrice K costante, diag NaN
+    # Constant K matrix, diag NaN.
     K = np.full((len(axis), len(axis)), float(K_used), dtype=float)
     np.fill_diagonal(K, np.nan)
 
@@ -38,7 +38,7 @@ def posterior_dir(
     A0 = cfg.MU * K
     B0 = (1.0 - cfg.MU) * K
 
-    # Win/Loss come float, NaN→0
+    # Win/Loss as float, NaN -> 0.
     S_np = S_dir.reindex(index=axis, columns=axis).to_numpy(dtype=float)
     F_np = F_dir.reindex(index=axis, columns=axis).to_numpy(dtype=float)
     S_np = np.nan_to_num(S_np, nan=0.0)

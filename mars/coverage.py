@@ -4,23 +4,23 @@ import pandas as pd
 
 def coverage_tables(n_dir: pd.DataFrame, axis: list[str]) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Costruisce:
-      - coverage_df: per ogni deck, copertura osservata (Opp_used, Missing, Coverage_%, N_eff)
-      - missing_pairs_long: lista lunga (Deck, Missing_opponent) per tutte le coppie mancanti A→B
+    Build:
+      - coverage_df: observed coverage by deck (Opp_used, Missing, Coverage_%, N_eff)
+      - missing_pairs_long: long list of all missing A->B pairs
 
-    Parametri
-    ---------
+    Parameters
+    ----------
     n_dir : pd.DataFrame
-        Matrice W+L direzionale sull'asse finale (off-diag osservate se >0).
+        Directional W+L matrix on the final axis; off-diagonal cells are observed if >0.
     axis : list[str]
-        Ordine dei deck (righe/colonne).
+        Deck order for rows/columns.
 
-    Ritorna
+    Returns
     -------
     coverage_df : pd.DataFrame
-        Colonne: Deck, Opp_used, Opp_total, Missing, Coverage_%, N_eff, Missing_sample (max 5)
+        Columns: Deck, Opp_used, Opp_total, Missing, Coverage_%, N_eff, Missing_sample (max 5)
     missing_pairs_long : pd.DataFrame
-        Colonne: Deck, Missing_opponent (ordinate alfabeticamente per deck/opponent)
+        Columns: Deck, Missing_opponent, sorted by deck/opponent.
     """
     N = n_dir.reindex(index=axis, columns=axis)
     OBS = (N.fillna(0.0) > 0.0)
@@ -31,7 +31,7 @@ def coverage_tables(n_dir: pd.DataFrame, axis: list[str]) -> tuple[pd.DataFrame,
     Coverage = (Opp_used / max(Opp_total, 1)) * 100.0
     N_eff = N.sum(axis=1, skipna=True)
 
-    # missing sample (max 5) per deck, preservando l’ordine di axis
+    # Missing sample (max 5) per deck, preserving axis order.
     miss_samples = []
     for a in axis:
         row = N.loc[a]
@@ -48,7 +48,7 @@ def coverage_tables(n_dir: pd.DataFrame, axis: list[str]) -> tuple[pd.DataFrame,
         "Missing_sample (max 5)": miss_samples,
     }).sort_values(["Missing", "Opp_used", "Deck"], ascending=[False, True, True]).reset_index(drop=True)
 
-    # long list delle coppie mancanti (A→B con W+L<=0)
+    # Long list of missing pairs (A->B with W+L <= 0).
     pairs = []
     for a in axis:
         row = N.loc[a]

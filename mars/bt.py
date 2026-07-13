@@ -5,7 +5,7 @@ import pandas as pd
 from .config import MARSConfig
 
 def _s_of(N: float, K: float) -> float:
-    """Confidenza direzionale s = N/(N+K)."""
+    """Directional confidence s = N/(N+K)."""
     return (float(N) / (float(N) + float(K))) if N > 0 else 0.0
 
 def _hhi(vals: np.ndarray) -> float:
@@ -23,22 +23,22 @@ def bt_soft(
     cfg: MARSConfig,
 ) -> dict:
     """
-    Bradley–Terry robusto:
-      - filtro adattivo su confidenza media s̄ ≥ s_min (s_min da N_min_target, K_used)
-      - n_base armonica se entrambe le direzioni >0, altrimenti media osservata
-      - soft-weight n_eff = n_base * s̄^γ con γ auto-continuo se cfg.BT_SOFT_POWER is None
-      - stima MM con ridge (λ), normalizzazione media geometrica, mappa in [0,1] con sigmoide.
+    Robust Bradley-Terry:
+      - adaptive filter on mean confidence s_bar >= s_min
+      - harmonic n_base when both directions exist, otherwise observed mean
+      - soft weight n_eff = n_base * s_bar^gamma, with auto-continuous gamma if cfg.BT_SOFT_POWER is None
+      - MM estimate with ridge, geometric-mean normalization, sigmoid map to [0,1]
 
     Returns
     -------
     out : dict
       {
         "bt_pct": Series (0..100),
-        "diag": {...},   # diagnostiche chiave
+        "diag": {...},   # key diagnostics
         "pairs": list[(A,B,n_eff,w_ij,w_ji)]
       }
     """
-    # 1) Pre-selezione archi
+    # 1) Edge preselection.
     N_MIN = int(cfg.N_MIN_BT_TARGET)
     s_min = float(N_MIN) / (float(N_MIN) + float(K_used))
 
@@ -91,7 +91,7 @@ def bt_soft(
                 "diag": {"kept": 0, "dropped": edges_drop, "s_min": s_min},
                 "pairs": []}
 
-    # 2) Diagnostica & auto soft-power
+    # 2) Diagnostics and auto soft-power.
     sbar_kept = np.asarray(sbar_list, dtype=float)
     near_mask = (sbar_kept >= s_min) & (sbar_kept < s_min + float(cfg.BT_NEAR_BAND))
     near_share = float(near_mask.mean())
@@ -115,17 +115,17 @@ def bt_soft(
     if cfg.BT_SOFT_POWER is None:
         def _clip01(x: float) -> float:
             return float(np.clip(x, 0.0, 1.0))
-        x1 = _clip01((near_share - 0.15) / 0.15)                                   # ↑ se molti edge al pelo
-        x2 = _clip01((0.60 - (sbar_med if np.isfinite(sbar_med) else 0.60)) / 0.10) # ↑ se s̄_med bassa
-        x3 = _clip01(((hhi_lev if np.isfinite(hhi_lev) else 0.10) - 0.10) / 0.05)   # ↑ se leva concentrata
-        x4 = _clip01((8.0 - float(min_opp)) / 5.0)                                  # ↑ se pochi opp per qualche deck
+        x1 = _clip01((near_share - 0.15) / 0.15)                                   # higher when many edges are near threshold
+        x2 = _clip01((0.60 - (sbar_med if np.isfinite(sbar_med) else 0.60)) / 0.10) # higher when median s_bar is low
+        x3 = _clip01(((hhi_lev if np.isfinite(hhi_lev) else 0.10) - 0.10) / 0.05)   # higher when leverage is concentrated
+        x4 = _clip01((8.0 - float(min_opp)) / 5.0)                                  # higher when some decks have few opponents
         soft_power = float(np.clip(1.5 + 0.4*x1 + 0.2*x2 + 0.2*x3 + 0.1*x4, 1.5, 2.1))
         pow_mode = "auto-cont"
     else:
         soft_power = float(cfg.BT_SOFT_POWER)
         pow_mode = "set"
 
-    # 3) Costruzione coppie e pesi soft
+    # 3) Pair construction and soft weights.
     pairs_bt: list[tuple[str, str, float, float, float]] = []
     for (ai, aj, Nij, Nji, n_base, s_bar, p_bar) in info_kept:
         p_bar = float(np.clip(float(p_bar), 1e-9, 1.0 - 1e-9))
@@ -139,7 +139,7 @@ def bt_soft(
             raise AssertionError(f"w out of range for {ai} vs {aj}")
         pairs_bt.append((ai, aj, n_eff, w_ij, w_ji))
 
-    # 4) Stima BT (MM con ridge)
+    # 4) BT estimate (MM with ridge).
     idx_map = {d: i for i, d in enumerate(axis)}
     wins_out = [0.0] * len(axis)
     opp_list: list[list[tuple[int, float]]] = [[] for _ in axis]

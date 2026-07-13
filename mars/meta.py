@@ -25,7 +25,7 @@ def _pick_share_col(df: pd.DataFrame) -> str | None:
         if pd.api.types.is_numeric_dtype(df[c]): return c
     return None
 
-# NEW: correlazione “safe” (niente warning se std=0 oppure overlap < 2)
+# Safe correlation: no warning if std=0 or overlap < 2.
 def _corr_safe(a: pd.Series, b: pd.Series, *, eps: float = 1e-12) -> float:
     a = pd.to_numeric(a, errors="coerce")
     b = pd.to_numeric(b, errors="coerce")
@@ -53,7 +53,7 @@ def meta_share_on_axis(
     """
     Map top-meta shares to axis; if some meta mass falls outside the axis, fill the gap
     with 'policy' ∈ {'proportional','uniform','encounter'}.
-    Assumiamo upstream già post-alias: mapping 1:1 per nome deck.
+    Upstream is assumed to be post-alias already: 1:1 mapping by deck name.
     """
     idx = pd.Index(axis)
     if top_meta_df is None or top_meta_df.empty:
@@ -123,7 +123,7 @@ def blend_meta(
         "AUTO_GAMMA": cfg.AUTO_GAMMA,
         "gamma": gamma,
         "tv": tv,
-        # QUI: nuovo calcolo robusto (niente warning se std=0)
+        # Robust calculation: no warning if std=0.
         "corr": _corr_safe(p_meta, p_enc, eps=cfg.EPS) if len(axis) > 1 else float("nan"),
     }
     return p, info
