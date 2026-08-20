@@ -44,6 +44,9 @@ convenient interfaces around it.
 | Friendly deliverables | CSV ranking, PNG heatmap, styled XLSX report, and JSON manifest |
 | Three interfaces | CLI for automation, Python API for integration, notebook for exploration |
 
+<!-- latest-completed-meta:start -->
+<!-- latest-completed-meta:end -->
+
 ## How the pipeline flows
 
 ```mermaid
@@ -435,6 +438,7 @@ the workflow, expectations, and legal notes.
 
 - [MARS method](MARS_explained.md)
 - [Saved output contract](docs/output_contract.md)
+- [Latest completed meta automation](docs/latest_completed_meta.md)
 - [Google Sheets expansion export](docs/google_sheets_expansions.md)
 - [Contributing guide](CONTRIBUTING.md)
 - [Citation metadata](CITATION.cff)

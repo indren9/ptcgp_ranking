@@ -1,0 +1,56 @@
+name: Latest completed meta preview
+
+on:
+  workflow_dispatch:
+    inputs:
+      completed_set:
+        description: Optional completed set override, for example B3b
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Plan latest completed meta
+        id: latest_meta
+        shell: bash
+        env:
+          COMPLETED_SET: ${{ inputs.completed_set }}
+        run: |
+          args=(
+            --catalog public/expansions_pocket_standard.csv
+            --state .github/latest-completed-meta-state.json
+            --output latest-meta-plan.json
+            --github-output "$GITHUB_OUTPUT"
+          )
+          if [[ -n "$COMPLETED_SET" ]]; then
+            args+=(--force-completed-set "$COMPLETED_SET")
+          fi
+          python -m scripts.latest_completed_meta plan "${args[@]}"
+
+      - name: Write plan summary
+        shell: bash
+        run: |
+          {
+            echo "## Latest completed meta plan"
+            echo
+            echo '```json'
+            cat latest-meta-plan.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Explain preview boundary
+        run: |
+          echo "Detection only: no ranking data or repository files were published."

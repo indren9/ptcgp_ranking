@@ -47,6 +47,7 @@ desktop.ini
 .tox/
 .nox/
 .hypothesis/
+latest-meta-plan.json
 
 # --- Coverage ---
 .coverage*
