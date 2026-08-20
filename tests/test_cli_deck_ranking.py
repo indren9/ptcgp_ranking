@@ -25,6 +25,8 @@ def test_cli_run_passes_options_to_pipeline(monkeypatch, tmp_path):
             str(tmp_path),
             "--config",
             "config/test.yaml",
+            "--output-dir",
+            "batch_outputs",
             "--skip-scrape",
             "--skip-core",
             "--skip-heatmap",
@@ -39,6 +41,7 @@ def test_cli_run_passes_options_to_pipeline(monkeypatch, tmp_path):
         {
             "base_dir": tmp_path.resolve(),
             "config_path": "config/test.yaml",
+            "output_dir": "batch_outputs",
             "run_scrape": False,
             "run_core": False,
             "run_mars": True,
@@ -87,7 +90,7 @@ def test_cli_main_uses_process_argv_when_no_explicit_argv(monkeypatch, tmp_path)
             "--base-dir",
             str(tmp_path),
             "--config",
-            "config/config_tcg.yaml",
+            "config/tcg.yaml",
             "--skip-scrape",
         ],
     )
@@ -96,7 +99,8 @@ def test_cli_main_uses_process_argv_when_no_explicit_argv(monkeypatch, tmp_path)
 
     assert code == 0
     assert calls[0]["base_dir"] == tmp_path.resolve()
-    assert calls[0]["config_path"] == "config/config_tcg.yaml"
+    assert calls[0]["config_path"] == "config/tcg.yaml"
+    assert calls[0]["output_dir"] is None
     assert calls[0]["run_scrape"] is False
 
 

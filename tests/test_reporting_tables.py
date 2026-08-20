@@ -6,6 +6,7 @@ from reporting.tables import (
     analysis_scope_summary_frame,
     candidate_vs_full_summary_frame,
     coverage_volume_summary_frame,
+    core_weighted_wr_baseline,
     diagnostics_preview_frame,
     evidence_core_comparison_frame,
     evidence_core_eligibility_frame,
@@ -16,10 +17,14 @@ from reporting.tables import (
     nan_diagnostics_critical_frame,
     output_paths_frame,
     ranking_preview_frame,
+    run_overview_frame,
+    saved_outputs_frame,
+    scrape_timing_frame,
     share_distribution_frame,
     show_ranking,
     style_ranking_preview,
     wildcard_review_frame,
+    wildcard_summary_frame,
 )
 
 
@@ -72,6 +77,25 @@ def test_output_paths_frame_can_show_relative_paths(tmp_path):
     assert frame.to_dict("records") == [{"Output": "ranking", "Path": str(Path("outputs") / "ranking.csv")}]
 
 
+def test_saved_outputs_frame_classifies_user_reproducible_and_debug_artifacts(tmp_path):
+    outputs = {
+        "report_latest": tmp_path / "outputs" / "report.xlsx",
+        "mars_ranking": tmp_path / "outputs" / "ranking.csv",
+        "matchup_raw": tmp_path / "outputs" / "matchups.csv",
+        "wr_matrix": tmp_path / "outputs" / "wr.csv",
+    }
+
+    frame = saved_outputs_frame(outputs, base_dir=tmp_path)
+    by_output = {row["Output"]: row for row in frame.to_dict("records")}
+
+    assert by_output["report_latest"]["Tier"] == "user"
+    assert by_output["report_latest"]["Kind"] == "report"
+    assert by_output["mars_ranking"]["Tier"] == "user"
+    assert by_output["matchup_raw"]["Tier"] == "reproducible"
+    assert by_output["wr_matrix"]["Tier"] == "debug"
+    assert by_output["report_latest"]["Path"] == str(Path("outputs") / "report.xlsx")
+
+
 def test_diagnostics_preview_frame_compacts_nested_values():
     frame = diagnostics_preview_frame({"mars_diag": {"K": 1.0}, "dropped": ["a", "b"], "rows": 2})
 
@@ -84,6 +108,64 @@ def test_frame_inventory_frame_reports_shapes():
     frame = frame_inventory_frame({"ranking": sample_ranking()})
 
     assert frame.to_dict("records") == [{"Frame": "ranking", "Rows": 3, "Columns": 4}]
+
+
+def test_run_overview_frame_summarizes_profile_scope_and_outputs():
+    frames = {
+        "decklist_raw": pd.DataFrame({"Deck": ["A", "B", "C"]}),
+        "top_meta_decklist": pd.DataFrame({"Deck": ["A", "B"]}),
+        "mars_ranking": pd.DataFrame({"Deck": ["A"]}),
+        "wildcard_candidates": pd.DataFrame({"Deck": ["C"]}),
+    }
+    diagnostics = {
+        "output_profile": "user",
+        "axis_all_count": 3,
+        "axis0_count": 2,
+        "axis_kept_count": 1,
+        "nan_filter": {"dropped_count": 1},
+        "wildcard_full_scrape": True,
+        "matchup_scrape_timing": {"cache_hits": 4, "cache_misses": 2},
+    }
+    outputs = {"mars_ranking": Path("ranking.csv"), "run_manifest": Path("manifest.json")}
+
+    frame = run_overview_frame(diagnostics=diagnostics, frames=frames, outputs=outputs)
+    values = dict(zip(frame["Metric"], frame["Value"]))
+
+    assert values["output_profile"] == "user"
+    assert values["full_decklist_rows"] == 3
+    assert values["matchup_fetch_decks"] == 2
+    assert values["mars_core_decks"] == 1
+    assert values["dropped_count"] == 1
+    assert values["candidate_rows"] == 1
+    assert values["cache_hits"] == 4
+    assert values["cache_misses"] == 2
+    assert values["saved_outputs"] == 2
+    assert values["manifest_written"] is True
+
+
+def test_scrape_timing_frame_reports_cache_delay_and_minutes():
+    diagnostics = {
+        "matchup_pages": 5,
+        "matchup_cache_hits": 3,
+        "estimated_polite_delay_seconds": 25.0,
+        "matchup_scrape_timing": {
+            "unique_pages": 5,
+            "cache_hits": 3,
+            "cache_misses": 2,
+            "elapsed_seconds": 30.0,
+            "delay_seconds_total": 20.0,
+            "avg_seconds_per_page": 6.0,
+        },
+    }
+
+    frame = scrape_timing_frame(diagnostics)
+    values = dict(zip(frame["Metric"], frame["Value"]))
+
+    assert values["unique_pages"] == 5
+    assert values["cache_hits"] == 3
+    assert values["cache_misses"] == 2
+    assert values["elapsed_minutes"] == 0.5
+    assert values["estimated_polite_delay_minutes"] == 0.4167
 
 
 def test_nan_diagnostics_critical_frame_hides_full_coverage_rows():
@@ -448,3 +530,38 @@ def test_wildcard_review_frame_separates_evidence_from_performance():
     assert solid_good["promotion_tier"] == "watchlist"
     assert high_confidence["promotion_tier"] == "high_confidence_candidate"
     assert frame.iloc[0]["Deck"] == "High Confidence"
+
+
+def test_core_weighted_wr_baseline_returns_median_deck_wr():
+    score = pd.DataFrame(
+        {
+            "Deck A": ["A", "A", "B", "B"],
+            "W": [6, 4, 3, 2],
+            "L": [4, 6, 7, 8],
+        }
+    )
+
+    assert core_weighted_wr_baseline(score) == 37.5
+
+
+def test_wildcard_summary_frame_counts_tiers_and_ranges():
+    review = pd.DataFrame(
+        {
+            "promotion_tier": ["watchlist", "not_recommended", "watchlist"],
+            "evidence_tier": ["strong_evidence", "low_evidence", "strong_evidence"],
+            "performance_tier": ["above_even", "below_even", "above_core_baseline"],
+            "coverage_vs_core_%": [80.0, 50.0, 90.0],
+            "N_vs_core": [100, 20, 200],
+            "WR_vs_core_weighted_%": [52.0, 45.0, 60.0],
+        }
+    )
+
+    frame = wildcard_summary_frame(review, core_wr_baseline=51.25)
+    values = {(row.Area, row.Metric): row.Value for row in frame.itertuples(index=False)}
+
+    assert values[("baseline", "core_weighted_wr_median_%")] == 51.25
+    assert values[("wildcards", "candidate_rows")] == 3
+    assert values[("promotion", "watchlist")] == 2
+    assert values[("evidence", "strong_evidence")] == 2
+    assert values[("coverage_vs_core", "median")] == 80.0
+    assert values[("wr_vs_core_weighted", "max")] == 60.0

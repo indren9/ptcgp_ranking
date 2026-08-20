@@ -1,21 +1,20 @@
 source:
   provider: limitless
-  game: PTCG
+  game: POCKET
   format:
-    mode: auto
-    code: ""
+    mode: auto   # auto | code
+    code: ""     # when mode=code, force the Limitless format, e.g. "standard"
 
 scraping:
   base_url: "https://play.limitlesstcg.com"
-  # Minimal TCG entrypoint: Limitless selects the current rotation/latest set.
-  # Reference URL validated during setup:
-  # https://play.limitlesstcg.com/decks?game=PTCG&set=CRI&format=standard&rotation=2026
-  decks_url: "https://play.limitlesstcg.com/decks?game=PTCG"
+  decks_url: "https://play.limitlesstcg.com/decks?game=POCKET"
 
+  # Set/expansion selection.
   set:
-    mode: auto
-    code: ""
+    mode: auto   # auto | code
+    code: ""     # when mode=code, put the set code here, e.g. "A4a"
 
+  # Expansion catalog cache (HTTP).
   expansions_cache:
     ttl_days_fixed: null
     burst_enabled: true
@@ -46,9 +45,15 @@ top_meta:
 
 analysis:
   candidate_pool:
+    # null = use all scraped decks for the core as well.
+    # 80.0 = historical behavior: candidate pool up to 80% cumulative share,
+    #        then iterative NaN filtering inside that pool.
     share_pct: 80.0
   wildcard_pass:
     enabled: false
+    # No minimum share threshold: wildcards are low-play by definition.
+    # For a true wildcard exploration, also set top_meta.threshold_pct: null.
+    # Warning: with rate=5s and 1000+ decks, an uncached run can exceed 80 minutes.
     min_coverage_vs_core_pct: 60.0
     min_n_vs_core: 50
 
@@ -61,7 +66,11 @@ wr_policy:
   mirror_diagonal: null
 
 nan_filter:
-  mode: fixed
+  # fixed replicates the historical criterion: cumulative candidate pool,
+  # then a fixed NaN threshold.
+  # dynamic remains available for experiments, but it is not the recommended
+  # default together with analysis.candidate_pool.share_pct.
+  mode: fixed   # fixed | dynamic
   max_nan_ratio: 0.15
   min_nan_allowed: 1
   use_ceil: false
@@ -73,9 +82,10 @@ nan_filter:
     min_axis_count: null
 
 saving:
+  output_profile: user                  # user | reproducible | debug
   include_time_when_changed: true
-  filename_prefix_with_set: false
-  duplicate_legacy_latest: true
+  filename_prefix_with_set: false        # set already lives in <GAME>/<FORMAT>/<CODE>__<NAME>
+  duplicate_legacy_latest: true          # also write the historical unprefixed latest name
 
 paths:
   output_dir: "outputs"

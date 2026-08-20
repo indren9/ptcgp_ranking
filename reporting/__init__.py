@@ -8,6 +8,7 @@ from .tables import (
     frame_inventory_frame,
     output_paths_frame,
     ranking_preview_frame,
+    saved_outputs_frame,
     show_ranking,
     style_ranking_preview,
 )
@@ -19,6 +20,7 @@ __all__ = [
     "frame_inventory_frame",
     "output_paths_frame",
     "ranking_preview_frame",
+    "saved_outputs_frame",
     "show_ranking",
     "show_wr_heatmap",
     "style_ranking_preview",

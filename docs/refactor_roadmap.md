@@ -40,7 +40,7 @@ tests/                  Contract and regression tests
 - Added `pipelines.deck_ranking.run_deck_ranking`.
 - Added CLI support through `python -m cli.deck_ranking run`.
 - Reduced notebooks to wrapper/preview interfaces.
-- Added TCG configs and verified a TCG run on `CRI - Chaos Rising`.
+- Added TCG configs and verified TCG runs across set changes.
 - Added wildcard diagnostics for TCG full-scrape exploration.
 - Added reporting tables for share distribution, coverage, wildcard review, and
   evidence-core simulations.
@@ -49,15 +49,44 @@ tests/                  Contract and regression tests
 - Stabilized output naming around unprefixed `*_latest` files inside scoped
   folders.
 - Added local Pytest base temp through `.pytest_tmp`.
+- Added first-pass saved output profiles:
+  `user`, `reproducible`, and `debug`.
+- Added profile-aware heatmap/report saving and compact run manifests.
+- Added notebook-facing run overview and scrape timing summary tables.
+- Added notebook-facing wildcard summary and prioritized wildcard review tables.
+- Made notebook profile selection explicit with profile descriptions before the
+  run cell executes.
+- Added notebook-facing saved artifact classification by output tier.
 
 ## Normal Run Profiles
 
-- Pocket: `config/config.yaml`
-- Pokemon TCG: `config/config_tcg.yaml`
-- Pokemon TCG wildcard exploration: `config/config_tcg_wildcard.yaml`
+- Pocket: `config/pocket.yaml`
+- Pocket wildcard exploration: `config/pocket_wildcard.yaml`
+- Pokemon TCG: `config/tcg.yaml`
+- Pokemon TCG wildcard exploration: `config/tcg_wildcard.yaml`
 
-The wildcard profile scrapes the full decklist and reports excluded decks with
-enough evidence against the core. It does not change the main MARS ranking.
+The wildcard profiles scrape the full decklist and report excluded decks with
+enough evidence against the core. They do not change the main MARS ranking.
+
+## Validated Decisions
+
+- Keep the main ranking conservative:
+  candidate pool at 80% cumulative share plus iterative NaN filtering.
+- Keep wildcard analysis as a separate diagnostic appendix for now, not as an
+  automatic promotion mechanism into the main MARS ranking.
+- Treat Pocket and Pokemon TCG as different data regimes:
+  Pocket is more volatile and NaN-sensitive, while TCG currently has complete
+  top-meta coverage and needs more attention to meta relevance than missing
+  data.
+- Keep TCG standard defaults stable while monitoring future set changes.
+- Use `docs/run_observations.md` for short-term validation of live runs,
+  especially Pocket `B3b - Everyday Wonders`.
+- Treat `PBL - Pitch Black` as the current Pokemon TCG monitored set;
+  `CRI - Chaos Rising` is now historical baseline data.
+- Pocket wildcard exploration is available as an explicit notebook profile;
+  the normal Pocket run remains the default workflow.
+- NaN diagnostics stay notebook-only in the `user` output profile; the Excel
+  report remains focused on final ranking/matchup results.
 
 ## Remaining Pre-Commit Checklist
 
@@ -72,6 +101,25 @@ enough evidence against the core. It does not change the main MARS ranking.
 
 ## Backlog
 
+- Move the repository/workspace out of OneDrive into a local `C:\...` path, then
+  keep heavy `outputs/`, cache, and run artifacts on OneDrive through configured
+  external paths. This should reduce sync noise and keep the code checkout
+  lighter while preserving cloud-backed results.
+- Monitor a few more Pocket `B3b - Everyday Wonders` runs and confirm whether
+  core size, top 5, and NaN coverage stabilize.
+- Monitor `PBL - Pitch Black` with the standard TCG profile and compare its
+  early-set behavior against the historical `CRI - Chaos Rising` baseline
+  before changing TCG defaults.
+- Revisit wildcard thresholds only after collecting more real runs; for now the
+  wildcard table is diagnostic output, not ranking logic.
+- Review the saved output contract from scratch:
+  most generated files are likely redundant, and the project should keep only
+  artifacts that are useful for review, reproducibility, debugging, or user
+  consumption. See `docs/output_contract.md`.
+- Consider moving the output artifact registry out of `pipelines.deck_ranking`
+  if profile/routing rules grow further.
+- Continue improving notebook diagnostic presentation:
+  coverage tables should remain easy to read without inspecting raw CSV files.
 - Continue reducing legacy wrappers in `scraper/` and `utils/` once notebook and
   user compatibility risks are low.
 - Add focused docstrings around non-obvious areas:

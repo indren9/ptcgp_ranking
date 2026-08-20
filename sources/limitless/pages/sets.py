@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -18,6 +19,25 @@ from storage.routing import resolve_auto_from_outputs
 log = logging.getLogger("ptcgp.sets")
 DEFAULT_DECKS_URL = LIMITLESS_DECKS_URL
 DEFAULT_FORMAT_CODE = "standard"
+
+
+@dataclass(frozen=True)
+class FormatOption:
+    code: str
+    name: str | None = None
+    is_current: bool = False
+
+
+@dataclass(frozen=True)
+class FormatSetsCatalogEntry:
+    code: str
+    name: str | None = None
+    is_current: bool = False
+    expansions: list[Expansion] = field(default_factory=list)
+
+    @property
+    def supports_sets(self) -> bool:
+        return bool(self.expansions)
 
 
 def _clean_game_code(value) -> Optional[str]:
@@ -99,6 +119,10 @@ def resolve_format_code(cfg: dict | None, decks_url: str | None, *, default: str
     return _clean_format_code(query_code) or default
 
 
+def format_uses_rotation(format_code: str | None) -> bool:
+    return _clean_format_code(format_code) == "standard"
+
+
 def build_decks_url_for_expansion(exp, decks_url: str = DEFAULT_DECKS_URL, cfg: dict | None = None) -> str:
     """
     Ensure game, resolved format, and set=<CODE> when available.
@@ -108,12 +132,17 @@ def build_decks_url_for_expansion(exp, decks_url: str = DEFAULT_DECKS_URL, cfg: 
     parsed = urlparse(base)
     query = parse_qs(parsed.query)
 
+    fmt = resolve_format_code(cfg, base)
     query["game"] = [source_game_code(cfg, base)]
-    query["format"] = [resolve_format_code(cfg, base)]
+    query["format"] = [fmt]
     if getattr(exp, "code", None):
         query["set"] = [quote(exp.code, safe="")]
     else:
         query.pop("set", None)
+    if format_uses_rotation(fmt) and getattr(exp, "rotation", None):
+        query["rotation"] = [quote(str(exp.rotation), safe="")]
+    elif not format_uses_rotation(fmt):
+        query.pop("rotation", None)
 
     new_query = urlencode({k: v[0] for k, v in query.items()})
     return urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, new_query, parsed.fragment))
@@ -126,7 +155,8 @@ def _expansion_from_option(opt) -> Optional[Expansion]:
             return None
         name = opt.get_text(" ", strip=True) or None
         is_current = bool(opt.has_attr("selected"))
-        return Expansion(code=code, name=name, is_current=is_current)
+        rotation = (opt.get("data-rotation") or "").strip() or None
+        return Expansion(code=code, name=name, is_current=is_current, rotation=rotation)
     except Exception:
         return None
 
@@ -147,7 +177,8 @@ def _expansion_from_anchor(anchor) -> Optional[Expansion]:
         name = anchor.get_text(" ", strip=True) or None
         classes = anchor.get("class") or []
         is_current = any("active" in c or "selected" in c for c in classes)
-        return Expansion(code=code, name=name, is_current=is_current)
+        rotation = parse_qs(parsed.query).get("rotation", [None])[0]
+        return Expansion(code=code, name=name, is_current=is_current, rotation=rotation)
     except Exception:
         return None
 
@@ -205,9 +236,65 @@ def parse_expansions_from_html(html: str) -> List[Expansion]:
     return list(dedup.values())
 
 
+def _format_from_option(opt) -> Optional[FormatOption]:
+    try:
+        code = _clean_format_code(opt.get("value") or opt.get("data-format"))
+        if not code:
+            return None
+        name = opt.get_text(" ", strip=True) or None
+        return FormatOption(code=code, name=name, is_current=bool(opt.has_attr("selected")))
+    except Exception:
+        return None
+
+
+def parse_formats_from_html(html: str) -> list[FormatOption]:
+    """Best-effort parser for the Limitless format selector."""
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(html, "lxml")
+    selects = soup.find_all("select")
+    format_selects = []
+    for select in selects:
+        attrs = [select.get("id"), select.get("name"), select.get("aria-label"), select.get("title")]
+        text = " ".join(str(attr or "").lower() for attr in attrs)
+        if "format" in text:
+            format_selects.append(select)
+
+    out: list[FormatOption] = []
+    seen: set[str] = set()
+    for select in format_selects:
+        for option in select.find_all("option"):
+            fmt = _format_from_option(option)
+            if fmt and fmt.code not in seen:
+                seen.add(fmt.code)
+                out.append(fmt)
+    return out
+
+
 def default_cache_path(base_dir: Path | None = None) -> Path:
     base = Path(base_dir) if base_dir else Path("cache") / "requests"
     return Path(base) / "expansions_pocket.json"
+
+
+def load_cached_formats(cache_path: Path) -> tuple[list[FormatOption], Optional[datetime]]:
+    if not cache_path.exists():
+        return [], None
+    try:
+        data = json.loads(cache_path.read_text(encoding="utf-8"))
+        ts = datetime.fromisoformat(data.get("fetched_at"))
+        items = [FormatOption(**item) for item in data.get("formats", [])]
+        return items, ts
+    except Exception:
+        return [], None
+
+
+def save_cached_formats(cache_path: Path, formats: list[FormatOption]) -> None:
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "fetched_at": datetime.now(UTC).replace(tzinfo=None).isoformat(timespec="seconds"),
+        "formats": [fmt.__dict__ for fmt in formats],
+    }
+    cache_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def load_cached_expansions(cache_path: Path) -> tuple[List[Expansion], Optional[datetime], Optional[datetime]]:
@@ -247,7 +334,29 @@ def normalize_is_current(exps: list[Expansion]) -> list[Expansion]:
     """
     if not exps:
         return exps
-    return [Expansion(code=e.code, name=e.name, is_current=(i == 0)) for i, e in enumerate(exps)]
+    return [
+        Expansion(code=e.code, name=e.name, is_current=(i == 0), rotation=getattr(e, "rotation", None))
+        for i, e in enumerate(exps)
+    ]
+
+
+def _catalog_needs_rotation_refresh(exps: list[Expansion], cfg: dict | None, decks_url: str | None) -> bool:
+    if source_game_code(cfg, decks_url) != "PTCG":
+        return False
+    if not format_uses_rotation(resolve_format_code(cfg, decks_url)):
+        return any(getattr(exp, "rotation", None) for exp in exps)
+    return bool(exps) and any(getattr(exp, "code", None) and not getattr(exp, "rotation", None) for exp in exps)
+
+
+def _strip_rotation_when_unused(exps: list[Expansion], cfg: dict | None, decks_url: str | None) -> list[Expansion]:
+    if source_game_code(cfg, decks_url) != "PTCG":
+        return exps
+    if format_uses_rotation(resolve_format_code(cfg, decks_url)):
+        return exps
+    return [
+        Expansion(code=e.code, name=e.name, is_current=e.is_current, rotation=None)
+        for e in exps
+    ]
 
 
 def _days_left_in_month(dt: datetime) -> int:
@@ -306,6 +415,107 @@ def fetch_expansions_http(session, *, decks_url: str) -> List[Expansion]:
     return parse_expansions_from_html(resp.text)
 
 
+def fetch_formats_http(session, *, decks_url: str) -> list[FormatOption]:
+    resp = session.get(decks_url, timeout=getattr(session, "request_timeout", 20))
+    resp.raise_for_status()
+    return parse_formats_from_html(resp.text)
+
+
+def formats_cache_path(paths, cfg: dict | None = None, decks_url: str | None = None) -> Path:
+    game = source_game_code(cfg, decks_url).lower()
+    path = Path(paths.cache) / f"formats_{game}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def format_sets_cache_path(paths, cfg: dict | None = None, decks_url: str | None = None) -> Path:
+    game = source_game_code(cfg, decks_url).lower()
+    path = Path(paths.cache) / f"format_sets_{game}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def load_cached_format_sets(cache_path: Path) -> tuple[list[FormatSetsCatalogEntry], Optional[datetime]]:
+    if not cache_path.exists():
+        return [], None
+    try:
+        data = json.loads(cache_path.read_text(encoding="utf-8"))
+        ts = datetime.fromisoformat(data.get("fetched_at"))
+        entries: list[FormatSetsCatalogEntry] = []
+        for item in data.get("formats", []):
+            expansions = [Expansion(**exp) for exp in item.get("expansions", [])]
+            entries.append(
+                FormatSetsCatalogEntry(
+                    code=item["code"],
+                    name=item.get("name"),
+                    is_current=bool(item.get("is_current", False)),
+                    expansions=expansions,
+                )
+            )
+        return entries, ts
+    except Exception:
+        return [], None
+
+
+def save_cached_format_sets(cache_path: Path, entries: list[FormatSetsCatalogEntry]) -> None:
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "fetched_at": datetime.now(UTC).replace(tzinfo=None).isoformat(timespec="seconds"),
+        "formats": [
+            {
+                "code": entry.code,
+                "name": entry.name,
+                "is_current": entry.is_current,
+                "supports_sets": entry.supports_sets,
+                "set_count": len(entry.expansions),
+                "expansions": [exp.__dict__ for exp in entry.expansions],
+            }
+            for entry in entries
+        ],
+    }
+    cache_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def get_formats_catalog(
+    session=None,
+    *,
+    decks_url: str,
+    cache_path: Path | None = None,
+    ttl_days_fixed: int | None = None,
+    burst_enabled: bool = True,
+    burst_days: int = 2,
+    burst_cap_hours: int = 12,
+    last10_days_hours: int = 24,
+    last3_days_hours: int = 6,
+    jitter_frac: float = 0.10,
+) -> list[FormatOption]:
+    cache_path = cache_path or Path("cache") / "requests" / "formats_pocket.json"
+    prev, ts = load_cached_formats(cache_path)
+    now = datetime.now(UTC).replace(tzinfo=None)
+    ttl = compute_ttl(
+        now,
+        ttl_days_fixed=ttl_days_fixed,
+        burst_enabled=burst_enabled,
+        burst_until=None,
+        burst_cap_hours=burst_cap_hours,
+        last10_days_hours=last10_days_hours,
+        last3_days_hours=last3_days_hours,
+        jitter_frac=jitter_frac,
+    )
+    if prev and ts is not None and (now - ts) < ttl:
+        return prev
+    if session is None:
+        return prev
+    try:
+        new = fetch_formats_http(session, decks_url=decks_url)
+        if new:
+            save_cached_formats(cache_path, new)
+            return new
+    except Exception:
+        log.debug("Format catalog refresh failed; using previous cache.", exc_info=True)
+    return prev
+
+
 def get_expansions_catalog(
     session=None,
     *,
@@ -323,6 +533,7 @@ def get_expansions_catalog(
 ) -> List[Expansion]:
     cache_path = cache_path or default_cache_path()
     prev, ts, burst_until = load_cached_expansions(cache_path)
+    prev = _strip_rotation_when_unused(prev, cfg, decks_url)
     now = datetime.now(UTC).replace(tzinfo=None)
 
     ttl = compute_ttl(
@@ -336,7 +547,7 @@ def get_expansions_catalog(
         jitter_frac=jitter_frac,
     )
 
-    fresh = ts is not None and (now - ts) < ttl
+    fresh = ts is not None and (now - ts) < ttl and not _catalog_needs_rotation_refresh(prev, cfg, decks_url)
     if prev and fresh:
         return prev
 
@@ -349,6 +560,7 @@ def get_expansions_catalog(
         new = fetch_expansions_http(session, decks_url=decks_url)
         if not new and browser is not None:
             new = fetch_expansions_selenium(browser, decks_url=decks_url, cfg=cfg)
+        new = _strip_rotation_when_unused(new, cfg, decks_url)
         if new:
             new_burst_until = burst_until
             if catalog_changed(prev, new) and burst_enabled:
@@ -376,7 +588,8 @@ def expansions_cache_params_from_config(cfg: dict) -> Dict[str, Any]:
 
 def expansions_cache_path(paths, cfg: dict | None = None, decks_url: str | None = None) -> Path:
     game = source_game_code(cfg, decks_url).lower()
-    path = Path(paths.cache) / f"expansions_{game}.json"
+    fmt = resolve_format_code(cfg, decks_url).lower()
+    path = Path(paths.cache) / f"expansions_{game}_{fmt}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -392,6 +605,7 @@ def fetch_catalog_with_policy(
 ):
     """Apply project config/cache policy to the Limitless expansion catalog."""
     params = expansions_cache_params_from_config(cfg)
+    decks_url = _ensure_game_format(decks_url, cfg=cfg)
     cache_path = expansions_cache_path(paths, cfg, decks_url)
     kwargs = dict(
         session=session,
@@ -404,6 +618,27 @@ def fetch_catalog_with_policy(
     if ttl_override is not None:
         kwargs["ttl_days_fixed"] = ttl_override
     return get_expansions_catalog(**kwargs)
+
+
+def fetch_formats_with_policy(
+    cfg: dict,
+    paths,
+    *,
+    session,
+    ttl_override: int | None = None,
+    decks_url: str = DEFAULT_DECKS_URL,
+) -> list[FormatOption]:
+    params = expansions_cache_params_from_config(cfg)
+    cache_path = formats_cache_path(paths, cfg, decks_url)
+    kwargs = dict(
+        session=session,
+        decks_url=decks_url,
+        cache_path=cache_path,
+        **params,
+    )
+    if ttl_override is not None:
+        kwargs["ttl_days_fixed"] = ttl_override
+    return get_formats_catalog(**kwargs)
 
 
 def resolve_expansion_and_url_from_config(
@@ -431,6 +666,12 @@ def resolve_expansion_and_url_from_config(
     session = make_session(timeout=timeout)
     catalog = fetch_catalog_with_policy(cfg, paths, session=session, browser=None, decks_url=decks_url_for_catalog)
 
+    if mode in {"none", "format"}:
+        exp = Expansion(code=None, name=None, is_current=True)
+        url = build_decks_url_for_expansion(exp, decks_url, cfg=cfg)
+        session.close()
+        return exp, url, catalog
+
     if mode == "auto":
         sel_cfg = (scraping.get("selenium", {}) or {})
         headless = bool(sel_cfg.get("headless", True))
@@ -453,7 +694,7 @@ def resolve_expansion_and_url_from_config(
 
         source = "live-site"
         if live_exp and live_exp.code:
-            exp = Expansion(code=live_exp.code, name=live_exp.name, is_current=True)
+            exp = Expansion(code=live_exp.code, name=live_exp.name, is_current=True, rotation=getattr(live_exp, "rotation", None))
         elif live_exp and not live_exp.code:
             log.warning(
                 "Live site ha selezionato un set senza codice valido (%s); ignoro e uso catalog/fallback.",
@@ -461,7 +702,7 @@ def resolve_expansion_and_url_from_config(
             )
             if catalog:
                 cur = next((e for e in catalog if getattr(e, "is_current", False)), None) or catalog[0]
-                exp = Expansion(code=cur.code, name=cur.name, is_current=True)
+                exp = Expansion(code=cur.code, name=cur.name, is_current=True, rotation=getattr(cur, "rotation", None))
                 source = "catalog"
             else:
                 fallback = resolve_auto_from_outputs(getattr(paths, "outputs", None) or getattr(paths, "output_dir", None))
@@ -471,7 +712,7 @@ def resolve_expansion_and_url_from_config(
                     log.warning("No expansion catalog and no output folder found: using an empty set.")
         elif catalog:
             cur = next((e for e in catalog if getattr(e, "is_current", False)), None) or catalog[0]
-            exp = Expansion(code=cur.code, name=cur.name, is_current=True)
+            exp = Expansion(code=cur.code, name=cur.name, is_current=True, rotation=getattr(cur, "rotation", None))
             source = "catalog"
         else:
             fallback = resolve_auto_from_outputs(getattr(paths, "outputs", None) or getattr(paths, "output_dir", None))
@@ -495,7 +736,7 @@ def resolve_expansion_and_url_from_config(
     if need_check:
         hit = next((e for e in catalog if (e.code or "").lower() == code.lower()), None)
         if hit and hit.name:
-            exp = Expansion(code=code, name=hit.name, is_current=False)
+            exp = Expansion(code=code, name=hit.name, is_current=False, rotation=getattr(hit, "rotation", None))
         else:
             sel_cfg = (scraping.get("selenium", {}) or {})
             headless = bool(sel_cfg.get("headless", True))
@@ -510,7 +751,7 @@ def resolve_expansion_and_url_from_config(
                 )
             hit = next((e for e in catalog if (e.code or "").lower() == code.lower()), None)
             if hit and hit.name:
-                exp = Expansion(code=code, name=hit.name, is_current=False)
+                exp = Expansion(code=code, name=hit.name, is_current=False, rotation=getattr(hit, "rotation", None))
             else:
                 session.close()
                 raise RuntimeError(f"Set code '{code}' is not present in the Limitless catalog even after refresh.")
@@ -531,8 +772,11 @@ def _url_without_set(url: str) -> str:
 def _ensure_game_format(url: str, cfg: dict | None = None) -> str:
     parsed = urlparse(_url_without_set(url))
     query = parse_qs(parsed.query)
+    fmt = resolve_format_code(cfg, url)
     query["game"] = [source_game_code(cfg, url)]
-    query["format"] = [resolve_format_code(cfg, url)]
+    query["format"] = [fmt]
+    if not format_uses_rotation(fmt):
+        query.pop("rotation", None)
     new_query = urlencode({k: v[0] for k, v in query.items()})
     return urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, new_query, parsed.fragment))
 
@@ -540,6 +784,13 @@ def _ensure_game_format(url: str, cfg: dict | None = None) -> str:
 def _read_set_param(url: str) -> Optional[str]:
     try:
         return parse_qs(urlparse(url).query).get("set", [None])[0]
+    except Exception:
+        return None
+
+
+def _read_rotation_param(url: str) -> Optional[str]:
+    try:
+        return parse_qs(urlparse(url).query).get("rotation", [None])[0]
     except Exception:
         return None
 
@@ -594,10 +845,12 @@ def read_current_expansion_from_selenium(
         value = (option.get_attribute("data-set") or option.get_attribute("value") or "").strip()
         code = _extract_set_code(value, browser.current_url, text)
 
+        fmt_code = resolve_format_code(cfg, browser.current_url)
+        rotation = parse_qs(urlparse(browser.current_url).query).get("rotation", [None])[0] if format_uses_rotation(fmt_code) else None
         if code and text:
-            return Expansion(code=code, name=text, is_current=True)
+            return Expansion(code=code, name=text, is_current=True, rotation=rotation)
         if code:
-            return Expansion(code=code, name=None, is_current=True)
+            return Expansion(code=code, name=None, is_current=True, rotation=rotation)
     except Exception:
         return None
 
@@ -711,23 +964,30 @@ def fetch_expansions_selenium(
         if not code or code in seen:
             continue
         seen.add(code)
-        out.append(Expansion(code=code, name=name, is_current=(name.lower() == current_name.lower())))
+        rotation = _read_rotation_param(browser.current_url) if format_uses_rotation(fmt_code) else None
+        out.append(Expansion(code=code, name=name, is_current=(name.lower() == current_name.lower()), rotation=rotation))
 
     return out
 
 __all__ = [
     "Expansion",
+    "FormatOption",
+    "FormatSetsCatalogEntry",
     "SET_CODE_RE",
     "DEFAULT_DECKS_URL",
     "DEFAULT_FORMAT_CODE",
     "build_decks_url_for_expansion",
     "format_config_from_source",
+    "format_uses_rotation",
     "source_game_code",
     "resolve_format_code",
     "default_cache_path",
     "expansions_cache_params_from_config",
     "expansions_cache_path",
+    "formats_cache_path",
+    "format_sets_cache_path",
     "fetch_catalog_with_policy",
+    "fetch_formats_with_policy",
     "resolve_expansion_and_url_from_config",
     "catalog_changed",
     "compute_ttl",
@@ -735,8 +995,15 @@ __all__ = [
     "normalize_is_current",
     "save_cached_expansions",
     "fetch_expansions_http",
+    "fetch_formats_http",
     "get_expansions_catalog",
+    "get_formats_catalog",
     "parse_expansions_from_html",
+    "parse_formats_from_html",
+    "load_cached_formats",
+    "save_cached_formats",
+    "load_cached_format_sets",
+    "save_cached_format_sets",
     "fetch_expansions_selenium",
     "read_current_expansion_from_selenium",
 ]

@@ -52,6 +52,7 @@ DEFAULT_EXCLUDE_DIRS = {
     ".git",
     ".pytest_cache",
     ".pytest_tmp",
+    ".pytest_tmp_verify",
     ".venv",
     ".vscode",
     "__pycache__",

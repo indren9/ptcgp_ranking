@@ -1,12 +1,17 @@
-.\
+|-- .github\
+|   `-- workflows\
+|       |-- tests.yml
+|       `-- update-expansion-catalog.yml
 |-- cli\
 |   `-- deck_ranking.py
 |-- config\
 |   |-- alias_map.json
-|   |-- config.yaml
-|   |-- config_tcg.yaml
-|   |-- config_tcg_wildcard.yaml
-|   `-- loader.py
+|   |-- loader.py
+|   |-- manual_expansions_pocket.csv
+|   |-- pocket.yaml
+|   |-- pocket_wildcard.yaml
+|   |-- tcg.yaml
+|   `-- tcg_wildcard.yaml
 |-- core\
 |   |-- consolidate.py
 |   |-- matrices.py
@@ -17,7 +22,10 @@
 |   |-- external\
 |   `-- raw\
 |-- docs\
-|   `-- refactor_roadmap.md
+|   |-- google_sheets_expansions.md
+|   |-- output_contract.md
+|   |-- refactor_roadmap.md
+|   `-- run_observations.md
 |-- domain\
 |   `-- expansions.py
 |-- logs\
@@ -38,6 +46,8 @@
 |   `-- deck_ranking_run_all_dev.ipynb
 |-- pipelines\
 |   `-- deck_ranking.py
+|-- public\
+|   `-- expansions_pocket_standard.csv
 |-- reporting\
 |   |-- excel.py
 |   |-- logs.py
@@ -57,6 +67,10 @@
 |   |-- decklist_expansion.py
 |   |-- matchups.py
 |   `-- session.py
+|-- scripts\
+|   |-- export_expansions_catalog.py
+|   |-- run_all_sets.py
+|   `-- run_pocket_all_sets.py
 |-- sources\
 |   `-- limitless\
 |       |-- pages\
@@ -73,6 +87,7 @@
 |   |-- test_cli_deck_ranking.py
 |   |-- test_core_matrices.py
 |   |-- test_expansion_auto_fallback.py
+|   |-- test_export_expansions_catalog.py
 |   |-- test_limitless_browser.py
 |   |-- test_limitless_client.py
 |   |-- test_logging_noise.py
@@ -83,6 +98,7 @@
 |   |-- test_reporting_logs.py
 |   |-- test_reporting_plots.py
 |   |-- test_reporting_tables.py
+|   |-- test_run_pocket_all_sets.py
 |   |-- test_sources_limitless.py
 |   `-- test_storage_routing.py
 |-- utils\

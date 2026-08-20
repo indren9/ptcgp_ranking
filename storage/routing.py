@@ -25,6 +25,7 @@ ROUTES: dict[str, tuple[str, ...]] = {
     "wildcard_candidates": ("diagnostics", "wildcards"),
     "mars_ranking": ("rankings", "mars"),
     "report": ("reports", "mars"),
+    "run_manifest": ("run",),
 }
 
 
@@ -42,6 +43,7 @@ LEGACY_ROUTES: dict[str, tuple[str, ...]] = {
     "wildcard_candidates": ("Diagnostics", "NaN"),
     "mars_ranking": ("RankingData", "MARS_Ranking"),
     "report": ("RankingData", "MARS_Report"),
+    "run_manifest": ("Run",),
 }
 
 
@@ -66,6 +68,7 @@ PREFIX_BY_KEY: dict[str, str] = {
     "nan_diagnostics_pre_filter": "nan_diagnostics_pre_filter",
     "nan_filter_simulation": "nan_filter_simulation",
     "wildcard_candidates": "wildcard_candidates",
+    "run_manifest": "run_manifest",
 }
 
 

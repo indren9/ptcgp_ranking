@@ -59,14 +59,16 @@ def save_plot_dual(
     *,
     fmt: str = "png",
     dpi: int = 300,
-) -> tuple[Path, Path]:
+    also_versioned: bool = True,
+) -> tuple[Path | None, Path]:
     base_dir = Path(base_dir)
     base_dir.mkdir(parents=True, exist_ok=True)
 
-    ts_path = base_dir / f"{prefix}_{tag}_{run_stamp()}.{fmt}"
+    ts_path = base_dir / f"{prefix}_{tag}_{run_stamp()}.{fmt}" if also_versioned else None
     latest_path = base_dir / f"{prefix}_latest.{fmt}"
 
-    fig.savefig(ts_path, dpi=dpi, bbox_inches="tight")
+    if ts_path is not None:
+        fig.savefig(ts_path, dpi=dpi, bbox_inches="tight")
     fig.savefig(latest_path, dpi=dpi, bbox_inches="tight")
     log.debug("Plot salvato (timestamp + latest): %s | latest: %s", ts_path, latest_path)
     return ts_path, latest_path

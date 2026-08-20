@@ -24,15 +24,27 @@ from scraper.sets.selenium_scan import read_current_expansion_from_selenium as l
 from sources.limitless.pages.sets import (
     DEFAULT_DECKS_URL,
     Expansion,
+    FormatOption,
+    FormatSetsCatalogEntry,
     build_decks_url_for_expansion,
     expansions_cache_path,
+    format_sets_cache_path,
+    fetch_catalog_with_policy,
+    format_uses_rotation,
+    formats_cache_path,
     resolve_format_code,
     get_expansions_catalog,
+    get_formats_catalog,
     load_cached_expansions,
+    load_cached_format_sets,
+    load_cached_formats,
     parse_expansions_from_html,
+    parse_formats_from_html,
     read_current_expansion_from_selenium,
     resolve_expansion_and_url_from_config,
     save_cached_expansions,
+    save_cached_format_sets,
+    save_cached_formats,
     source_game_code,
 )
 
@@ -86,10 +98,119 @@ def test_limitless_sets_builds_decks_url_with_tcg_game_and_rotation():
     assert source_game_code(cfg, url) == "PTCG"
 
 
+def test_limitless_sets_builds_decks_url_with_expansion_rotation_override():
+    cfg = {"source": {"game": "PTCG", "format": {"mode": "code", "code": "standard"}}}
+
+    url = build_decks_url_for_expansion(
+        Expansion(code="ASC", name="Ascended Heroes", rotation="2025"),
+        "https://play.limitlesstcg.com/decks?game=PTCG&format=standard&rotation=2026",
+        cfg=cfg,
+    )
+
+    assert "set=ASC" in url
+    assert "rotation=2025" in url
+
+
+def test_limitless_sets_builds_expanded_url_without_rotation():
+    cfg = {"source": {"game": "PTCG", "format": {"mode": "code", "code": "expanded"}}}
+
+    url = build_decks_url_for_expansion(
+        Expansion(code="MEG", name="Mega Evolution", rotation="2025"),
+        "https://play.limitlesstcg.com/decks?game=PTCG&format=standard&rotation=2026",
+        cfg=cfg,
+    )
+
+    assert "game=PTCG" in url
+    assert "format=expanded" in url
+    assert "set=MEG" in url
+    assert "rotation=" not in url
+    assert format_uses_rotation("standard") is True
+    assert format_uses_rotation("expanded") is False
+
+
 def test_limitless_sets_auto_format_keeps_url_format():
     cfg = {"source": {"format": {"mode": "auto", "code": ""}}}
 
     assert resolve_format_code(cfg, "https://example.com/decks?game=POCKET&format=custom") == "custom"
+
+
+def test_limitless_sets_parses_formats_from_select_and_cache(tmp_path):
+    html = """
+    <select id="format">
+      <option value="standard" selected>Standard</option>
+      <option value="expanded">Expanded</option>
+    </select>
+    """
+
+    formats = parse_formats_from_html(html)
+
+    assert formats == [
+        FormatOption(code="standard", name="Standard", is_current=True),
+        FormatOption(code="expanded", name="Expanded", is_current=False),
+    ]
+
+    cache_path = tmp_path / "formats.json"
+    save_cached_formats(cache_path, formats)
+    loaded, fetched_at = load_cached_formats(cache_path)
+
+    assert loaded == formats
+    assert fetched_at is not None
+
+
+def test_limitless_sets_formats_cache_path_is_scoped_by_game(tmp_path):
+    paths = type("Paths", (), {"cache": tmp_path / "cache"})()
+
+    assert formats_cache_path(paths, {"source": {"game": "PTCG"}}).name == "formats_ptcg.json"
+    assert format_sets_cache_path(paths, {"source": {"game": "PTCG"}}).name == "format_sets_ptcg.json"
+
+
+def test_limitless_sets_format_sets_cache_roundtrip(tmp_path):
+    entries = [
+        FormatSetsCatalogEntry(
+            code="standard",
+            name="Standard",
+            is_current=True,
+            expansions=[Expansion(code="CRI", name="Chaos Rising", rotation="2026")],
+        ),
+        FormatSetsCatalogEntry(code="2016", name="Worlds 2016 (XY-STS)", expansions=[]),
+    ]
+    cache_path = tmp_path / "format_sets.json"
+
+    save_cached_format_sets(cache_path, entries)
+    loaded, fetched_at = load_cached_format_sets(cache_path)
+
+    assert loaded == entries
+    assert fetched_at is not None
+
+
+def test_limitless_sets_formats_catalog_uses_fresh_cache(tmp_path):
+    cache_path = tmp_path / "formats.json"
+    save_cached_formats(cache_path, [FormatOption(code="standard", name="Standard")])
+
+    formats = get_formats_catalog(session=None, decks_url=DEFAULT_DECKS_URL, cache_path=cache_path)
+
+    assert formats == [FormatOption(code="standard", name="Standard")]
+
+
+def test_limitless_sets_fetch_catalog_policy_normalizes_format_url(monkeypatch, tmp_path):
+    paths = type("Paths", (), {"cache": tmp_path / "cache"})()
+    seen = {}
+
+    def fake_get_expansions_catalog(**kwargs):
+        seen["decks_url"] = kwargs["decks_url"]
+        return []
+
+    monkeypatch.setattr("sources.limitless.pages.sets.get_expansions_catalog", fake_get_expansions_catalog)
+
+    fetch_catalog_with_policy(
+        {"source": {"game": "PTCG", "format": {"mode": "code", "code": "expanded"}}},
+        paths,
+        session=object(),
+        decks_url="https://play.limitlesstcg.com/decks?game=PTCG&format=standard&rotation=2026",
+    )
+
+    assert "format=expanded" in seen["decks_url"]
+    assert "rotation=" not in seen["decks_url"]
 
 
 def test_limitless_sets_parses_expansions_from_select_and_legacy_wrapper():
@@ -132,9 +253,23 @@ def test_limitless_sets_accepts_tcg_letter_set_codes_from_select():
     expansions = parse_expansions_from_html(html)
 
     assert expansions == [
-        Expansion(code="CRI", name="Chaos Rising", is_current=True),
-        Expansion(code="POR", name="Perfect Order", is_current=False),
+        Expansion(code="CRI", name="Chaos Rising", is_current=True, rotation="2026"),
+        Expansion(code="POR", name="Perfect Order", is_current=False, rotation="2026"),
     ]
+
+
+def test_limitless_sets_preserves_tcg_rotation_from_select():
+    html = """
+    <select id="set">
+      <optgroup label="2025 (SVI-on)">
+        <option data-set="ASC" data-rotation="2025">Ascended Heroes</option>
+      </optgroup>
+    </select>
+    """
+
+    expansions = parse_expansions_from_html(html)
+
+    assert expansions == [Expansion(code="ASC", name="Ascended Heroes", is_current=False, rotation="2025")]
 
 
 def test_limitless_sets_ignores_game_and_format_selects_before_tcg_set_select():
@@ -157,8 +292,8 @@ def test_limitless_sets_ignores_game_and_format_selects_before_tcg_set_select():
     expansions = parse_expansions_from_html(html)
 
     assert expansions == [
-        Expansion(code="CRI", name="Chaos Rising", is_current=True),
-        Expansion(code="POR", name="Perfect Order", is_current=False),
+        Expansion(code="CRI", name="Chaos Rising", is_current=True, rotation="2026"),
+        Expansion(code="POR", name="Perfect Order", is_current=False, rotation="2026"),
     ]
 
 
@@ -182,9 +317,9 @@ def test_limitless_sets_parses_tcg_letter_set_codes_from_links():
 
     expansions = parse_expansions_from_html(html)
 
-    assert [(exp.code, exp.name, exp.is_current) for exp in expansions] == [
-        ("CRI", "Chaos Rising", True),
-        ("PRE", "Perfect Order", False),
+    assert [(exp.code, exp.name, exp.is_current, exp.rotation) for exp in expansions] == [
+        ("CRI", "Chaos Rising", True, "2026"),
+        ("PRE", "Perfect Order", False, "2026"),
     ]
 
 
@@ -221,17 +356,20 @@ def test_limitless_sets_cache_helpers_are_native_and_legacy_compatible(tmp_path)
     assert [(exp.code, exp.is_current) for exp in expansions] == [("B3a", True), ("A1", False)]
 
 
-def test_limitless_sets_expansions_cache_path_is_scoped_by_game(tmp_path):
+def test_limitless_sets_expansions_cache_path_is_scoped_by_game_and_format(tmp_path):
     paths = type("Paths", (), {"cache": tmp_path / "cache"})()
 
     pocket = expansions_cache_path(paths, {"source": {"game": "POCKET"}})
-    tcg = expansions_cache_path(paths, {"source": {"game": "PTCG"}})
+    tcg_standard = expansions_cache_path(paths, {"source": {"game": "PTCG", "format": {"mode": "code", "code": "standard"}}})
+    tcg_expanded = expansions_cache_path(paths, {"source": {"game": "PTCG", "format": {"mode": "code", "code": "expanded"}}})
 
-    assert pocket.name == "expansions_pocket.json"
-    assert tcg.name == "expansions_ptcg.json"
+    assert pocket.name == "expansions_pocket_standard.json"
+    assert tcg_standard.name == "expansions_ptcg_standard.json"
+    assert tcg_expanded.name == "expansions_ptcg_expanded.json"
     assert pocket.parent == tmp_path / "cache"
-    assert tcg.parent == tmp_path / "cache"
-    assert pocket != tcg
+    assert tcg_standard.parent == tmp_path / "cache"
+    assert pocket != tcg_standard
+    assert tcg_standard != tcg_expanded
 
 
 def test_limitless_sets_catalog_uses_fresh_cache_without_session(tmp_path):
@@ -242,6 +380,20 @@ def test_limitless_sets_catalog_uses_fresh_cache_without_session(tmp_path):
 
     assert legacy_get_expansions_catalog is get_expansions_catalog
     assert [exp.code for exp in expansions] == ["B3a"]
+
+
+def test_limitless_sets_expanded_catalog_strips_cached_rotation(tmp_path):
+    cache_path = tmp_path / "expansions.json"
+    save_cached_expansions(cache_path, [Expansion(code="MEG", name="Mega Evolution", rotation="2025")])
+
+    expansions = get_expansions_catalog(
+        session=None,
+        decks_url="https://play.limitlesstcg.com/decks?game=PTCG&format=expanded",
+        cache_path=cache_path,
+        cfg={"source": {"game": "PTCG", "format": {"mode": "code", "code": "expanded"}}},
+    )
+
+    assert expansions == [Expansion(code="MEG", name="Mega Evolution", is_current=True, rotation=None)]
 
 
 def test_limitless_sets_reads_current_expansion_from_selenium(monkeypatch):

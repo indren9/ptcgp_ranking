@@ -9,6 +9,20 @@ MANAGED_HANDLER_ATTR = "_ptcgp_managed_handler"
 DEFAULT_FORMAT = "%(levelname).1s | %(name)s | %(message)s"
 
 
+class TqdmLoggingHandler(logging.StreamHandler):
+    """Logging handler that plays nicely with an active tqdm progress bar."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            msg = self.format(record)
+            from tqdm import tqdm
+
+            tqdm.write(msg, file=self.stream)
+            self.flush()
+        except Exception:
+            self.handleError(record)
+
+
 def _coerce_level(level: int | str | None) -> int:
     if isinstance(level, int):
         return level
@@ -25,6 +39,7 @@ def configure_logging(
     quiet_http: bool = True,
     force: bool = False,
     stream: TextIO | None = None,
+    tqdm_compatible: bool = False,
 ) -> logging.Logger:
     """
     Configure the project logger once, safely across repeated notebook runs.
@@ -51,6 +66,20 @@ def configure_logging(
             logger.removeHandler(extra_handler)
             extra_handler.close()
     else:
+        handler_cls = TqdmLoggingHandler if tqdm_compatible else logging.StreamHandler
+        handler = handler_cls(stream or sys.stderr)
+        setattr(handler, MANAGED_HANDLER_ATTR, True)
+        logger.addHandler(handler)
+
+    if tqdm_compatible and not isinstance(handler, TqdmLoggingHandler):
+        logger.removeHandler(handler)
+        handler.close()
+        handler = TqdmLoggingHandler(stream or sys.stderr)
+        setattr(handler, MANAGED_HANDLER_ATTR, True)
+        logger.addHandler(handler)
+    elif not tqdm_compatible and isinstance(handler, TqdmLoggingHandler):
+        logger.removeHandler(handler)
+        handler.close()
         handler = logging.StreamHandler(stream or sys.stderr)
         setattr(handler, MANAGED_HANDLER_ATTR, True)
         logger.addHandler(handler)

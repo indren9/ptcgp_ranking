@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+import json
 import logging
 import os
 
@@ -44,6 +46,171 @@ from config.loader import read_config
 log = logging.getLogger("ptcgp")
 
 DEV_FAST_SCRAPE_ENV = "PTCGP_I_KNOW_FAST_SCRAPE_IS_FOR_DEV_ONLY"
+OUTPUT_PROFILE_USER = "user"
+OUTPUT_PROFILE_REPRODUCIBLE = "reproducible"
+OUTPUT_PROFILE_DEBUG = "debug"
+OUTPUT_PROFILES = {OUTPUT_PROFILE_USER, OUTPUT_PROFILE_REPRODUCIBLE, OUTPUT_PROFILE_DEBUG}
+
+ARTIFACT_TIERS: dict[str, str] = {
+    "decklist_raw": OUTPUT_PROFILE_REPRODUCIBLE,
+    "top_meta_decklist": OUTPUT_PROFILE_REPRODUCIBLE,
+    "matchup_raw": OUTPUT_PROFILE_REPRODUCIBLE,
+    "score_flat": OUTPUT_PROFILE_DEBUG,
+    "wr_matrix": OUTPUT_PROFILE_DEBUG,
+    "n_dir_matrix": OUTPUT_PROFILE_DEBUG,
+    "nan_diagnostics_pre_filter": OUTPUT_PROFILE_DEBUG,
+    "nan_filter_simulation": OUTPUT_PROFILE_DEBUG,
+    "wildcard_candidates": OUTPUT_PROFILE_USER,
+    "mars_ranking": OUTPUT_PROFILE_USER,
+}
+
+PROFILE_LEVEL: dict[str, int] = {
+    OUTPUT_PROFILE_USER: 0,
+    OUTPUT_PROFILE_REPRODUCIBLE: 1,
+    OUTPUT_PROFILE_DEBUG: 2,
+}
+
+
+class EmptyDecklistError(RuntimeError):
+    """Raised when a set/format has no parseable Limitless decklist."""
+
+    def __init__(self, message: str, *, urls: list[str] | None = None) -> None:
+        super().__init__(message)
+        self.urls = urls or []
+
+
+class InsufficientRankingDataError(RuntimeError):
+    """Raised when fetched data is too sparse to produce a MARS ranking."""
+
+
+def _output_profile(cfg: dict[str, Any]) -> str:
+    """
+    Return the configured saved-artifact profile.
+
+    The fallback remains ``debug`` for backward compatibility with older
+    configs and tests that expect every intermediate CSV to be written.
+    """
+    saving = cfg.get("saving") or {}
+    profile = str(saving.get("output_profile", OUTPUT_PROFILE_DEBUG)).strip().lower()
+    if profile not in OUTPUT_PROFILES:
+        raise ValueError(
+            "saving.output_profile must be one of: "
+            + ", ".join(sorted(OUTPUT_PROFILES))
+        )
+    return profile
+
+
+def _should_save_artifact(cfg: dict[str, Any], key: str, df: pd.DataFrame | None = None) -> bool:
+    profile = _output_profile(cfg)
+    required_profile = ARTIFACT_TIERS.get(key, OUTPUT_PROFILE_DEBUG)
+    if PROFILE_LEVEL[profile] < PROFILE_LEVEL[required_profile]:
+        return False
+    if profile == OUTPUT_PROFILE_USER and key == "wildcard_candidates":
+        wildcard_cfg = ((cfg.get("analysis") or {}).get("wildcard_pass") or {})
+        return bool(wildcard_cfg.get("enabled", False)) and df is not None and not df.empty
+    return True
+
+
+def _should_save_timestamped_csv(cfg: dict[str, Any], key: str) -> bool:
+    saving = cfg.get("saving") or {}
+    include_time = bool(saving.get("include_time_when_changed", True))
+    return include_time and _output_profile(cfg) == OUTPUT_PROFILE_DEBUG
+
+
+def _save_csv_artifact(
+    df: pd.DataFrame,
+    paths: ProjectPaths,
+    key: str,
+    exp,
+    cfg: dict[str, Any],
+    *,
+    changed: bool,
+    index: bool = False,
+) -> Path | None:
+    if not _should_save_artifact(cfg, key, df):
+        return None
+    return write_csv_versioned_setaware(
+        df,
+        paths,
+        key,
+        exp,
+        cfg,
+        changed=changed and _should_save_timestamped_csv(cfg, key),
+        index=index,
+    )
+
+
+def _write_json_artifact(
+    data: dict[str, Any],
+    paths: ProjectPaths,
+    key: str,
+    exp,
+    cfg: dict[str, Any],
+) -> Path:
+    dest_dir = dest_for_key(paths, key, exp)
+    prefix = "run_manifest"
+    latest_path = dest_dir / f"{prefix}_latest.json"
+    latest_path.write_text(json.dumps(data, indent=2, sort_keys=True, default=str), encoding="utf-8")
+    if _output_profile(cfg) == OUTPUT_PROFILE_DEBUG:
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        ts_path = dest_dir / f"{prefix}_{stamp}.json"
+        ts_path.write_text(json.dumps(data, indent=2, sort_keys=True, default=str), encoding="utf-8")
+    return latest_path
+
+
+def _compact_cfg_summary(cfg: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "source": cfg.get("source") or {},
+        "top_meta": cfg.get("top_meta") or {},
+        "analysis": cfg.get("analysis") or {},
+        "nan_filter": cfg.get("nan_filter") or {},
+        "saving": cfg.get("saving") or {},
+    }
+
+
+def _write_run_manifest(result: "DeckRankingResult") -> Path:
+    code = getattr(result.expansion, "code", None)
+    name = getattr(result.expansion, "name", None)
+    manifest_path = dest_for_key(result.paths, "run_manifest", result.expansion) / "run_manifest_latest.json"
+    output_paths = {key: str(path) for key, path in sorted(result.outputs.items())}
+    output_paths.setdefault("run_manifest", str(manifest_path))
+    manifest = {
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+        "profile": result.diagnostics.get("output_profile"),
+        "source_scope": result.diagnostics.get("source_scope"),
+        "set": {"code": code, "name": name},
+        "decks_url": result.decks_url,
+        "frames": {
+            key: {"rows": int(df.shape[0]), "columns": int(df.shape[1])}
+            for key, df in sorted(result.frames.items())
+            if isinstance(df, pd.DataFrame)
+        },
+        "outputs": output_paths,
+        "diagnostics": {
+            key: value
+            for key, value in sorted(result.diagnostics.items())
+            if key
+            in {
+                "axis_all_count",
+                "axis0_count",
+                "axis_kept_count",
+                "decklist_rows",
+                "estimated_polite_delay_seconds",
+                "heatmap_shape",
+                "heatmap_top_n",
+                "mars_rows",
+                "matchup_cache_hits",
+                "matchup_pages",
+                "output_profile",
+                "report_gamma",
+                "report_k_used",
+                "top_meta_rows",
+                "wildcard_full_scrape",
+            }
+        },
+        "config_summary": _compact_cfg_summary(result.cfg),
+    }
+    return _write_json_artifact(manifest, result.paths, "run_manifest", result.expansion, result.cfg)
 
 
 @dataclass
@@ -234,6 +401,87 @@ def _scrape_rate_from_config(scraping: dict[str, Any]) -> tuple[float, float, bo
     return rate_limit, rate_jitter, False
 
 
+def _decklist_url_fallbacks(url: str, cfg: dict[str, Any]) -> list[str]:
+    parsed = urlparse(url)
+    query = parse_qs(parsed.query)
+    game = (query.get("game", [((cfg.get("source") or {}).get("game") or "")])[0] or "").upper()
+    fmt = (query.get("format", [None])[0] or "").lower()
+    rotation = query.get("rotation", [None])[0]
+    if game != "PTCG" or not rotation:
+        return []
+
+    candidates: list[str] = []
+
+    def add(candidate_query: dict[str, list[str]]) -> None:
+        candidate = urlunparse(
+            (
+                parsed.scheme,
+                parsed.netloc,
+                parsed.path,
+                parsed.params,
+                urlencode({key: values[0] for key, values in candidate_query.items() if values and values[0] is not None}),
+                parsed.fragment,
+            )
+        )
+        if candidate != url and candidate not in candidates:
+            candidates.append(candidate)
+
+    no_rotation = {key: list(values) for key, values in query.items()}
+    no_rotation.pop("rotation", None)
+    add(no_rotation)
+
+    # Rotation buckets are a Standard-only selector on Limitless. If a stale or
+    # manually supplied non-Standard URL carries rotation, only retry without it.
+    if fmt == "standard":
+        for year in ("2026", "2025", "2024", "2023", "2022", "2021"):
+            if year == str(rotation):
+                continue
+            alt = {key: list(values) for key, values in query.items()}
+            alt["rotation"] = [year]
+            add(alt)
+
+    return candidates
+
+
+def _scrape_parse_decklist_with_fallbacks(
+    *,
+    decks_url: str,
+    cfg: dict[str, Any],
+    paths: ProjectPaths,
+    ttl_min: int,
+    force_refresh: bool,
+    headless: bool,
+) -> tuple[pd.DataFrame, str, bool, str]:
+    tried: list[str] = []
+    last_error: Exception | None = None
+    for idx, url in enumerate([decks_url, *_decklist_url_fallbacks(decks_url, cfg)]):
+        tried.append(url)
+        html, from_cache = scrape_decklist_html(
+            url,
+            cache_dir=paths.cache,
+            ttl_minutes=ttl_min,
+            force_refresh=force_refresh,
+            headless=headless,
+        )
+        try:
+            df_decklist = parse_decklist_table(html)
+        except RuntimeError as exc:
+            last_error = exc
+            if idx == 0:
+                log.warning("[decklist fallback] url non parsabile, provo alternative: %s", url)
+            else:
+                log.warning("[decklist fallback] alternativa non parsabile: %s", url)
+            continue
+        if idx > 0:
+            log.warning("[decklist fallback] uso url alternativa: %s", url)
+        return df_decklist, html, from_cache, url
+
+    raise EmptyDecklistError(
+        f"Decklist vuota o non parsabile per tutte le URL provate ({len(tried)}).",
+        urls=tried,
+    ) from last_error
+
+
 def _wildcard_pass_enabled(cfg: dict[str, Any]) -> bool:
     wild_cfg = ((cfg.get("analysis") or {}).get("wildcard_pass") or {})
     return bool(wild_cfg.get("enabled", False))
@@ -403,19 +651,30 @@ def _scrape_decklists_and_matchups(
         dev_fast_scrape,
     )
 
-    html, decklist_from_cache = scrape_decklist_html(
-        decks_url,
-        cache_dir=paths.cache,
-        ttl_minutes=ttl_min,
+    df_decklist, html, decklist_from_cache, decks_url = _scrape_parse_decklist_with_fallbacks(
+        decks_url=decks_url,
+        cfg=cfg,
+        paths=paths,
+        ttl_min=ttl_min,
         force_refresh=force_refresh,
         headless=headless,
     )
-    df_decklist = parse_decklist_table(html)
     exp, exp_source = _resolve_expansion_from_decklist_page(exp, html, df_decklist)
+    url_query = parse_qs(urlparse(decks_url).query)
+    url_format = (url_query.get("format", [""])[0] or "").lower()
+    url_rotation = url_query.get("rotation", [None])[0]
+    if url_format == "standard" and getattr(exp, "code", None) and url_rotation and getattr(exp, "rotation", None) != url_rotation:
+        exp = Expansion(
+            code=getattr(exp, "code", None),
+            name=getattr(exp, "name", None),
+            is_current=bool(getattr(exp, "is_current", False)),
+            rotation=url_rotation,
+        )
+        exp_source = exp_source or "decklist-url-rotation"
     if exp_source:
         log.info("[SET AUTO] source=%s | code=%s | name=%s", exp_source, getattr(exp, "code", None), getattr(exp, "name", None))
 
-    decklist_path = write_csv_versioned_setaware(
+    decklist_path = _save_csv_artifact(
         df_decklist,
         paths,
         "decklist_raw",
@@ -427,7 +686,7 @@ def _scrape_decklists_and_matchups(
 
     df_top = filter_top_meta(df_decklist, threshold_pct=top_thresh)
     df_top["Matchup URL"] = df_top["URL"].map(to_matchup_url)
-    top_meta_path = write_csv_versioned_setaware(
+    top_meta_path = _save_csv_artifact(
         df_top,
         paths,
         "top_meta_decklist",
@@ -489,7 +748,7 @@ def _scrape_decklists_and_matchups(
     if missing:
         raise KeyError(f"[matchup_raw] missing required columns: {sorted(missing)}")
 
-    matchup_path = write_csv_versioned_setaware(
+    matchup_path = _save_csv_artifact(
         df_matchups,
         paths,
         "matchup_raw",
@@ -504,11 +763,13 @@ def _scrape_decklists_and_matchups(
         "top_meta_decklist": df_top,
         "matchup_raw": df_matchups,
     }
-    outputs = {
-        "decklist_raw": decklist_path,
-        "top_meta_decklist": top_meta_path,
-        "matchup_raw": matchup_path,
-    }
+    outputs = {}
+    if decklist_path is not None:
+        outputs["decklist_raw"] = decklist_path
+    if top_meta_path is not None:
+        outputs["top_meta_decklist"] = top_meta_path
+    if matchup_path is not None:
+        outputs["matchup_raw"] = matchup_path
     diagnostics = {
         "decklist_cache_hit": decklist_from_cache,
         "decklist_rows": len(df_decklist),
@@ -628,7 +889,9 @@ def _build_core_matrices(
     top_meta_alias_all = topmeta_post_alias(df_top_meta, alias_idx)
     axis_all = top_meta_alias_all["Deck"].astype(str).str.strip().tolist()
     if len(axis_all) < 2:
-        raise RuntimeError(f"Asse iniziale troppo piccolo (T0={len(axis_all)}). Controlla top-meta/alias.")
+        raise InsufficientRankingDataError(
+            f"Asse iniziale troppo piccolo (T0={len(axis_all)}). Controlla top-meta/alias."
+        )
 
     top_meta_alias, candidate_pool_diag = _candidate_pool_from_top_meta(top_meta_alias_all, cfg)
     axis0 = top_meta_alias["Deck"].astype(str).str.strip().tolist()
@@ -692,10 +955,10 @@ def _build_core_matrices(
         axis_kept=axis_kept,
     )
 
-    score_path = write_csv_versioned_setaware(score_df, paths, "score_flat", exp, cfg, changed=True, index=False)
-    wr_path = write_csv_versioned_setaware(wr_mat, paths, "wr_matrix", exp, cfg, changed=True, index=True)
-    n_dir_path = write_csv_versioned_setaware(n_dir, paths, "n_dir_matrix", exp, cfg, changed=True, index=True)
-    nan_diag_path = write_csv_versioned_setaware(
+    score_path = _save_csv_artifact(score_df, paths, "score_flat", exp, cfg, changed=True, index=False)
+    wr_path = _save_csv_artifact(wr_mat, paths, "wr_matrix", exp, cfg, changed=True, index=True)
+    n_dir_path = _save_csv_artifact(n_dir, paths, "n_dir_matrix", exp, cfg, changed=True, index=True)
+    nan_diag_path = _save_csv_artifact(
         nan_diag_df,
         paths,
         "nan_diagnostics_pre_filter",
@@ -704,7 +967,7 @@ def _build_core_matrices(
         changed=True,
         index=False,
     )
-    wildcard_path = write_csv_versioned_setaware(
+    wildcard_path = _save_csv_artifact(
         wildcard_df,
         paths,
         "wildcard_candidates",
@@ -715,7 +978,7 @@ def _build_core_matrices(
     )
     nan_filter_sim_path = None
     if not nan_filter_simulation.empty:
-        nan_filter_sim_path = write_csv_versioned_setaware(
+        nan_filter_sim_path = _save_csv_artifact(
             nan_filter_simulation,
             paths,
             "nan_filter_simulation",
@@ -733,13 +996,17 @@ def _build_core_matrices(
         "nan_filter_simulation": nan_filter_simulation,
         "wildcard_candidates": wildcard_df,
     }
-    outputs = {
-        "score_flat": score_path,
-        "wr_matrix": wr_path,
-        "n_dir_matrix": n_dir_path,
-        "nan_diagnostics_pre_filter": nan_diag_path,
-        "wildcard_candidates": wildcard_path,
-    }
+    outputs = {}
+    if score_path is not None:
+        outputs["score_flat"] = score_path
+    if wr_path is not None:
+        outputs["wr_matrix"] = wr_path
+    if n_dir_path is not None:
+        outputs["n_dir_matrix"] = n_dir_path
+    if nan_diag_path is not None:
+        outputs["nan_diagnostics_pre_filter"] = nan_diag_path
+    if wildcard_path is not None:
+        outputs["wildcard_candidates"] = wildcard_path
     if nan_filter_sim_path is not None:
         outputs["nan_filter_simulation"] = nan_filter_sim_path
     diagnostics = {
@@ -780,15 +1047,20 @@ def _run_mars_stage(
 
     mars_cfg = MARSConfig(**(cfg.get("mars") or {}))
     top_meta_mars = _top_meta_for_mars(cfg, paths, top_meta_df)
-    ranking, diag, coverage_df, missing_pairs_long = run_mars_core(
-        filtered_wr=wr_matrix,
-        n_dir=n_dir_matrix,
-        score_flat=score_df,
-        top_meta_df=top_meta_mars,
-        cfg=mars_cfg,
-    )
+    try:
+        ranking, diag, coverage_df, missing_pairs_long = run_mars_core(
+            filtered_wr=wr_matrix,
+            n_dir=n_dir_matrix,
+            score_flat=score_df,
+            top_meta_df=top_meta_mars,
+            cfg=mars_cfg,
+        )
+    except ValueError as exc:
+        if "Missing post-filter score_flat" in str(exc):
+            raise InsufficientRankingDataError(str(exc)) from exc
+        raise
 
-    ranking_path = write_csv_versioned_setaware(
+    ranking_path = _save_csv_artifact(
         ranking,
         paths,
         "mars_ranking",
@@ -803,7 +1075,7 @@ def _run_mars_stage(
         "mars_coverage": coverage_df,
         "mars_missing_pairs": missing_pairs_long,
     }
-    outputs = {"mars_ranking": ranking_path}
+    outputs = {"mars_ranking": ranking_path} if ranking_path is not None else {}
     diagnostics = {
         "mars_diag": diag,
         "mars_rows": len(ranking),
@@ -822,6 +1094,7 @@ def _label_for_expansion(exp) -> str:
 
 def _save_heatmap_stage(
     *,
+    cfg: dict[str, Any],
     paths: ProjectPaths,
     exp,
     ranking: pd.DataFrame | None,
@@ -856,6 +1129,7 @@ def _save_heatmap_stage(
         tag=f"T{top_n}",
         fmt="png",
         dpi=300,
+        also_versioned=_output_profile(cfg) == OUTPUT_PROFILE_DEBUG,
     )
     try:
         import matplotlib.pyplot as plt
@@ -864,10 +1138,9 @@ def _save_heatmap_stage(
     except Exception:
         pass
 
-    outputs = {
-        "heatmap_topN": versioned_path,
-        "heatmap_topN_latest": latest_path,
-    }
+    outputs = {"heatmap_topN_latest": latest_path}
+    if versioned_path is not None:
+        outputs["heatmap_topN"] = versioned_path
     diagnostics = {
         "heatmap_top_n": top_n,
         "heatmap_shape": tuple(wr_sub.shape),
@@ -931,12 +1204,13 @@ def _write_report_stage(
         include_mas_contrib_col=False,
         out_dir=report_dir,
         base_name="mars_matchup_report",
+        also_versioned=_output_profile(cfg) == OUTPUT_PROFILE_DEBUG,
+        keep_legend_image=_output_profile(cfg) == OUTPUT_PROFILE_DEBUG,
     )
 
-    outputs = {
-        "report": versioned_path,
-        "report_latest": latest_path,
-    }
+    outputs = {"report_latest": latest_path}
+    if versioned_path is not None:
+        outputs["report"] = versioned_path
     diagnostics = {
         "report_meta": meta,
         "report_k_used": k_used,
@@ -950,6 +1224,7 @@ def run_deck_ranking(
     *,
     base_dir: str | Path | None = None,
     config_path: str | Path | None = None,
+    output_dir: str | Path | None = None,
     run_scrape: bool = True,
     run_core: bool | None = None,
     run_mars: bool = False,
@@ -977,6 +1252,8 @@ def run_deck_ranking(
             level=logging_cfg.get("level", "INFO"),
             quiet_http=bool(logging_cfg.get("quiet_http", True)),
         )
+    if output_dir is not None:
+        cfg.setdefault("paths", {})["output_dir"] = str(output_dir)
 
     decks_url_cfg = (cfg.get("scraping", {}) or {}).get("decks_url") or LIMITLESS_DECKS_URL
     exp, decks_url, catalog = resolve_expansion_and_url_from_config(
@@ -988,6 +1265,7 @@ def run_deck_ranking(
 
     result = DeckRankingResult(cfg=cfg, paths=paths, expansion=exp, decks_url=decks_url, catalog=catalog)
     result.diagnostics["source_scope"] = list(paths.outputs.relative_to(paths.output_root).parts)
+    result.diagnostics["output_profile"] = _output_profile(cfg)
 
     if run_scrape:
         frames, outputs, diagnostics, exp = _scrape_decklists_and_matchups(
@@ -1033,6 +1311,7 @@ def run_deck_ranking(
 
     if run_heatmap:
         frames, outputs, diagnostics = _save_heatmap_stage(
+            cfg=cfg,
             paths=paths,
             exp=exp,
             ranking=result.frames.get("mars_ranking"),
@@ -1058,6 +1337,10 @@ def run_deck_ranking(
         result.frames.update(frames)
         result.outputs.update(outputs)
         result.diagnostics.update(diagnostics)
+
+    if result.frames or result.outputs:
+        manifest_path = _write_run_manifest(result)
+        result.outputs["run_manifest"] = manifest_path
 
     for line in result.summary_lines():
         log.info(line)

@@ -7,6 +7,10 @@ source:
 
 scraping:
   base_url: "https://play.limitlesstcg.com"
+  # Pocket wildcard exploration:
+  # - downloads the full decklist table for the selected/latest set;
+  # - keeps the MARS core anchored to the 80% candidate pool;
+  # - evaluates the long tail only in the wildcard appendix.
   decks_url: "https://play.limitlesstcg.com/decks?game=POCKET"
 
   # Set/expansion selection.
@@ -40,7 +44,9 @@ scraping:
     wait_sec: 20
 
 top_meta:
-  threshold_pct: 80.0
+  # null means: fetch all decks from the Limitless deck table.
+  # The MARS core is still limited below by analysis.candidate_pool.share_pct.
+  threshold_pct: null
   ensure_at_least: 1
 
 analysis:
@@ -50,7 +56,7 @@ analysis:
     #        then iterative NaN filtering inside that pool.
     share_pct: 80.0
   wildcard_pass:
-    enabled: false
+    enabled: true
     # No minimum share threshold: wildcards are low-play by definition.
     # For a true wildcard exploration, also set top_meta.threshold_pct: null.
     # Warning: with rate=5s and 1000+ decks, an uncached run can exceed 80 minutes.
@@ -82,6 +88,7 @@ nan_filter:
     min_axis_count: null
 
 saving:
+  output_profile: user
   include_time_when_changed: true
   filename_prefix_with_set: false        # set already lives in <GAME>/<FORMAT>/<CODE>__<NAME>
   duplicate_legacy_latest: true          # also write the historical unprefixed latest name

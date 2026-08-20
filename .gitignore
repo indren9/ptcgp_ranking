@@ -41,6 +41,7 @@ desktop.ini
 .cache/
 .pytest_cache/
 .pytest_tmp/
+.pytest_tmp_verify/
 .mypy_cache/
 .ruff_cache/
 .tox/
@@ -75,7 +76,7 @@ data/external/**/*
 
 # --- Keep config tracked; do not put secrets here ---
 !config/
-!config/config.yaml
+!config/*.yaml
 !config/alias_map.json
 
 # --- Selenium / drivers ---

@@ -57,6 +57,29 @@ def test_resolve_expansion_and_url_falls_back_to_latest_outputs_when_catalog_is_
     assert catalog == []
 
 
+def test_resolve_expansion_format_mode_keeps_url_without_set(tmp_path: Path, monkeypatch):
+    class DummySession:
+        def close(self):
+            return None
+
+    monkeypatch.setattr("sources.limitless.pages.sets.make_session", lambda timeout=20: DummySession())
+    monkeypatch.setattr("sources.limitless.pages.sets.fetch_catalog_with_policy", lambda *args, **kwargs: [])
+
+    cfg = {
+        "source": {"game": "PTCG", "format": {"mode": "code", "code": "2016"}},
+        "scraping": {"set": {"mode": "format", "code": ""}},
+    }
+    paths = SimpleNamespace(outputs=tmp_path / "outputs", cache=tmp_path / "cache", logs=tmp_path / "logs")
+
+    exp, url, catalog = resolve_expansion_and_url_from_config(cfg, paths, decks_url="https://example.com/decks")
+
+    assert exp.code is None
+    assert "game=PTCG" in url
+    assert "format=2016" in url
+    assert "set=" not in url
+    assert catalog == []
+
+
 def test_auto_mode_forces_fresh_catalog_lookup(monkeypatch):
     class DummySession:
         def close(self):
@@ -151,6 +174,35 @@ def test_resolve_expansion_preserves_tcg_game_and_rotation_for_catalog_url(monke
     assert "rotation=2026" in url
     assert "set=CRI" in url
     assert catalog == []
+
+
+def test_resolve_expansion_uses_catalog_rotation_for_manual_tcg_set(monkeypatch):
+    class DummySession:
+        def close(self):
+            return None
+
+    def fake_fetch_catalog(*args, **kwargs):
+        return [Expansion(code="ASC", name="Ascended Heroes", rotation="2025")]
+
+    monkeypatch.setattr("sources.limitless.pages.sets.make_session", lambda timeout=20: DummySession())
+    monkeypatch.setattr("sources.limitless.pages.sets.fetch_catalog_with_policy", fake_fetch_catalog)
+
+    cfg = {
+        "source": {"game": "PTCG", "format": {"mode": "code", "code": "standard"}},
+        "scraping": {"set": {"mode": "code", "code": "ASC"}},
+    }
+    paths = SimpleNamespace(outputs=Path("outputs"), cache=Path("cache/requests"), logs=Path("logs"))
+
+    exp, url, catalog = resolve_expansion_and_url_from_config(
+        cfg,
+        paths,
+        decks_url="https://play.limitlesstcg.com/decks?game=PTCG&format=standard&rotation=2026",
+    )
+
+    assert exp == Expansion(code="ASC", name="Ascended Heroes", is_current=False, rotation="2025")
+    assert "set=ASC" in url
+    assert "rotation=2025" in url
+    assert catalog[0].rotation == "2025"
 
 
 def test_auto_mode_uses_minimal_tcg_url_for_live_site_lookup(monkeypatch):

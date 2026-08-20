@@ -1,17 +1,26 @@
 from pathlib import Path
 from types import SimpleNamespace
+import json
 import logging
 
 import pandas as pd
 
 from domain.expansions import Expansion
-from pipelines.deck_ranking import run_deck_ranking
+from pipelines.deck_ranking import (
+    EmptyDecklistError,
+    InsufficientRankingDataError,
+    _output_profile,
+    _run_mars_stage,
+    _should_save_artifact,
+    _should_save_timestamped_csv,
+    run_deck_ranking,
+)
 
 
 def write_config(base: Path) -> Path:
     cfg_dir = base / "config"
     cfg_dir.mkdir()
-    config_path = cfg_dir / "config.yaml"
+    config_path = cfg_dir / "pocket.yaml"
     config_path.write_text(
         """
 source:
@@ -53,9 +62,10 @@ def test_run_deck_ranking_initializes_without_scrape(tmp_path, monkeypatch):
     assert result.decks_url.endswith("set=B3a")
     assert result.paths.outputs == tmp_path / "outputs" / "POCKET" / "standard"
     assert result.diagnostics["source_scope"] == ["POCKET", "standard"]
+    assert result.diagnostics["output_profile"] == "debug"
     assert result.frames == {}
     assert result.outputs == {}
-    assert repr(result) == "DeckRankingResult(set='B3a', frames=0, outputs=0, diagnostics=1)"
+    assert repr(result) == "DeckRankingResult(set='B3a', frames=0, outputs=0, diagnostics=2)"
 
 
 def test_run_deck_ranking_uses_manual_source_format_scope(tmp_path, monkeypatch):
@@ -104,6 +114,60 @@ def test_run_deck_ranking_uses_configured_output_dir(tmp_path, monkeypatch):
 
     assert result.paths.output_root == (tmp_path / "custom_outputs").resolve()
     assert result.paths.outputs == (tmp_path / "custom_outputs" / "POCKET" / "standard").resolve()
+
+
+def test_run_deck_ranking_output_dir_argument_overrides_config(tmp_path, monkeypatch):
+    config_path = write_config(tmp_path)
+    text = config_path.read_text(encoding="utf-8")
+    text = text.replace(
+        "saving:\n  filename_prefix_with_set: false\n",
+        "saving:\n  filename_prefix_with_set: false\npaths:\n  output_dir: config_outputs\n",
+    )
+    config_path.write_text(text, encoding="utf-8")
+
+    monkeypatch.setattr(
+        "pipelines.deck_ranking.resolve_expansion_and_url_from_config",
+        lambda cfg, paths, decks_url: (
+            Expansion(code="B3a", name="Paradox Drive"),
+            f"{decks_url}&format=standard&set=B3a",
+            [],
+        ),
+    )
+
+    result = run_deck_ranking(
+        base_dir=tmp_path,
+        config_path=config_path,
+        output_dir="runtime_outputs",
+        run_scrape=False,
+    )
+
+    assert result.paths.output_root == (tmp_path / "runtime_outputs").resolve()
+    assert result.paths.outputs == (tmp_path / "runtime_outputs" / "POCKET" / "standard").resolve()
+
+
+def test_output_profile_policy_keeps_user_outputs_small():
+    user_cfg = {
+        "saving": {"output_profile": "user", "include_time_when_changed": True},
+        "analysis": {"wildcard_pass": {"enabled": True}},
+    }
+    reproducible_cfg = {"saving": {"output_profile": "reproducible"}}
+    debug_cfg = {"saving": {"output_profile": "debug", "include_time_when_changed": True}}
+
+    assert _output_profile({}) == "debug"
+
+    assert _should_save_artifact(user_cfg, "mars_ranking", pd.DataFrame({"Deck": ["A"]}))
+    assert _should_save_artifact(user_cfg, "wildcard_candidates", pd.DataFrame({"Deck": ["A"]}))
+    assert not _should_save_artifact(user_cfg, "wildcard_candidates", pd.DataFrame())
+    assert not _should_save_artifact(user_cfg, "decklist_raw", pd.DataFrame({"Deck": ["A"]}))
+    assert not _should_save_artifact(user_cfg, "score_flat", pd.DataFrame({"Deck A": ["A"]}))
+    assert not _should_save_timestamped_csv(user_cfg, "mars_ranking")
+
+    assert _should_save_artifact(reproducible_cfg, "decklist_raw", pd.DataFrame({"Deck": ["A"]}))
+    assert _should_save_artifact(reproducible_cfg, "matchup_raw", pd.DataFrame({"Deck A": ["A"]}))
+    assert not _should_save_artifact(reproducible_cfg, "wr_matrix", pd.DataFrame({"A": [0.5]}))
+
+    assert _should_save_artifact(debug_cfg, "wr_matrix", pd.DataFrame({"A": [0.5]}))
+    assert _should_save_timestamped_csv(debug_cfg, "wr_matrix")
 
 
 def test_run_deck_ranking_scrape_stage_writes_contract_outputs(tmp_path, monkeypatch):
@@ -259,12 +323,115 @@ def test_run_deck_ranking_infers_auto_set_from_tcg_decklist_html(tmp_path, monke
 
     result = run_deck_ranking(base_dir=tmp_path, config_path=config_path, run_scrape=True)
 
-    assert result.expansion == Expansion(code="CRI", name="Chaos Rising", is_current=True)
-    assert result.decks_url.endswith("game=PTCG&format=standard&set=CRI")
+    assert result.expansion == Expansion(code="CRI", name="Chaos Rising", is_current=True, rotation="2026")
+    assert result.decks_url.endswith("game=PTCG&format=standard&set=CRI&rotation=2026")
     assert result.diagnostics["set_resolution_source"] == "decklist-html"
     assert result.outputs["decklist_raw"].name == "decklist_raw_latest.csv"
     assert "CRI__Chaos_Rising" in result.outputs["decklist_raw"].parts
     assert "Dragapult" not in result.outputs["decklist_raw"].parts
+
+
+def test_run_deck_ranking_falls_back_when_tcg_standard_rotation_has_empty_decklist(tmp_path, monkeypatch):
+    config_path = write_config(tmp_path)
+    text = config_path.read_text(encoding="utf-8")
+    text = text.replace("game: POCKET", "game: PTCG")
+    text = text.replace("https://example.com/decks?game=POCKET", "https://example.com/decks?game=PTCG")
+    text = text.replace(
+        "source:\n  provider: limitless\n  game: PTCG\n",
+        "source:\n  provider: limitless\n  game: PTCG\n  format:\n    mode: code\n    code: standard\n",
+    )
+    config_path.write_text(text, encoding="utf-8")
+
+    monkeypatch.setattr(
+        "pipelines.deck_ranking.resolve_expansion_and_url_from_config",
+        lambda cfg, paths, decks_url: (
+            Expansion(code="MEG", name="Mega Evolution", rotation="2025"),
+            f"{decks_url}&format=standard&set=MEG&rotation=2025",
+            [],
+        ),
+    )
+
+    seen_urls = []
+
+    def fake_scrape_decklist_html(url, *args, **kwargs):
+        seen_urls.append(url)
+        if "rotation=2026" in url:
+            return (
+                """
+                <table>
+                  <thead><tr><th>Rank</th><th>Deck</th><th>Share</th><th>Count</th></tr></thead>
+                  <tbody>
+                    <tr><td>1</td><td><a href="/decks/gardevoir?format=standard&rotation=2026&set=MEG">Gardevoir</a></td><td>60%</td><td>3</td></tr>
+                    <tr><td>2</td><td><a href="/decks/dragapult?format=standard&rotation=2026&set=MEG">Dragapult</a></td><td>40%</td><td>2</td></tr>
+                  </tbody>
+                </table>
+                """,
+                False,
+            )
+        return ("<html><body>No deck table</body></html>", False)
+
+    monkeypatch.setattr("pipelines.deck_ranking.scrape_decklist_html", fake_scrape_decklist_html)
+
+    class DummySession:
+        def close(self):
+            return None
+
+    monkeypatch.setattr("pipelines.deck_ranking.make_session", lambda **kwargs: DummySession())
+    monkeypatch.setattr(
+        "pipelines.deck_ranking.scrape_matchups",
+        lambda *args, **kwargs: (
+            pd.DataFrame(
+                [
+                    {"Deck A": "Gardevoir", "Deck B": "Dragapult", "W": 1, "L": 1, "T": 0, "N": 2, "Winrate": 50.0}
+                ]
+            ),
+            2,
+            0,
+            {},
+        ),
+    )
+
+    result = run_deck_ranking(base_dir=tmp_path, config_path=config_path, run_scrape=True)
+
+    assert any("rotation=2025" in url for url in seen_urls)
+    assert any("rotation=2026" in url for url in seen_urls)
+    assert result.expansion == Expansion(code="MEG", name="Mega Evolution", is_current=False, rotation="2026")
+    assert result.decks_url.endswith("game=PTCG&format=standard&set=MEG&rotation=2026")
+
+
+def test_run_deck_ranking_raises_empty_decklist_error_when_all_fallbacks_are_empty(tmp_path, monkeypatch):
+    config_path = write_config(tmp_path)
+    text = config_path.read_text(encoding="utf-8")
+    text = text.replace("game: POCKET", "game: PTCG")
+    text = text.replace("https://example.com/decks?game=POCKET", "https://example.com/decks?game=PTCG")
+    text = text.replace(
+        "source:\n  provider: limitless\n  game: PTCG\n",
+        "source:\n  provider: limitless\n  game: PTCG\n  format:\n    mode: code\n    code: expanded\n",
+    )
+    config_path.write_text(text, encoding="utf-8")
+
+    monkeypatch.setattr(
+        "pipelines.deck_ranking.resolve_expansion_and_url_from_config",
+        lambda cfg, paths, decks_url: (
+            Expansion(code="MEG", name="Mega Evolution", rotation="2025"),
+            f"{decks_url}&format=expanded&set=MEG&rotation=2025",
+            [],
+        ),
+    )
+    monkeypatch.setattr(
+        "pipelines.deck_ranking.scrape_decklist_html",
+        lambda *args, **kwargs: ("<html><body>No deck table</body></html>", False),
+    )
+
+    try:
+        run_deck_ranking(base_dir=tmp_path, config_path=config_path, run_scrape=True)
+    except EmptyDecklistError as exc:
+        assert "Decklist vuota" in str(exc)
+        assert any("rotation=2025" in url for url in exc.urls)
+        assert any("format=expanded&set=MEG" in url and "rotation=" not in url for url in exc.urls)
+        assert not any("rotation=2026" in url for url in exc.urls)
+    else:
+        raise AssertionError("Expected EmptyDecklistError")
 
 
 def test_run_deck_ranking_dev_fast_scrape_env_disables_matchup_delay(tmp_path, monkeypatch):
@@ -503,8 +670,6 @@ nan_filter:
 """,
         encoding="utf-8",
     )
-    caplog.set_level(logging.WARNING, logger="ptcgp")
-
     monkeypatch.setattr(
         "pipelines.deck_ranking.resolve_expansion_and_url_from_config",
         lambda cfg, paths, decks_url: (
@@ -554,7 +719,13 @@ nan_filter:
         ),
     )
 
-    result = run_deck_ranking(base_dir=tmp_path, config_path=config_path, run_scrape=True)
+    logger = logging.getLogger("ptcgp")
+    logger.addHandler(caplog.handler)
+    try:
+        caplog.set_level(logging.WARNING, logger="ptcgp")
+        result = run_deck_ranking(base_dir=tmp_path, config_path=config_path, run_scrape=True)
+    finally:
+        logger.removeHandler(caplog.handler)
 
     wildcards = result.frames["wildcard_candidates"]
     assert "Wild Card" in set(wildcards["Deck"])
@@ -631,11 +802,12 @@ def test_run_deck_ranking_mars_stage_saves_ranking(tmp_path, monkeypatch):
         lambda *args, **kwargs: (FakeFig(), None, pd.DataFrame([[None, 50.0], [50.0, None]], index=["Pikachu", "Mewtwo"], columns=["Pikachu", "Mewtwo"])),
     )
 
-    def fake_save_plot_dual(fig, base_dir, prefix, tag, fmt="png", dpi=300):
+    def fake_save_plot_dual(fig, base_dir, prefix, tag, fmt="png", dpi=300, also_versioned=True):
         base_dir.mkdir(parents=True, exist_ok=True)
-        versioned = base_dir / f"{prefix}_{tag}_fake.{fmt}"
+        versioned = base_dir / f"{prefix}_{tag}_fake.{fmt}" if also_versioned else None
         latest = base_dir / f"{prefix}_latest.{fmt}"
-        versioned.write_text("plot", encoding="utf-8")
+        if versioned is not None:
+            versioned.write_text("plot", encoding="utf-8")
         latest.write_text("plot", encoding="utf-8")
         return versioned, latest
 
@@ -675,3 +847,142 @@ def test_run_deck_ranking_mars_stage_saves_ranking(tmp_path, monkeypatch):
     assert result.diagnostics["heatmap_top_n"] == 2
     assert result.diagnostics["report_meta"]["T"] == 2
     assert result.diagnostics["report_k_used"] == 1.0
+
+
+def test_user_output_profile_writes_latest_report_heatmap_and_manifest(tmp_path, monkeypatch):
+    config_path = write_config(tmp_path)
+    text = config_path.read_text(encoding="utf-8")
+    text = text.replace(
+        "saving:\n  filename_prefix_with_set: false\n",
+        "saving:\n  output_profile: user\n  filename_prefix_with_set: false\n",
+    )
+    config_path.write_text(text, encoding="utf-8")
+
+    monkeypatch.setattr(
+        "pipelines.deck_ranking.resolve_expansion_and_url_from_config",
+        lambda cfg, paths, decks_url: (Expansion(code="B3a", name="Paradox Drive"), f"{decks_url}&set=B3a", []),
+    )
+    monkeypatch.setattr(
+        "pipelines.deck_ranking.scrape_decklist_html",
+        lambda *args, **kwargs: (
+            """
+            <table>
+              <thead><tr><th>Rank</th><th>Deck</th><th>Share</th><th>Count</th></tr></thead>
+              <tbody>
+                <tr><td>1</td><td><a href="/deck/1">Pikachu</a></td><td>60%</td><td>3</td></tr>
+                <tr><td>2</td><td><a href="/deck/2">Mewtwo</a></td><td>40%</td><td>2</td></tr>
+              </tbody>
+            </table>
+            """,
+            True,
+        ),
+    )
+
+    class DummySession:
+        def close(self):
+            return None
+
+    monkeypatch.setattr("pipelines.deck_ranking.make_session", lambda **kwargs: DummySession())
+    monkeypatch.setattr(
+        "pipelines.deck_ranking.scrape_matchups",
+        lambda *args, **kwargs: (
+            pd.DataFrame(
+                [
+                    {"Deck A": "Pikachu", "Deck B": "Mewtwo", "W": 1, "L": 1, "T": 0, "N": 2, "Winrate": 50.0}
+                ]
+            ),
+            1,
+            0,
+        ),
+    )
+
+    def fake_run_mars_core(filtered_wr, n_dir, score_flat, top_meta_df, cfg):
+        ranking = pd.DataFrame(
+            [
+                {"Deck": "Pikachu", "Score_%": 55.0, "MAS_%": 55.0, "LB_%": 50.0, "BT_%": 60.0},
+                {"Deck": "Mewtwo", "Score_%": 45.0, "MAS_%": 45.0, "LB_%": 40.0, "BT_%": 50.0},
+            ]
+        )
+        ranking.index = pd.Index([1, 2], name="Rank")
+        return ranking, {"AUTO_K": {"K_used": 1.0}}, pd.DataFrame(), pd.DataFrame()
+
+    monkeypatch.setattr("pipelines.deck_ranking.run_mars_core", fake_run_mars_core)
+    monkeypatch.setattr(
+        "pipelines.deck_ranking.show_wr_heatmap",
+        lambda *args, **kwargs: (
+            SimpleNamespace(),
+            None,
+            pd.DataFrame([[None, 50.0], [50.0, None]], index=["Pikachu", "Mewtwo"], columns=["Pikachu", "Mewtwo"]),
+        ),
+    )
+
+    seen_plot_kwargs = {}
+
+    def fake_save_plot_dual(fig, base_dir, prefix, tag, fmt="png", dpi=300, also_versioned=True):
+        seen_plot_kwargs["also_versioned"] = also_versioned
+        base_dir.mkdir(parents=True, exist_ok=True)
+        latest = base_dir / f"{prefix}_latest.{fmt}"
+        latest.write_text("plot", encoding="utf-8")
+        return None, latest
+
+    monkeypatch.setattr("pipelines.deck_ranking.save_plot_dual", fake_save_plot_dual)
+
+    seen_report_kwargs = {}
+
+    def fake_write_mars_matchup_report(**kwargs):
+        seen_report_kwargs.update(kwargs)
+        out_dir = kwargs["out_dir"]
+        out_dir.mkdir(parents=True, exist_ok=True)
+        latest = out_dir / "mars_matchup_report_latest.xlsx"
+        latest.write_text("report", encoding="utf-8")
+        return None, latest, {"T": len(kwargs["filtered_wr"])}
+
+    monkeypatch.setattr("pipelines.deck_ranking.write_mars_matchup_report", fake_write_mars_matchup_report)
+
+    result = run_deck_ranking(
+        base_dir=tmp_path,
+        config_path=config_path,
+        run_scrape=True,
+        run_mars=True,
+        run_heatmap=True,
+        run_report=True,
+    )
+
+    assert result.diagnostics["output_profile"] == "user"
+    assert seen_plot_kwargs["also_versioned"] is False
+    assert seen_report_kwargs["also_versioned"] is False
+    assert seen_report_kwargs["keep_legend_image"] is False
+    assert "heatmap_topN" not in result.outputs
+    assert result.outputs["heatmap_topN_latest"].name == "wr_heatmap_latest.png"
+    assert "report" not in result.outputs
+    assert result.outputs["report_latest"].name == "mars_matchup_report_latest.xlsx"
+    assert result.outputs["run_manifest"].name == "run_manifest_latest.json"
+    assert result.outputs["run_manifest"].exists()
+    manifest = json.loads(result.outputs["run_manifest"].read_text(encoding="utf-8"))
+    assert Path(manifest["outputs"]["run_manifest"]) == result.outputs["run_manifest"]
+    assert "score_flat" not in result.outputs
+    assert "wr_matrix" not in result.outputs
+    assert "matchup_raw" not in result.outputs
+
+
+def test_run_mars_stage_converts_missing_score_flat_to_insufficient_data(tmp_path, monkeypatch):
+    paths = SimpleNamespace(base=tmp_path)
+    cfg = {"mars": {}, "alias": {"apply": False}}
+    wr = pd.DataFrame([[None, 50.0], [50.0, None]], index=["Pikachu", "Mewtwo"], columns=["Pikachu", "Mewtwo"])
+    n_dir = pd.DataFrame([[None, 2], [2, None]], index=["Pikachu", "Mewtwo"], columns=["Pikachu", "Mewtwo"])
+    top_meta = pd.DataFrame({"Deck": ["Pikachu", "Mewtwo"], "Share": ["60%", "40%"]})
+
+    try:
+        _run_mars_stage(
+            cfg=cfg,
+            paths=paths,
+            exp=Expansion(code="B3a", name="Paradox Drive"),
+            score_df=pd.DataFrame(),
+            wr_matrix=wr,
+            n_dir_matrix=n_dir,
+            top_meta_df=top_meta,
+        )
+    except InsufficientRankingDataError as exc:
+        assert "Missing post-filter score_flat" in str(exc)
+    else:
+        raise AssertionError("Expected InsufficientRankingDataError")

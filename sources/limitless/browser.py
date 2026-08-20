@@ -39,9 +39,12 @@ def make_chrome(*, headless: bool = True, detach: bool = False) -> webdriver.Chr
     opts.add_argument("--disable-popup-blocking")
     opts.add_argument("--disable-dev-shm-usage")
     opts.add_argument("--log-level=3")
+    opts.add_argument("--disable-logging")
+    opts.add_argument("--remote-debugging-pipe")
     opts.add_argument("--no-sandbox")
     opts.page_load_strategy = "eager"
     opts.add_experimental_option("detach", detach)
+    opts.add_experimental_option("excludeSwitches", ["enable-logging"])
 
     tmp_profile = Path(tempfile.mkdtemp(prefix="selenium-profile-"))
     opts.add_argument(f"--user-data-dir={tmp_profile}")

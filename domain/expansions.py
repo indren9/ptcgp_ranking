@@ -24,6 +24,7 @@ class Expansion:
     code: Optional[str]
     name: Optional[str]
     is_current: bool = False
+    rotation: Optional[str] = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "name", strip_expansion_code_prefix(self.code, self.name))

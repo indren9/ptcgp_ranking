@@ -21,7 +21,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     run = subparsers.add_parser("run", help="Run the deck ranking pipeline.")
     run.add_argument("--base-dir", default=".", help="Project root. Default: current directory.")
-    run.add_argument("--config", default="config/config.yaml", help="Config YAML path, relative to base-dir if needed.")
+    run.add_argument("--config", default="config/pocket.yaml", help="Config YAML path, relative to base-dir if needed.")
+    run.add_argument(
+        "--output-dir",
+        default=None,
+        help="Override paths.output_dir for this run. Relative paths are resolved from --base-dir.",
+    )
     run.add_argument("--heatmap-top-n", type=int, default=10, help="Number of decks to include in the WR heatmap.")
     run.add_argument("--skip-scrape", action="store_true", help="Skip scraping and read existing contract files.")
     run.add_argument("--skip-core", action="store_true", help="Skip core matrix rebuild.")
@@ -39,6 +44,7 @@ def _run_command(args: argparse.Namespace) -> int:
     result = run_deck_ranking(
         base_dir=base_dir,
         config_path=args.config,
+        output_dir=args.output_dir,
         run_scrape=not args.skip_scrape,
         run_core=False if args.skip_core else None,
         run_mars=not args.skip_mars,

@@ -629,7 +629,9 @@ def write_mars_matchup_report(
     include_mas_contrib_col: bool = False,
     out_dir: Path | str = "outputs/reports/mars",
     base_name: Optional[str] = None,   # default: mars_matchup_report
-) -> Tuple[Path, Path, Dict]:
+    also_versioned: bool = True,
+    keep_legend_image: bool = True,
+) -> Tuple[Optional[Path], Path, Dict]:
     """
     Generate per-deck sheets, add 00_Legenda (banner only) and 01_Summary,
     write the Excel workbook (versioned + latest), embed the banner, and reorder
@@ -680,7 +682,7 @@ def write_mars_matchup_report(
             prefix=base_name,
             tag=None,
             include_latest=True,
-            also_versioned=True,
+            also_versioned=also_versioned,
             top_k_contrib=5,
         )
     except TypeError as e:
@@ -694,7 +696,7 @@ def write_mars_matchup_report(
             prefix=base_name,
             tag=None,
             include_latest=True,
-            also_versioned=True,
+            also_versioned=also_versioned,
         )
     else:
         versioned_path, latest_path = res
@@ -704,15 +706,21 @@ def write_mars_matchup_report(
     for p in (versioned_path, latest_path):
         if p:
             _embed_banner_on_legend(p, banner_png, sheet_name="00_Legenda", rows_padding=36)
+    if not keep_legend_image:
+        try:
+            banner_png.unlink(missing_ok=True)
+        except Exception:
+            LOGGER.debug("Could not remove temporary legend image: %s", banner_png, exc_info=True)
 
     # Riordino fogli secondo ranking
-    _reorder_excel_sheets_robust(versioned_path, ranking_order)
+    if versioned_path:
+        _reorder_excel_sheets_robust(versioned_path, ranking_order)
     _reorder_excel_sheets_robust(latest_path, ranking_order)
 
     LOGGER.debug("Report scritto e riordinato | versioned=%s | latest=%s", versioned_path, latest_path)
-    return Path(versioned_path), Path(latest_path), meta
+    return Path(versioned_path) if versioned_path else None, Path(latest_path), meta
 
 
-def write_pairs_by_deck_report(**kwargs) -> Tuple[Path, Path, Dict]:
+def write_pairs_by_deck_report(**kwargs) -> Tuple[Optional[Path], Path, Dict]:
     """Compatibility wrapper for the old public name."""
     return write_mars_matchup_report(**kwargs)

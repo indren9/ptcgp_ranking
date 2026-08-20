@@ -177,6 +177,82 @@ def meta_diagnostics_summary_frame(
     return pd.DataFrame(rows, columns=["Metric", "Value"])
 
 
+def run_overview_frame(
+    *,
+    diagnostics: Mapping[str, Any] | None = None,
+    frames: Mapping[str, pd.DataFrame] | None = None,
+    outputs: Mapping[str, Any] | None = None,
+) -> pd.DataFrame:
+    diagnostics = diagnostics or {}
+    frames = frames or {}
+    outputs = outputs or {}
+
+    nan_filter = diagnostics.get("nan_filter") if isinstance(diagnostics.get("nan_filter"), Mapping) else {}
+    wildcard_summary = (
+        diagnostics.get("wildcard_candidates")
+        if isinstance(diagnostics.get("wildcard_candidates"), Mapping)
+        else {}
+    )
+    timing = (
+        diagnostics.get("matchup_scrape_timing")
+        if isinstance(diagnostics.get("matchup_scrape_timing"), Mapping)
+        else {}
+    )
+
+    def frame_rows(name: str) -> int:
+        frame = frames.get(name)
+        return int(len(frame)) if isinstance(frame, pd.DataFrame) else 0
+
+    rows = [
+        {"Area": "profile", "Metric": "output_profile", "Value": diagnostics.get("output_profile", "debug")},
+        {"Area": "scope", "Metric": "full_decklist_rows", "Value": frame_rows("decklist_raw") or diagnostics.get("decklist_rows", 0)},
+        {"Area": "scope", "Metric": "matchup_fetch_decks", "Value": frame_rows("top_meta_decklist") or diagnostics.get("top_meta_rows", 0)},
+        {"Area": "scope", "Metric": "mars_core_decks", "Value": frame_rows("mars_ranking") or diagnostics.get("mars_rows", 0)},
+        {"Area": "nan_filter", "Metric": "axis_all", "Value": diagnostics.get("axis_all_count", 0)},
+        {"Area": "nan_filter", "Metric": "axis_candidate_pool", "Value": diagnostics.get("axis0_count", 0)},
+        {"Area": "nan_filter", "Metric": "axis_kept", "Value": diagnostics.get("axis_kept_count", 0)},
+        {"Area": "nan_filter", "Metric": "dropped_count", "Value": nan_filter.get("dropped_count", 0)},
+        {"Area": "wildcard", "Metric": "full_scrape", "Value": diagnostics.get("wildcard_full_scrape", False)},
+        {"Area": "wildcard", "Metric": "candidate_rows", "Value": wildcard_summary.get("rows", frame_rows("wildcard_candidates"))},
+        {"Area": "scrape", "Metric": "cache_hits", "Value": timing.get("cache_hits", diagnostics.get("matchup_cache_hits", 0))},
+        {"Area": "scrape", "Metric": "cache_misses", "Value": timing.get("cache_misses", 0)},
+        {"Area": "outputs", "Metric": "saved_outputs", "Value": int(len(outputs))},
+        {"Area": "outputs", "Metric": "manifest_written", "Value": "run_manifest" in outputs},
+    ]
+    return pd.DataFrame(rows, columns=["Area", "Metric", "Value"])
+
+
+def scrape_timing_frame(diagnostics: Mapping[str, Any] | None = None) -> pd.DataFrame:
+    diagnostics = diagnostics or {}
+    timing = (
+        diagnostics.get("matchup_scrape_timing")
+        if isinstance(diagnostics.get("matchup_scrape_timing"), Mapping)
+        else {}
+    )
+    if not timing and "estimated_polite_delay_seconds" not in diagnostics:
+        return pd.DataFrame(columns=["Metric", "Value", "Unit"])
+
+    rows = [
+        {"Metric": "unique_pages", "Value": timing.get("unique_pages", diagnostics.get("matchup_pages", 0)), "Unit": "pages"},
+        {"Metric": "cache_hits", "Value": timing.get("cache_hits", diagnostics.get("matchup_cache_hits", 0)), "Unit": "pages"},
+        {"Metric": "cache_misses", "Value": timing.get("cache_misses", 0), "Unit": "pages"},
+    ]
+    for metric in ["elapsed_seconds", "delay_seconds_total", "avg_seconds_per_page"]:
+        if metric in timing:
+            rows.append({"Metric": metric, "Value": round(float(timing[metric]), 4), "Unit": "seconds"})
+    if "elapsed_seconds" in timing:
+        rows.append({"Metric": "elapsed_minutes", "Value": round(float(timing["elapsed_seconds"]) / 60.0, 4), "Unit": "minutes"})
+    if "estimated_polite_delay_seconds" in diagnostics:
+        delay = float(diagnostics.get("estimated_polite_delay_seconds") or 0.0)
+        rows.extend(
+            [
+                {"Metric": "estimated_polite_delay_seconds", "Value": round(delay, 4), "Unit": "seconds"},
+                {"Metric": "estimated_polite_delay_minutes", "Value": round(delay / 60.0, 4), "Unit": "minutes"},
+            ]
+        )
+    return pd.DataFrame(rows, columns=["Metric", "Value", "Unit"])
+
+
 def analysis_scope_summary_frame(
     *,
     decklist_raw: pd.DataFrame | None = None,
@@ -706,6 +782,71 @@ def output_paths_frame(outputs: Mapping[str, Any], *, base_dir: str | Path | Non
     return pd.DataFrame(rows, columns=["Output", "Path"])
 
 
+USER_OUTPUT_KEYS = {
+    "report_latest": ("user", "report"),
+    "mars_ranking": ("user", "ranking"),
+    "heatmap_topN_latest": ("user", "visual"),
+    "wildcard_candidates": ("user", "diagnostic"),
+    "run_manifest": ("user", "manifest"),
+}
+
+REPRODUCIBLE_OUTPUT_KEYS = {
+    "decklist_raw": ("reproducible", "rebuild"),
+    "top_meta_decklist": ("reproducible", "rebuild"),
+    "matchup_raw": ("reproducible", "rebuild"),
+}
+
+DEBUG_OUTPUT_KEYS = {
+    "score_flat": ("debug", "intermediate"),
+    "wr_matrix": ("debug", "matrix"),
+    "n_dir_matrix": ("debug", "matrix"),
+    "nan_diagnostics_pre_filter": ("debug", "diagnostic"),
+    "nan_filter_simulation": ("debug", "diagnostic"),
+    "heatmap_topN": ("debug", "timestamped"),
+    "report": ("debug", "timestamped"),
+}
+
+
+def _output_kind(key: str) -> tuple[str, str]:
+    if key in USER_OUTPUT_KEYS:
+        return USER_OUTPUT_KEYS[key]
+    if key in REPRODUCIBLE_OUTPUT_KEYS:
+        return REPRODUCIBLE_OUTPUT_KEYS[key]
+    if key in DEBUG_OUTPUT_KEYS:
+        return DEBUG_OUTPUT_KEYS[key]
+    return "unknown", "other"
+
+
+def saved_outputs_frame(outputs: Mapping[str, Any], *, base_dir: str | Path | None = None) -> pd.DataFrame:
+    """
+    Show saved artifacts with their intended audience.
+
+    This is notebook-facing: it keeps the normal user view focused on final
+    artifacts while still making debug/rebuild files visible when a richer
+    output profile is selected.
+    """
+    base = Path(base_dir).resolve() if base_dir is not None else None
+    rows = []
+    for key, path in sorted((outputs or {}).items()):
+        tier, kind = _output_kind(key)
+        path_obj = Path(path)
+        display_path = path_obj
+        if base is not None:
+            try:
+                display_path = path_obj.resolve().relative_to(base)
+            except Exception:
+                display_path = path_obj
+        rows.append(
+            {
+                "Output": key,
+                "Tier": tier,
+                "Kind": kind,
+                "Path": str(display_path),
+            }
+        )
+    return pd.DataFrame(rows, columns=["Output", "Tier", "Kind", "Path"])
+
+
 def diagnostics_preview_frame(diagnostics: Mapping[str, Any]) -> pd.DataFrame:
     rows = []
     for key, value in sorted((diagnostics or {}).items()):
@@ -881,6 +1022,71 @@ def wildcard_review_frame(
     return out.reset_index(drop=True)
 
 
+def core_weighted_wr_baseline(score_flat: pd.DataFrame | None) -> float | None:
+    if score_flat is None or score_flat.empty:
+        return None
+    if not {"Deck A", "W", "L"} <= set(score_flat.columns):
+        return None
+
+    sf = score_flat.copy()
+    sf["W"] = pd.to_numeric(sf["W"], errors="coerce").fillna(0.0)
+    sf["L"] = pd.to_numeric(sf["L"], errors="coerce").fillna(0.0)
+    core_perf = sf.groupby("Deck A", sort=False)[["W", "L"]].sum()
+    denom = core_perf["W"] + core_perf["L"]
+    core_perf = core_perf[denom > 0].copy()
+    if core_perf.empty:
+        return None
+    core_perf["WR_vs_core_weighted_%"] = 100.0 * core_perf["W"] / (core_perf["W"] + core_perf["L"])
+    return float(core_perf["WR_vs_core_weighted_%"].median())
+
+
+def wildcard_summary_frame(
+    wildcard_review: pd.DataFrame | None,
+    *,
+    core_wr_baseline: float | None = None,
+) -> pd.DataFrame:
+    rows: list[dict[str, Any]] = []
+    wc = wildcard_review.copy() if wildcard_review is not None else pd.DataFrame()
+
+    rows.append({"Area": "baseline", "Metric": "core_weighted_wr_median_%", "Value": None if core_wr_baseline is None else round(float(core_wr_baseline), 4)})
+    rows.append({"Area": "wildcards", "Metric": "candidate_rows", "Value": int(len(wc))})
+
+    if wc.empty:
+        return pd.DataFrame(rows, columns=["Area", "Metric", "Value"])
+
+    for area, col in [
+        ("promotion", "promotion_tier"),
+        ("evidence", "evidence_tier"),
+        ("performance", "performance_tier"),
+    ]:
+        if col not in wc.columns:
+            continue
+        counts = wc[col].value_counts(dropna=False)
+        for label, count in counts.items():
+            rows.append({"Area": area, "Metric": str(label), "Value": int(count)})
+
+    numeric_specs = [
+        ("coverage_vs_core_%", "coverage_vs_core"),
+        ("N_vs_core", "n_vs_core"),
+        ("WR_vs_core_weighted_%", "wr_vs_core_weighted"),
+    ]
+    for col, label in numeric_specs:
+        if col not in wc.columns:
+            continue
+        values = pd.to_numeric(wc[col], errors="coerce").dropna()
+        if values.empty:
+            continue
+        rows.extend(
+            [
+                {"Area": label, "Metric": "min", "Value": round(float(values.min()), 4)},
+                {"Area": label, "Metric": "median", "Value": round(float(values.median()), 4)},
+                {"Area": label, "Metric": "max", "Value": round(float(values.max()), 4)},
+            ]
+        )
+
+    return pd.DataFrame(rows, columns=["Area", "Metric", "Value"])
+
+
 def frame_inventory_frame(frames: Mapping[str, pd.DataFrame]) -> pd.DataFrame:
     rows = []
     for name, frame in sorted((frames or {}).items()):
@@ -900,6 +1106,7 @@ __all__ = [
     "analysis_scope_summary_frame",
     "candidate_vs_full_summary_frame",
     "coverage_volume_summary_frame",
+    "core_weighted_wr_baseline",
     "evidence_core_comparison_frame",
     "evidence_core_eligibility_frame",
     "evidence_core_iterative_frame",
@@ -910,8 +1117,12 @@ __all__ = [
     "meta_diagnostics_summary_frame",
     "nan_diagnostics_critical_frame",
     "output_paths_frame",
+    "run_overview_frame",
+    "saved_outputs_frame",
+    "scrape_timing_frame",
     "share_distribution_frame",
     "show_ranking",
     "style_ranking_preview",
     "wildcard_review_frame",
+    "wildcard_summary_frame",
 ]

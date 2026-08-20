@@ -11,18 +11,21 @@ log = logging.getLogger("ptcgp")
 
 def read_config(base_dir: Path) -> tuple[dict[str, Any], Path, Path]:
     """
-    Load config/config.yaml and locate the optional alias_map.json file.
+    Load the default Pocket config and locate the optional alias_map.json file.
 
     Returns (cfg, yaml_file, alias_json). It does not create files.
     """
     cfg_dir = Path(base_dir) / "config"
-    yaml_file = cfg_dir / "config.yaml"
+    yaml_file = cfg_dir / "pocket.yaml"
+    legacy_yaml_file = cfg_dir / "config.yaml"
+    if not yaml_file.exists() and legacy_yaml_file.exists():
+        yaml_file = legacy_yaml_file
     alias_json = cfg_dir / "alias_map.json"
 
     if not yaml_file.exists():
         raise FileNotFoundError(
-            f"[init] Missing config.yaml: {yaml_file}\n"
-            "Create 'config/config.yaml' (see README) with the run configuration section."
+            f"[init] Missing default config: {yaml_file}\n"
+            "Create 'config/pocket.yaml' (see README) with the run configuration section."
         )
 
     with open(yaml_file, "r", encoding="utf-8") as f:
