@@ -2,6 +2,8 @@
 
 # PTCGP Ranking · MARS
 
+<img src="docs/assets/github-social-preview-final.jpg" alt="PTCGP Ranking MARS — Meta-Adjusted Regularized Score" width="100%">
+
 **From Limitless matchup data to a reproducible, uncertainty-aware deck ranking.**
 
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
