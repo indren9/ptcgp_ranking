@@ -84,3 +84,4 @@ websocket-client==1.8.0
 wheel==0.45.1
 widgetsnbextension==4.0.14
 wsproto==1.2.0
+pytest==8.4.2
