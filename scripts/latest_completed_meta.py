@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
@@ -17,6 +18,19 @@ README_START = "<!-- latest-completed-meta:start -->"
 README_END = "<!-- latest-completed-meta:end -->"
 REQUIRED_BUNDLE_FILES = ("fragment.md", "heatmap.png", "ranking.csv", "manifest.json")
 PUBLIC_BUNDLE_FILES = ("heatmap.png", "ranking.csv", "manifest.json")
+PUBLIC_RANKING_COLUMNS = (
+    "Rank",
+    "Deck",
+    "Score_%",
+    "MAS_%",
+    "LB_%",
+    "BT_%",
+    "SE_%",
+    "N_eff",
+    "Opp_used",
+    "Opp_total",
+    "Coverage_%",
+)
 
 
 @dataclass(frozen=True)
@@ -164,6 +178,14 @@ def replace_readme_block(readme: str, fragment: str) -> str:
     )
 
 
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def validate_bundle(bundle_dir: Path, plan: Mapping[str, Any]) -> dict[str, Any]:
     missing = [name for name in REQUIRED_BUNDLE_FILES if not (bundle_dir / name).is_file()]
     if missing:
@@ -182,6 +204,41 @@ def validate_bundle(bundle_dir: Path, plan: Mapping[str, Any]) -> dict[str, Any]
         raise ValueError("Bundle heatmap.png is empty")
     if (bundle_dir / "ranking.csv").stat().st_size == 0:
         raise ValueError("Bundle ranking.csv is empty")
+    if (bundle_dir / "heatmap.png").read_bytes()[:8] != b"\x89PNG\r\n\x1a\n":
+        raise ValueError("Bundle heatmap.png is not a valid PNG file")
+
+    with (bundle_dir / "ranking.csv").open(newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        if tuple(reader.fieldnames or ()) != PUBLIC_RANKING_COLUMNS:
+            raise ValueError("Bundle ranking.csv does not match the public ranking column contract")
+        ranking_rows = list(reader)
+    if not ranking_rows:
+        raise ValueError("Bundle ranking.csv has no data rows")
+    if [row.get("Rank") for row in ranking_rows] != [str(rank) for rank in range(1, len(ranking_rows) + 1)]:
+        raise ValueError("Bundle ranking.csv Rank must be contiguous and start at 1")
+    if any(not str(row.get("Deck") or "").strip() for row in ranking_rows):
+        raise ValueError("Bundle ranking.csv contains a blank deck name")
+
+    source = (manifest or {}).get("source") or {}
+    if source.get("contains_personal_data") is not False:
+        raise ValueError("Bundle manifest must explicitly state contains_personal_data=false")
+    outputs = (manifest or {}).get("outputs") or {}
+    for key, filename in (("ranking", "ranking.csv"), ("heatmap", "heatmap.png")):
+        expected_hash = ((outputs.get(key) or {}).get("sha256"))
+        if not expected_hash or str(expected_hash).lower() != _sha256(bundle_dir / filename):
+            raise ValueError(f"Bundle {filename} hash does not match manifest")
+
+    public_text = "\n".join(
+        [
+            (bundle_dir / "fragment.md").read_text(encoding="utf-8"),
+            (bundle_dir / "ranking.csv").read_text(encoding="utf-8"),
+            (bundle_dir / "manifest.json").read_text(encoding="utf-8"),
+        ]
+    ).casefold()
+    forbidden = ("c:\\users\\", "onedrive", "cookie", "authorization:", "x-access-key")
+    found = [token for token in forbidden if token in public_text]
+    if found:
+        raise ValueError(f"Bundle contains forbidden local/sensitive text: {', '.join(found)}")
     return manifest
 
 

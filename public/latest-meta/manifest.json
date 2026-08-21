@@ -1,0 +1,201 @@
+{
+  "analysis": {
+    "candidate_pool_decks": 47,
+    "core_decks": 39,
+    "coverage_pct": {
+      "max": 100.0,
+      "median": 94.7368,
+      "min": 84.2105
+    },
+    "decisive_matches": 9729,
+    "deck_archetypes_in_source": 461,
+    "dropped_by_nan_filter": 8,
+    "post_filter_matchup_rows": 1396,
+    "top_meta_decks": 47
+  },
+  "artifact": "latest-completed-meta",
+  "configuration": {
+    "candidate_pool": {
+      "share_pct": 80.0
+    },
+    "mars": {
+      "ALPHA_COMPOSITE": 0.72,
+      "AUTO_GAMMA": false,
+      "AUTO_K": true,
+      "BOOT_LOCAL_MULTS": [
+        0.7071067812,
+        1.0,
+        1.4142135624
+      ],
+      "BOOT_N": 50,
+      "BT_NEAR_BAND": 0.1,
+      "BT_SOFT_POWER": null,
+      "BT_TOL": 1e-06,
+      "BT_USE_HARMONIC_N": true,
+      "EPS": 1e-12,
+      "EXPAND_LO_STEPS": 2,
+      "GAMMA_BASE": 0.1,
+      "GAMMA_MAX": 0.6,
+      "GAMMA_META_BLEND": 0.3,
+      "GAMMA_MIN": 0.1,
+      "GAMMA_SLOPE": 1.5,
+      "HALF_TIES": false,
+      "HALF_TIES_WEIGHT": 0.5,
+      "INSTANT_APPLY_K": true,
+      "K_BASE": 4.0,
+      "K_BASE_BOUNDS": [
+        1.0,
+        12.0
+      ],
+      "K_CONST_BOUNDS": [
+        0.05,
+        50.0
+      ],
+      "K_GRID_MULTS": [
+        0.25,
+        0.5,
+        1.0,
+        2.0,
+        4.0
+      ],
+      "K_MIN": 0.1,
+      "K_SCALE": 2.0,
+      "K_SCALE_BOUNDS": [
+        0.5,
+        3.0
+      ],
+      "LAMBDA_RIDGE": 1.5,
+      "MAX_BT_ITER": 500,
+      "META_GAP_POLICY": "encounter",
+      "MIN_TEST_IF_N_GE_4": 2,
+      "MIN_TRAIN_IF_N_GT_1": 1,
+      "MU": 0.5,
+      "N_MIN_BT_TARGET": 5,
+      "REL_TOL_LL": 0.001,
+      "RHO_TEST": 0.3333333333,
+      "SEED": 42,
+      "Z_PENALTY": 1.96
+    },
+    "nan_filter": {
+      "dynamic": {
+        "max_nan_ratio": 0.5,
+        "min_axis_count": null,
+        "min_nan_ratio": 0.15,
+        "step": 0.05,
+        "target_share_pct": 80.0
+      },
+      "max_nan_ratio": 0.15,
+      "min_nan_allowed": 1,
+      "mode": "fixed",
+      "use_ceil": false
+    },
+    "profile": "config/pocket.yaml",
+    "profile_sha256": "dc05c8fe7e5a9a8681b2043f0dec56e2f40dde709171fef6f8e002641333ffb7",
+    "runtime": {
+      "K_used": 4.387482193696061
+    },
+    "source_revision": "ceebfd37d8f40925d3b069d2ecca1d31caf9a527",
+    "top_meta": {
+      "ensure_at_least": 1,
+      "threshold_pct": 80.0
+    }
+  },
+  "format": "standard",
+  "game": "POCKET",
+  "generated_at": "2026-08-21T08:37:38+00:00",
+  "inputs": {
+    "decklist_aggregate": {
+      "file": "decklist_raw_latest.csv",
+      "rows": 461,
+      "sha256": "a6ea8abe633368ee85c1d912d47d27a729e02ac99c1266d611d082f2c6e7e13a"
+    },
+    "matchup_aggregate": {
+      "file": "matchup_raw_latest.csv",
+      "rows": 4955,
+      "sha256": "57b368b9373af629ccdf1343e5bfe2b79c9f73c42367aa6d6ef1605367bd39f2"
+    },
+    "source_ranking": {
+      "file": "mars_ranking_latest.csv",
+      "rows": 39,
+      "sha256": "89b3bb01fffc163d0a5033404bf167116078ddbd57793200c83ed6e5b10f2a52"
+    },
+    "top_meta_aggregate": {
+      "file": "top_meta_decklist_latest.csv",
+      "rows": 47,
+      "sha256": "760cb625849a1d11c7d7a9a939b8202b3a8ca96c617767f99b7d186663bad62d"
+    }
+  },
+  "limitations": [
+    "The source inputs do not encode an exact tournament start/end window.",
+    "Coverage and match volume vary by deck; low-volume cells can be volatile.",
+    "The ranking describes the observed completed meta and is not a tournament forecast."
+  ],
+  "methodology": {
+    "name": "MARS — Meta-Adjusted, Regularized Score",
+    "score_interpretation": "Percentile-like composite score, not a match win probability.",
+    "score_mapping": "Score_% = 100 * Phi(z_comp)",
+    "ties_in_directional_win_rates": "excluded"
+  },
+  "outputs": {
+    "heatmap": {
+      "file": "heatmap.png",
+      "orientation": "row deck versus column opponent",
+      "sha256": "1750b2972b17b50d8d058c39877b7d28af2f2896a581bdc5ebf009d3c5ec2160",
+      "top_n": 10
+    },
+    "ranking": {
+      "columns": [
+        "Rank",
+        "Deck",
+        "Score_%",
+        "MAS_%",
+        "LB_%",
+        "BT_%",
+        "SE_%",
+        "N_eff",
+        "Opp_used",
+        "Opp_total",
+        "Coverage_%"
+      ],
+      "file": "ranking.csv",
+      "percent_precision_decimals": 4,
+      "rows": 39,
+      "sha256": "9afa9ff13abba17dc44723b61e5af41ee13c004bf3fdf36a0471b702510ad407"
+    }
+  },
+  "provenance": {
+    "ranking_heatmap_same_recomputed_core": true,
+    "reproduced_with_current_code": true,
+    "source_ranking_max_abs_difference": 1.4210854715202004e-14
+  },
+  "schema_version": 1,
+  "set": {
+    "code": "B3b",
+    "name": "Everyday Wonders"
+  },
+  "snapshot": {
+    "acquired_on": "2026-07-15",
+    "collection_scope": "Set-level aggregate deck and matchup statistics available on the Limitless deck pages at acquisition time; the cached inputs do not encode an exact tournament date window.",
+    "collection_window": null,
+    "format": "standard",
+    "game": {
+      "code": "POCKET",
+      "name": "Pokémon TCG Pocket"
+    },
+    "set": {
+      "code": "B3b",
+      "name": "Everyday Wonders"
+    }
+  },
+  "source": {
+    "affiliation": "This project is independent and is not affiliated with or endorsed by Limitless TCG.",
+    "aggregation": "Only aggregate deck-archetype statistics are published.",
+    "attribution": "Built from public tournament data provided by Limitless TCG.",
+    "contains_personal_data": false,
+    "data_license": "No data license is asserted by this repository.",
+    "decks_url": "https://play.limitlesstcg.com/decks?game=POCKET&format=standard&set=B3b",
+    "developer_documentation": "https://docs.limitlesstcg.com/developer",
+    "provider": "Limitless TCG",
+    "terms_of_service": "https://play.limitlesstcg.com/tos"
+  }
+}

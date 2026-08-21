@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 from pathlib import Path
 
@@ -16,10 +18,40 @@ from scripts.latest_completed_meta import (
 
 
 NOW = "2026-08-20T12:00:00+00:00"
+PNG_1X1 = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+)
+RANKING = (
+    "Rank,Deck,Score_%,MAS_%,LB_%,BT_%,SE_%,N_eff,Opp_used,Opp_total,Coverage_%\n"
+    "1,Example,60.0000,55.0000,50.0000,65.0000,2.0000,100,9,9,100.0000\n"
+)
 
 
 def entries(*codes: str) -> list[CatalogEntry]:
     return [CatalogEntry(code=code, name=f"Set {code}") for code in codes]
+
+
+def write_bundle(bundle: Path, *, code: str = "B3b") -> None:
+    bundle.mkdir()
+    (bundle / "fragment.md").write_text("## Latest completed meta\n", encoding="utf-8")
+    (bundle / "heatmap.png").write_bytes(PNG_1X1)
+    (bundle / "ranking.csv").write_text(RANKING, encoding="utf-8")
+    ranking_hash = hashlib.sha256((bundle / "ranking.csv").read_bytes()).hexdigest()
+    heatmap_hash = hashlib.sha256((bundle / "heatmap.png").read_bytes()).hexdigest()
+    (bundle / "manifest.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "set": {"code": code, "name": f"Set {code}"},
+                "source": {"contains_personal_data": False},
+                "outputs": {
+                    "ranking": {"sha256": ranking_hash},
+                    "heatmap": {"sha256": heatmap_hash},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
 
 
 def test_initial_plan_selects_penultimate_catalog_entry():
@@ -71,14 +103,7 @@ def test_replace_readme_block_preserves_boundaries():
 def test_publish_bundle_replaces_only_latest_snapshot_and_records_state(tmp_path: Path):
     bundle = tmp_path / "bundle"
     target = tmp_path / "public" / "latest-meta"
-    bundle.mkdir()
-    (bundle / "fragment.md").write_text("## Latest completed meta — B3b\n", encoding="utf-8")
-    (bundle / "heatmap.png").write_bytes(b"png-data")
-    (bundle / "ranking.csv").write_text("rank,deck\n1,Example\n", encoding="utf-8")
-    (bundle / "manifest.json").write_text(
-        json.dumps({"schema_version": 1, "set": {"code": "B3b", "name": "Set B3b"}}),
-        encoding="utf-8",
-    )
+    write_bundle(bundle)
     plan_path = tmp_path / "plan.json"
     plan = build_publication_plan(entries("B3a", "B3b", "B4"), generated_at=NOW)
     plan_path.write_text(json.dumps(plan), encoding="utf-8")
@@ -95,21 +120,15 @@ def test_publish_bundle_replaces_only_latest_snapshot_and_records_state(tmp_path
     )
 
     assert result["published_set"]["code"] == "B3b"
-    assert (target / "heatmap.png").read_bytes() == b"png-data"
-    assert (target / "ranking.csv").read_text(encoding="utf-8") == "rank,deck\n1,Example\n"
-    assert "Latest completed meta — B3b" in readme.read_text(encoding="utf-8")
+    assert (target / "heatmap.png").read_bytes() == PNG_1X1
+    assert (target / "ranking.csv").read_text(encoding="utf-8") == RANKING
+    assert "Latest completed meta" in readme.read_text(encoding="utf-8")
     assert json.loads(state.read_text(encoding="utf-8"))["published_completed_set"]["code"] == "B3b"
 
 
 def test_publish_rejects_bundle_for_a_different_set_before_writing(tmp_path: Path):
     bundle = tmp_path / "bundle"
-    bundle.mkdir()
-    (bundle / "fragment.md").write_text("content", encoding="utf-8")
-    (bundle / "heatmap.png").write_bytes(b"png-data")
-    (bundle / "ranking.csv").write_text("rank,deck\n", encoding="utf-8")
-    (bundle / "manifest.json").write_text(
-        json.dumps({"set": {"code": "B3a"}}), encoding="utf-8"
-    )
+    write_bundle(bundle, code="B3a")
     plan_path = tmp_path / "plan.json"
     plan_path.write_text(
         json.dumps(build_publication_plan(entries("B3a", "B3b", "B4"), generated_at=NOW)),
@@ -129,3 +148,24 @@ def test_publish_rejects_bundle_for_a_different_set_before_writing(tmp_path: Pat
         )
 
     assert not target.exists()
+
+
+def test_publish_rejects_ranking_whose_hash_does_not_match_manifest(tmp_path: Path):
+    bundle = tmp_path / "bundle"
+    write_bundle(bundle)
+    (bundle / "ranking.csv").write_text(RANKING.replace("Example", "Changed"), encoding="utf-8")
+    plan_path = tmp_path / "plan.json"
+    plan_path.write_text(
+        json.dumps(build_publication_plan(entries("B3a", "B3b", "B4"), generated_at=NOW)),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="hash does not match"):
+        publish_bundle(
+            bundle_dir=bundle,
+            plan_path=plan_path,
+            readme_path=tmp_path / "README.md",
+            state_path=tmp_path / "state.json",
+            target_dir=tmp_path / "public" / "latest-meta",
+            dry_run=True,
+        )

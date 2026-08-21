@@ -42,6 +42,7 @@ desktop.ini
 .pytest_cache/
 .pytest_tmp/
 .pytest_tmp_verify/
+.pytest_tmp*/
 .mypy_cache/
 .ruff_cache/
 .tox/
@@ -63,6 +64,7 @@ cache/requests/**/*
 outputs/
 outputs/**/*
 !outputs/.gitkeep
+chatgpt_project_sources/
 project_tree.txt
 project_tree_*.txt
 
