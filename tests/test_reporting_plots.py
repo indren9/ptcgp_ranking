@@ -34,6 +34,9 @@ def test_show_wr_heatmap_returns_clamped_submatrix():
         assert wr_sub.columns.tolist() == ["Pikachu", "Mewtwo", "Charizard"]
         assert pd.isna(wr_sub.loc["Pikachu", "Pikachu"])
         assert ax.get_title() == "WR heatmap - Full ranking (3)"
+        assert ax.get_xlabel() == "Opponent (column)"
+        assert ax.get_ylabel() == "Deck (row)"
+        assert any("Read row → column" in text.get_text() for text in ax.texts)
     finally:
         plt.close(fig)
 
@@ -49,5 +52,34 @@ def test_utils_display_show_wr_heatmap_is_compatible_wrapper():
     fig, _, wr_sub = legacy_show_wr_heatmap(sample_ranking(), wr=sample_wr(), top_n=2)
     try:
         assert wr_sub.shape == (2, 2)
+    finally:
+        plt.close(fig)
+
+
+def test_show_wr_heatmap_wraps_long_labels_and_can_hide_note():
+    ranking = pd.DataFrame(
+        [
+            {"Deck": "A very long competitive deck archetype"},
+            {"Deck": "Another unusually long deck archetype"},
+        ]
+    )
+    wr = pd.DataFrame(
+        [[None, 90.0], [10.0, None]],
+        index=ranking["Deck"],
+        columns=ranking["Deck"],
+    )
+
+    fig, ax, _ = show_wr_heatmap(
+        ranking,
+        wr=wr,
+        top_n=2,
+        label_wrap_width=14,
+        show_orientation_note=False,
+    )
+    try:
+        assert "\n" in ax.get_xticklabels()[0].get_text()
+        assert not any("Read row → column" in text.get_text() for text in ax.texts)
+        colorbar = fig.axes[-1]
+        assert colorbar.get_ylabel() == "Observed win rate (%)"
     finally:
         plt.close(fig)

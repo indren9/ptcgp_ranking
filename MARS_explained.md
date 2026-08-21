@@ -91,8 +91,13 @@ percentage-like score:
 
 ```text
 z_comp = alpha * z(LB) + (1 - alpha) * z(BT)
-Score_% = 100 * Phi(z_comp / sqrt(2))
+Score_% = 100 * Phi(z_comp)
 ```
+
+This is the mapping implemented in `mars/composite.py`. Earlier drafts used
+`Phi(z_comp / sqrt(2))`; that is not the behavior of the current code or of the
+published example. The mapped value is a percentile-like composite score, not
+a matchup win probability.
 
 Default tie-break order:
 
@@ -123,11 +128,11 @@ Typical ranking columns:
 - `LB_%` much lower than `MAS_%`: high uncertainty.
 - Low coverage: interpret the rank more cautiously.
 
-## Recommended Defaults
+## Shipped Profile Defaults
 
 ```yaml
 MU: 0.5
-Z_PENALTY: 1.2
+Z_PENALTY: 1.96
 ALPHA_COMPOSITE: 0.72
 AUTO_K: true
 GAMMA_META_BLEND: 0.30
@@ -140,3 +145,8 @@ LAMBDA_RIDGE: 1.5
 
 These defaults favor a stable but still discriminating ranking for incomplete
 Limitless matchup data.
+
+All four shipped YAML profiles use `Z_PENALTY: 1.96`. The `MARSConfig`
+dataclass retains `1.2` as its fallback when code instantiates it without a
+profile; public run manifests record the effective profile value so the two
+contexts are not conflated.

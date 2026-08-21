@@ -1,7 +1,9 @@
 |-- .github\
-|   `-- workflows\
-|       |-- tests.yml
-|       `-- update-expansion-catalog.yml
+|   |-- workflows\
+|   |   |-- latest-completed-meta.yml
+|   |   |-- tests.yml
+|   |   `-- update-expansion-catalog.yml
+|   `-- latest-completed-meta-state.json
 |-- cli\
 |   `-- deck_ranking.py
 |-- config\
@@ -18,11 +20,12 @@
 |   |-- nan_diagnostics.py
 |   |-- nan_filter.py
 |   `-- normalize.py
-|-- data\
-|   |-- external\
-|   `-- raw\
 |-- docs\
+|   |-- assets\
+|   |   |-- github-social-preview-final.jpg
+|   |   `-- github-social-preview.jpg
 |   |-- google_sheets_expansions.md
+|   |-- latest_completed_meta.md
 |   |-- output_contract.md
 |   |-- refactor_roadmap.md
 |   `-- run_observations.md
@@ -47,6 +50,10 @@
 |-- pipelines\
 |   `-- deck_ranking.py
 |-- public\
+|   |-- latest-meta\
+|   |   |-- heatmap.png
+|   |   |-- manifest.json
+|   |   `-- ranking.csv
 |   `-- expansions_pocket_standard.csv
 |-- reporting\
 |   |-- excel.py
@@ -69,6 +76,8 @@
 |   `-- session.py
 |-- scripts\
 |   |-- export_expansions_catalog.py
+|   |-- latest_completed_meta.py
+|   |-- latest_completed_meta_producer.py
 |   |-- run_all_sets.py
 |   `-- run_pocket_all_sets.py
 |-- sources\
@@ -88,6 +97,8 @@
 |   |-- test_core_matrices.py
 |   |-- test_expansion_auto_fallback.py
 |   |-- test_export_expansions_catalog.py
+|   |-- test_latest_completed_meta.py
+|   |-- test_latest_completed_meta_producer.py
 |   |-- test_limitless_browser.py
 |   |-- test_limitless_client.py
 |   |-- test_logging_noise.py

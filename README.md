@@ -45,6 +45,37 @@ convenient interfaces around it.
 | Three interfaces | CLI for automation, Python API for integration, notebook for exploration |
 
 <!-- latest-completed-meta:start -->
+
+## See MARS in action
+
+### Latest completed Pocket meta: B3b — Everyday Wonders
+
+`Pokémon TCG Pocket` `Standard` `39 decks` `9,729 decisive matches` `84.21–100.00% coverage`
+
+![Observed win-rate heatmap for the top 10 MARS decks](public/latest-meta/heatmap.png)
+
+| Rank | Deck | Score % | MAS % | LB % | BT % | Coverage % |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: |
+| 1 | Suicune ex Baxcalibur | 94.00 | 53.88 | 51.59 | 73.54 | 100.00 |
+| 2 | Miraidon ex Magnezone | 93.98 | 53.58 | 51.70 | 71.90 | 100.00 |
+| 3 | Mega Blaziken ex Greninja | 92.91 | 53.93 | 51.07 | 74.22 | 100.00 |
+| 4 | Indeedee ex Giratina ex | 91.23 | 54.25 | 50.85 | 68.55 | 97.37 |
+| 5 | Mega Altaria ex Espeon | 90.67 | 53.79 | 49.98 | 77.68 | 100.00 |
+| 6 | Mega Lucario ex Lucario | 88.77 | 52.21 | 49.69 | 73.72 | 100.00 |
+| 7 | Mega Manectric ex Zeraora | 87.18 | 52.97 | 48.39 | 85.30 | 97.37 |
+| 8 | Mega Sceptile ex Greninja | 84.63 | 51.54 | 49.28 | 64.60 | 100.00 |
+| 9 | Zoroark ex Mega Absol ex | 83.03 | 52.72 | 48.31 | 72.83 | 97.37 |
+| 10 | Mega Lucario ex Igglybuff | 76.80 | 53.51 | 47.50 | 66.99 | 86.84 |
+
+[Download the full ranking CSV](public/latest-meta/ranking.csv) · [Inspect the provenance manifest](public/latest-meta/manifest.json) · [Read the MARS methodology](MARS_explained.md)
+
+`MAS_%` is posterior-smoothed performance against the observed meta; `LB_%` subtracts the configured uncertainty penalty. `BT_%` is regularized Bradley–Terry strength across the matchup graph. `Score_%` maps the standardized LB/BT composite through the normal CDF and is not a match win probability. `Coverage_%` is the share of core opponents with observed decisive matchup evidence.
+
+> [!IMPORTANT]
+> MARS is an analytical ranking of this observed, completed meta—not a tournament forecast. Sparse matchups, player skill, and later metagame shifts remain outside the score.
+
+Built from public tournament data provided by [Limitless TCG](https://limitlesstcg.com/). See the official [Limitless developer guide](https://docs.limitlesstcg.com/developer). This independent project is not affiliated with or endorsed by Limitless TCG.
+
 <!-- latest-completed-meta:end -->
 
 ## How the pipeline flows
@@ -313,8 +344,11 @@ Both are standardized before blending:
 
 ```text
 z_comp = alpha × z(LB) + (1 - alpha) × z(BT)
-Score_% = 100 × Phi(z_comp / sqrt(2))
+Score_% = 100 × Phi(z_comp)
 ```
+
+This is the mapping implemented in `mars/composite.py`. `Score_%` is a
+percentile-like composite score, not a matchup win probability.
 
 ```mermaid
 flowchart TB
@@ -456,7 +490,8 @@ https://github.com/indren9/ptcgp_ranking
 Pokemon and related names are trademarks of their respective owners. This
 independent project is not affiliated with, endorsed by, or sponsored by The
 Pokemon Company, Nintendo, Game Freak, Creatures, or Limitless TCG. See
-[NOTICE](NOTICE).
+[NOTICE](NOTICE). The MIT License covers this repository's code; no license is
+asserted for third-party tournament data.
 
 <div align="center">
 

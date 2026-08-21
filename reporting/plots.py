@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from textwrap import wrap
 from typing import Optional, Tuple
 
 import matplotlib
@@ -32,6 +33,13 @@ def _font_sizes(k: int) -> tuple[float, float, float]:
     return 7.0, 7.0, 11.5
 
 
+def _wrap_label(value: object, width: int) -> str:
+    text = str(value).strip()
+    if width <= 0:
+        return text
+    return "\n".join(wrap(text, width=width, break_long_words=False, break_on_hyphens=False))
+
+
 def show_wr_heatmap(
     ranking: pd.DataFrame,
     *,
@@ -42,11 +50,13 @@ def show_wr_heatmap(
     fmt: str = ".1f",
     cmap: str = "RdBu_r",
     center: float = 50.0,
-    vmin: float = 0.0,
-    vmax: float = 100.0,
-    figsize: Tuple[float, float] = (12, 10),
+    vmin: float = 20.0,
+    vmax: float = 80.0,
+    figsize: Tuple[float, float] = (12, 9),
     title: Optional[str] = None,
-    na_color: str = "white",
+    na_color: str = "#f4f4f5",
+    label_wrap_width: int = 20,
+    show_orientation_note: bool = True,
     save: bool = False,
     save_dir: Path | None = None,
     save_fmt: str = "png",
@@ -97,23 +107,40 @@ def show_wr_heatmap(
         vmax=vmax,
         center=center,
         square=True,
-        cbar_kws={"label": "Winrate %"},
-        linewidths=0,
-        linecolor=None,
+        cbar_kws={"label": "Observed win rate (%)", "extend": "both"},
+        linewidths=0.5,
+        linecolor="#ffffff",
         annot=annot,
         fmt=fmt,
         annot_kws={"fontsize": annot_fs} if annot else None,
     )
 
-    ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right", fontsize=tick_fs)
-    ax.set_yticklabels(ax.get_yticklabels(), rotation=0, fontsize=tick_fs)
+    xlabels = [_wrap_label(label.get_text(), label_wrap_width) for label in ax.get_xticklabels()]
+    ylabels = [_wrap_label(label.get_text(), label_wrap_width) for label in ax.get_yticklabels()]
+    ax.set_xticklabels(xlabels, rotation=35, ha="right", rotation_mode="anchor", fontsize=tick_fs)
+    ax.set_yticklabels(ylabels, rotation=0, fontsize=tick_fs)
+    ax.set_xlabel("Opponent (column)", labelpad=10)
+    ax.set_ylabel("Deck (row)", labelpad=10)
     for spine in ax.spines.values():
         spine.set_visible(False)
     ax.grid(False)
 
     if title is None:
         title = f"WR heatmap - Top-{k} (ranking order)" if k < total else f"WR heatmap - Full ranking ({total})"
-    ax.set_title(title, pad=12, fontsize=title_fs)
+    ax.set_title(title, pad=30 if show_orientation_note else 12, fontsize=title_fs)
+
+    if show_orientation_note:
+        ax.text(
+            0.5,
+            1.005,
+            f"Read row → column · blank cells are mirrors or unobserved matchups · "
+            f"Colors are clipped outside {vmin:g}-{vmax:g}%.",
+            transform=ax.transAxes,
+            ha="center",
+            va="bottom",
+            fontsize=max(7.5, tick_fs - 1),
+            color="#52525b",
+        )
 
     if save:
         if save_dir is None:
