@@ -81,9 +81,16 @@ def _optional_int(value: Any, *, field_name: str) -> int | None:
     return number
 
 
-def _required_nonnegative_int(value: Any, *, field_name: str) -> int:
+def _optional_nonnegative_int(value: Any, *, field_name: str) -> int | None:
     number = _optional_int(value, field_name=field_name)
-    if number is None or number < 0:
+    if number is not None and number < 0:
+        raise ValueError(f"{field_name} must be a non-negative integer or null")
+    return number
+
+
+def _required_nonnegative_int(value: Any, *, field_name: str) -> int:
+    number = _optional_nonnegative_int(value, field_name=field_name)
+    if number is None:
         raise ValueError(f"{field_name} must be a non-negative integer")
     return number
 
@@ -187,7 +194,7 @@ def normalize_participants(tournament_id: str, standings: Iterable[Mapping[str, 
             {
                 "tournament_id": tid,
                 "player_id": _clean_required_str(item.get("player"), field_name="player"),
-                "placing": _required_nonnegative_int(item.get("placing"), field_name="placing"),
+                "placing": _optional_nonnegative_int(item.get("placing"), field_name="placing"),
                 "deck_id": _clean_optional_str(deck.get("id")),
                 "deck_name": _clean_optional_str(deck.get("name")),
                 "record_wins": _required_nonnegative_int(record.get("wins", 0), field_name="record.wins"),
@@ -198,7 +205,13 @@ def normalize_participants(tournament_id: str, standings: Iterable[Mapping[str, 
             }
         )
     rows = _dedupe_rows(rows, key_field="player_id", context=f"player in tournament {tid}")
-    rows.sort(key=lambda row: (row["placing"], row["player_id"]))
+    rows.sort(
+        key=lambda row: (
+            row["placing"] is None,
+            row["placing"] if row["placing"] is not None else 0,
+            row["player_id"],
+        )
+    )
     return _frame(rows, PARTICIPANT_COLUMNS)
 
 

@@ -16,7 +16,7 @@ from domain.releases import require_utc
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 TOP_META_COLUMNS = ("Rank", "Deck ID", "Deck", "Count", "Share_%")
-MATCHUP_COLUMNS = ("Deck A", "Deck B", "W", "L", "T", "N", "WR_dir")
+MATCHUP_COLUMNS = ("Deck A ID", "Deck A", "Deck B ID", "Deck B", "W", "L", "T", "N", "WR_dir")
 DENSE_SCORE_COLUMNS = MATCHUP_COLUMNS
 
 
@@ -148,17 +148,18 @@ def adapt_top_meta_decklist(meta: pd.DataFrame, *, include_legacy_share: bool = 
 
 
 def adapt_matchup_raw(matchups: pd.DataFrame) -> pd.DataFrame:
-    required = {"Deck A", "Deck B", "W", "L", "T"}
+    required = {"Deck A ID", "Deck A", "Deck B ID", "Deck B", "W", "L", "T"}
     missing = required - set(matchups.columns)
     if missing:
         raise KeyError(f"matchup aggregation missing columns: {sorted(missing)}")
-    out = matchups.loc[:, ["Deck A", "Deck B", "W", "L", "T"]].copy()
-    out["Deck A"] = out["Deck A"].map(lambda value: _clean_deck(value, field_name="Deck A"))
-    out["Deck B"] = out["Deck B"].map(lambda value: _clean_deck(value, field_name="Deck B"))
-    if (out["Deck A"] == out["Deck B"]).any():
-        raise ValueError("matchup_raw must not contain mirror rows")
-    if out.duplicated(["Deck A", "Deck B"]).any():
-        raise ValueError("matchup_raw contains duplicate directional rows")
+    out = matchups.loc[:, ["Deck A ID", "Deck A", "Deck B ID", "Deck B", "W", "L", "T"]].copy()
+    for column in ("Deck A ID", "Deck A", "Deck B ID", "Deck B"):
+        out[column] = out[column].map(lambda value, c=column: _clean_deck(value, field_name=c))
+    if (out["Deck A ID"] == out["Deck B ID"]).any():
+        raise ValueError("matchup_raw must not contain same-ID mirror rows")
+    if out.duplicated(["Deck A ID", "Deck B ID"]).any():
+        raise ValueError("matchup_raw contains duplicate directional deck-ID rows")
+    _validate_contract_identity_labels(out)
     out = _coerce_nonnegative_counts(out)
     out["N"] = (out["W"] + out["L"] + out["T"]).astype("int64")
     decisive = (out["W"] + out["L"]).to_numpy(dtype=float)
@@ -166,45 +167,71 @@ def adapt_matchup_raw(matchups: pd.DataFrame) -> pd.DataFrame:
     wr = np.full(len(out), np.nan, dtype=float)
     np.divide(100.0 * wins, decisive, out=wr, where=decisive > 0)
     out["WR_dir"] = wr
-    out = out.loc[:, list(MATCHUP_COLUMNS)].sort_values(["Deck A", "Deck B"], kind="mergesort").reset_index(drop=True)
+    out = out.loc[:, list(MATCHUP_COLUMNS)].sort_values(
+        ["Deck A ID", "Deck B ID", "Deck A", "Deck B"], kind="mergesort"
+    ).reset_index(drop=True)
     _validate_observed_symmetry(out)
     assert_no_player_ids(out)
     return out
 
 
+def _validate_contract_identity_labels(matchups: pd.DataFrame) -> None:
+    identity_rows = pd.concat(
+        [
+            matchups[["Deck A ID", "Deck A"]].rename(columns={"Deck A ID": "Deck ID", "Deck A": "Deck"}),
+            matchups[["Deck B ID", "Deck B"]].rename(columns={"Deck B ID": "Deck ID", "Deck B": "Deck"}),
+        ],
+        ignore_index=True,
+    ).drop_duplicates()
+    by_id = identity_rows.groupby("Deck ID")["Deck"].nunique(dropna=True)
+    bad = by_id[by_id > 1]
+    if not bad.empty:
+        raise ValueError(f"deck ID maps to multiple display names in acquisition contract: {bad.index[0]}")
+
+
 def _validate_observed_symmetry(matchups: pd.DataFrame) -> None:
     if matchups.empty:
         return
-    lookup = matchups.set_index(["Deck A", "Deck B"])
-    for (a, b), row in lookup.iterrows():
-        if (b, a) not in lookup.index:
-            raise ValueError(f"missing reverse direction for observed pair: {a} vs {b}")
-        reverse = lookup.loc[(b, a)]
+    lookup = matchups.set_index(["Deck A ID", "Deck B ID"])
+    for (a_id, b_id), row in lookup.iterrows():
+        if (b_id, a_id) not in lookup.index:
+            raise ValueError(f"missing reverse direction for observed pair: {a_id} vs {b_id}")
+        reverse = lookup.loc[(b_id, a_id)]
         if int(row["W"]) != int(reverse["L"]):
-            raise ValueError(f"W/L symmetry failed for {a} vs {b}")
+            raise ValueError(f"W/L symmetry failed for {a_id} vs {b_id}")
         if int(row["L"]) != int(reverse["W"]):
-            raise ValueError(f"L/W symmetry failed for {a} vs {b}")
+            raise ValueError(f"L/W symmetry failed for {a_id} vs {b_id}")
         if int(row["T"]) != int(reverse["T"]):
-            raise ValueError(f"tie symmetry failed for {a} vs {b}")
+            raise ValueError(f"tie symmetry failed for {a_id} vs {b_id}")
 
 
-def materialize_dense_score(matchup_raw: pd.DataFrame, decks: list[str] | tuple[str, ...]) -> pd.DataFrame:
-    """Materialize every ordered A!=B pair on the supplied final axis."""
-    axis = tuple(_clean_deck(deck, field_name="deck axis value") for deck in decks)
-    if len(axis) != len(set(axis)):
-        raise ValueError("deck axis must be unique")
+def materialize_dense_score(
+    matchup_raw: pd.DataFrame,
+    decks: list[tuple[str, str]] | tuple[tuple[str, str], ...],
+) -> pd.DataFrame:
+    """Materialize every ordered unequal deck-ID pair on the acquisition axis."""
+    axis = tuple(
+        (
+            _clean_deck(deck_id, field_name="deck axis ID"),
+            _clean_deck(deck_name, field_name="deck axis display name"),
+        )
+        for deck_id, deck_name in decks
+    )
+    ids = tuple(deck_id for deck_id, _ in axis)
+    if len(ids) != len(set(ids)):
+        raise ValueError("deck axis IDs must be unique")
     observed = adapt_matchup_raw(matchup_raw)
-    axis_set = set(axis)
-    observed = observed[observed["Deck A"].isin(axis_set) & observed["Deck B"].isin(axis_set)]
-    lookup = observed.set_index(["Deck A", "Deck B"])
+    axis_set = set(ids)
+    observed = observed[observed["Deck A ID"].isin(axis_set) & observed["Deck B ID"].isin(axis_set)]
+    lookup = observed.set_index(["Deck A ID", "Deck B ID"])
 
     rows: list[dict[str, Any]] = []
-    for deck_a in axis:
-        for deck_b in axis:
-            if deck_a == deck_b:
+    for deck_a_id, deck_a in axis:
+        for deck_b_id, deck_b in axis:
+            if deck_a_id == deck_b_id:
                 continue
-            if (deck_a, deck_b) in lookup.index:
-                row = lookup.loc[(deck_a, deck_b)]
+            if (deck_a_id, deck_b_id) in lookup.index:
+                row = lookup.loc[(deck_a_id, deck_b_id)]
                 wins = int(row["W"])
                 losses = int(row["L"])
                 ties = int(row["T"])
@@ -214,7 +241,9 @@ def materialize_dense_score(matchup_raw: pd.DataFrame, decks: list[str] | tuple[
             decisive = wins + losses
             rows.append(
                 {
+                    "Deck A ID": deck_a_id,
                     "Deck A": deck_a,
+                    "Deck B ID": deck_b_id,
                     "Deck B": deck_b,
                     "W": wins,
                     "L": losses,

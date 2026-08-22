@@ -118,6 +118,75 @@ def test_same_archetype_match_is_excluded():
     assert result.pairing_exclusion_counts["same_archetype"] == 1
 
 
+
+def test_duplicate_display_name_is_preserved_as_distinct_meta_identities():
+    p = participants(
+        [
+            ("t1", "p1", "dragon-1", "Dragonair Altaria"),
+            ("t1", "p2", "dragon-2", "Dragonair Altaria"),
+            ("t1", "p3", "dragon-1", "Dragonair Altaria"),
+        ]
+    )
+    result = aggregate_meta(p)
+    rows = result.meta[result.meta["Deck"] == "Dragonair Altaria"].set_index("Deck ID")
+    assert set(rows.index) == {"dragon-1", "dragon-2"}
+    assert int(rows.loc["dragon-1", "Count"]) == 2
+    assert int(rows.loc["dragon-2", "Count"]) == 1
+    assert rows.loc["dragon-1", "Share_%"] == pytest.approx(200 / 3)
+    assert rows.loc["dragon-2", "Share_%"] == pytest.approx(100 / 3)
+    assert result.duplicate_display_names == {
+        "Dragonair Altaria": ("dragon-1", "dragon-2")
+    }
+
+
+def test_same_display_name_different_ids_is_not_same_archetype():
+    p = participants(
+        [
+            ("t1", "p1", "dragon-1", "Dragonair Altaria"),
+            ("t1", "p2", "dragon-2", "Dragonair Altaria"),
+        ]
+    )
+    result = aggregate_matchups(p, pd.DataFrame([pairing("t1", "r1", "p1", "p2", "p1")]))
+    assert result.pairing_exclusion_counts["same_archetype"] == 0
+    assert len(result.matchups) == 2
+    forward = result.matchups.set_index(["Deck A ID", "Deck B ID"]).loc[("dragon-1", "dragon-2")]
+    assert forward["Deck A"] == "Dragonair Altaria"
+    assert forward["Deck B"] == "Dragonair Altaria"
+    assert int(forward["W"]) == 1
+
+
+def test_duplicate_display_names_across_tournaments_aggregate_by_id_not_name():
+    p = participants(
+        [
+            ("t1", "p1", "dragon-1", "Dragonair Altaria"),
+            ("t1", "p2", "other", "Other"),
+            ("t2", "p3", "dragon-2", "Dragonair Altaria"),
+            ("t2", "p4", "other", "Other"),
+        ]
+    )
+    q = pd.DataFrame(
+        [
+            pairing("t1", "r1", "p1", "p2", "p1"),
+            pairing("t2", "r1", "p3", "p4", "p3"),
+        ]
+    )
+    result = aggregate_matchups(p, q)
+    lookup = result.matchups.set_index(["Deck A ID", "Deck B ID"])
+    assert int(lookup.loc[("dragon-1", "other"), "W"]) == 1
+    assert int(lookup.loc[("dragon-2", "other"), "W"]) == 1
+    assert ("dragon-1", "dragon-2") not in lookup.index
+
+
+def test_same_deck_id_multiple_names_fails_fast():
+    p = participants(
+        [
+            ("t1", "p1", "dragon-1", "Dragonair Altaria"),
+            ("t2", "p2", "dragon-1", "Different Label"),
+        ]
+    )
+    with pytest.raises(AggregationConflictError, match="deck_id maps to multiple deck names"):
+        aggregate_meta(p)
+
 def test_cross_tournament_results_are_summed_never_maxed():
     p = participants(
         [

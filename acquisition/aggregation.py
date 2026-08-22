@@ -31,6 +31,7 @@ class MetaAggregationResult:
     classified_participants: int
     unclassified_participants: int
     classification_coverage: float
+    duplicate_display_names: dict[str, tuple[str, ...]]
 
 
 @dataclass(frozen=True)
@@ -47,7 +48,8 @@ def _clean_text(value: Any) -> str | None:
     return text or None
 
 
-def _validate_deck_identity(participants: pd.DataFrame) -> None:
+def _validate_deck_identity(participants: pd.DataFrame) -> dict[str, tuple[str, ...]]:
+    """Validate canonical deck_id -> label mapping and diagnose duplicate labels."""
     required = {"deck_id", "deck_name"}
     if not required.issubset(participants.columns):
         raise KeyError(f"participants missing columns: {sorted(required - set(participants.columns))}")
@@ -56,19 +58,19 @@ def _validate_deck_identity(participants: pd.DataFrame) -> None:
     classified["_deck_name"] = classified["deck_name"].map(_clean_text)
     classified = classified[classified["_deck_id"].notna() & classified["_deck_name"].notna()]
     if classified.empty:
-        return
+        return {}
 
     by_id = classified.groupby("_deck_id")["_deck_name"].nunique(dropna=True)
     bad_ids = by_id[by_id > 1]
     if not bad_ids.empty:
         raise AggregationConflictError(f"deck_id maps to multiple deck names: {bad_ids.index[0]}")
 
-    by_name = classified.groupby("_deck_name")["_deck_id"].nunique(dropna=True)
-    bad_names = by_name[by_name > 1]
-    if not bad_names.empty:
-        raise AggregationConflictError(
-            f"deck name maps to multiple deck_ids and is ambiguous at the final name-based boundary: {bad_names.index[0]}"
-        )
+    duplicate_display_names: dict[str, tuple[str, ...]] = {}
+    for deck_name, group in classified.groupby("_deck_name", sort=True):
+        ids = tuple(sorted(set(group["_deck_id"].astype(str))))
+        if len(ids) > 1:
+            duplicate_display_names[str(deck_name)] = ids
+    return duplicate_display_names
 
 
 def aggregate_meta(participants: pd.DataFrame) -> MetaAggregationResult:
@@ -79,7 +81,7 @@ def aggregate_meta(participants: pd.DataFrame) -> MetaAggregationResult:
 
     if participants.duplicated(["tournament_id", "player_id"]).any():
         raise AggregationConflictError("duplicate participant join key")
-    _validate_deck_identity(participants)
+    duplicate_display_names = _validate_deck_identity(participants)
 
     df = participants.copy()
     df["_deck_id"] = df["deck_id"].map(_clean_text)
@@ -116,6 +118,7 @@ def aggregate_meta(participants: pd.DataFrame) -> MetaAggregationResult:
         classified_participants=classified_count,
         unclassified_participants=unclassified,
         classification_coverage=coverage,
+        duplicate_display_names=duplicate_display_names,
     )
 
 
@@ -186,11 +189,20 @@ def aggregate_matchups(participants: pd.DataFrame, pairings: pd.DataFrame) -> Ma
     clean_pairings, duplicate_count = _dedupe_pairings(pairings)
     diagnostics = {key: 0 for key in PAIRING_DIAGNOSTIC_KEYS}
     diagnostics["duplicate_pairing"] = int(duplicate_count)
-    counts: dict[tuple[str, str], list[int]] = {}
+    counts: dict[tuple[str, str, str, str], list[int]] = {}
     comparable_matches = 0
 
-    def add(a: str, b: str, *, w: int = 0, l: int = 0, t: int = 0) -> None:
-        bucket = counts.setdefault((a, b), [0, 0, 0])
+    def add(
+        a_id: str,
+        a_name: str,
+        b_id: str,
+        b_name: str,
+        *,
+        w: int = 0,
+        l: int = 0,
+        t: int = 0,
+    ) -> None:
+        bucket = counts.setdefault((a_id, a_name, b_id, b_name), [0, 0, 0])
         bucket[0] += int(w)
         bucket[1] += int(l)
         bucket[2] += int(t)
@@ -225,31 +237,33 @@ def aggregate_matchups(participants: pd.DataFrame, pairings: pd.DataFrame) -> Ma
             diagnostics["double_loss"] += 1
             continue
         if winner in (0, "0"):
-            add(deck1_name, deck2_name, t=1)
-            add(deck2_name, deck1_name, t=1)
+            add(deck1_id, deck1_name, deck2_id, deck2_name, t=1)
+            add(deck2_id, deck2_name, deck1_id, deck1_name, t=1)
             comparable_matches += 1
             continue
 
         winner_text = _clean_text(winner)
         if winner_text == p1:
-            add(deck1_name, deck2_name, w=1)
-            add(deck2_name, deck1_name, l=1)
+            add(deck1_id, deck1_name, deck2_id, deck2_name, w=1)
+            add(deck2_id, deck2_name, deck1_id, deck1_name, l=1)
             comparable_matches += 1
         elif winner_text == p2:
-            add(deck1_name, deck2_name, l=1)
-            add(deck2_name, deck1_name, w=1)
+            add(deck1_id, deck1_name, deck2_id, deck2_name, l=1)
+            add(deck2_id, deck2_name, deck1_id, deck1_name, w=1)
             comparable_matches += 1
         else:
             diagnostics["unresolved_result"] += 1
 
     rows: list[dict[str, Any]] = []
-    for (deck_a, deck_b), (wins, losses, ties) in sorted(counts.items()):
+    for (deck_a_id, deck_a, deck_b_id, deck_b), (wins, losses, ties) in sorted(counts.items()):
         n = wins + losses + ties
         decisive = wins + losses
         wr = (100.0 * wins / decisive) if decisive > 0 else np.nan
         rows.append(
             {
+                "Deck A ID": deck_a_id,
                 "Deck A": deck_a,
+                "Deck B ID": deck_b_id,
                 "Deck B": deck_b,
                 "W": wins,
                 "L": losses,
@@ -277,21 +291,21 @@ def aggregate_matchups(participants: pd.DataFrame, pairings: pd.DataFrame) -> Ma
 def _assert_directional_invariants(matchups: pd.DataFrame) -> None:
     if matchups.empty:
         return
-    lookup = matchups.set_index(["Deck A", "Deck B"])
-    for (a, b), row in lookup.iterrows():
-        if a == b:
+    lookup = matchups.set_index(["Deck A ID", "Deck B ID"])
+    for (a_id, b_id), row in lookup.iterrows():
+        if a_id == b_id:
             raise AssertionError("matchup aggregation emitted a mirror row")
-        if (b, a) not in lookup.index:
-            raise AssertionError(f"missing reverse direction for {a} vs {b}")
-        reverse = lookup.loc[(b, a)]
+        if (b_id, a_id) not in lookup.index:
+            raise AssertionError(f"missing reverse direction for {a_id} vs {b_id}")
+        reverse = lookup.loc[(b_id, a_id)]
         if int(row["W"]) != int(reverse["L"]):
-            raise AssertionError(f"W/L symmetry failed for {a} vs {b}")
+            raise AssertionError(f"W/L symmetry failed for {a_id} vs {b_id}")
         if int(row["L"]) != int(reverse["W"]):
-            raise AssertionError(f"L/W symmetry failed for {a} vs {b}")
+            raise AssertionError(f"L/W symmetry failed for {a_id} vs {b_id}")
         if int(row["T"]) != int(reverse["T"]):
-            raise AssertionError(f"tie symmetry failed for {a} vs {b}")
+            raise AssertionError(f"tie symmetry failed for {a_id} vs {b_id}")
         if int(row["N"]) != int(row["W"]) + int(row["L"]) + int(row["T"]):
-            raise AssertionError(f"N formula failed for {a} vs {b}")
+            raise AssertionError(f"N formula failed for {a_id} vs {b_id}")
 
 
 __all__ = [

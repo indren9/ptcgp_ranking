@@ -29,10 +29,10 @@ from acquisition.selection import TournamentSelection
 def observed_matchups():
     return pd.DataFrame(
         [
-            {"Deck A": "A", "Deck B": "B", "W": 2, "L": 1, "T": 1},
-            {"Deck A": "B", "Deck B": "A", "W": 1, "L": 2, "T": 1},
-            {"Deck A": "A", "Deck B": "C", "W": 0, "L": 0, "T": 2},
-            {"Deck A": "C", "Deck B": "A", "W": 0, "L": 0, "T": 2},
+            {"Deck A ID": "id-a", "Deck A": "A", "Deck B ID": "id-b", "Deck B": "B", "W": 2, "L": 1, "T": 1},
+            {"Deck A ID": "id-b", "Deck A": "B", "Deck B ID": "id-a", "Deck B": "A", "W": 1, "L": 2, "T": 1},
+            {"Deck A ID": "id-a", "Deck A": "A", "Deck B ID": "id-c", "Deck B": "C", "W": 0, "L": 0, "T": 2},
+            {"Deck A ID": "id-c", "Deck A": "C", "Deck B ID": "id-a", "Deck B": "A", "W": 0, "L": 0, "T": 2},
         ]
     )
 
@@ -63,7 +63,7 @@ def test_matchup_adapter_recomputes_n_and_wr_from_counts():
 
 
 def test_dense_contract_materializes_t_times_t_minus_1_in_axis_order():
-    dense = materialize_dense_score(observed_matchups(), ["A", "B", "C"])
+    dense = materialize_dense_score(observed_matchups(), [("id-a", "A"), ("id-b", "B"), ("id-c", "C")])
     assert tuple(dense.columns) == DENSE_SCORE_COLUMNS
     assert len(dense) == 3 * 2
     assert list(zip(dense["Deck A"], dense["Deck B"])) == [
@@ -73,14 +73,14 @@ def test_dense_contract_materializes_t_times_t_minus_1_in_axis_order():
 
 
 def test_dense_contract_preserves_tie_only_as_evidence():
-    dense = materialize_dense_score(observed_matchups(), ["A", "B", "C"])
+    dense = materialize_dense_score(observed_matchups(), [("id-a", "A"), ("id-b", "B"), ("id-c", "C")])
     ac = dense.set_index(["Deck A", "Deck B"]).loc[("A", "C")]
     assert (int(ac["W"]), int(ac["L"]), int(ac["T"]), int(ac["N"])) == (0, 0, 2, 2)
     assert np.isnan(ac["WR_dir"])
 
 
 def test_dense_contract_materializes_zero_evidence_without_inventing_games():
-    dense = materialize_dense_score(observed_matchups(), ["A", "B", "C"])
+    dense = materialize_dense_score(observed_matchups(), [("id-a", "A"), ("id-b", "B"), ("id-c", "C")])
     bc = dense.set_index(["Deck A", "Deck B"]).loc[("B", "C")]
     cb = dense.set_index(["Deck A", "Deck B"]).loc[("C", "B")]
     assert (int(bc["W"]), int(bc["L"]), int(bc["T"]), int(bc["N"])) == (0, 0, 0, 0)
@@ -92,7 +92,7 @@ def test_dense_contract_materializes_zero_evidence_without_inventing_games():
 def test_contract_artifact_hashes_and_counts_are_built_from_canonical_frames():
     meta = pd.DataFrame([{"Rank": 1, "Deck ID": "a", "Deck": "A", "Count": 1, "Share_%": 100.0}])
     matchup = adapt_matchup_raw(observed_matchups())
-    dense = materialize_dense_score(matchup, ["A", "B", "C"])
+    dense = materialize_dense_score(matchup, [("id-a", "A"), ("id-b", "B"), ("id-c", "C")])
     contracts = build_acquisition_contracts(meta, matchup, dense)
     assert contracts.dense_score.row_count == 6
     assert len(contracts.dense_score.sha256) == 64
@@ -102,15 +102,48 @@ def test_public_contracts_never_expose_player_ids():
     meta = pd.DataFrame([{"Rank": 1, "Deck ID": "a", "Deck": "A", "Count": 1, "Share_%": 100.0}])
     top = adapt_top_meta_decklist(meta)
     matchup = adapt_matchup_raw(observed_matchups())
-    dense = materialize_dense_score(matchup, ["A", "B", "C"])
+    dense = materialize_dense_score(matchup, [("id-a", "A"), ("id-b", "B"), ("id-c", "C")])
     for frame in (top, matchup, dense):
         assert not any("player" in column.lower() for column in frame.columns)
 
 
+
+def test_matchup_adapter_preserves_deck_ids_with_duplicate_display_names():
+    raw = pd.DataFrame(
+        [
+            {"Deck A ID": "dragon-1", "Deck A": "Dragonair Altaria", "Deck B ID": "dragon-2", "Deck B": "Dragonair Altaria", "W": 1, "L": 0, "T": 0},
+            {"Deck A ID": "dragon-2", "Deck A": "Dragonair Altaria", "Deck B ID": "dragon-1", "Deck B": "Dragonair Altaria", "W": 0, "L": 1, "T": 0},
+        ]
+    )
+    out = adapt_matchup_raw(raw)
+    assert tuple(out.columns) == MATCHUP_COLUMNS
+    assert set(out["Deck A ID"]) == {"dragon-1", "dragon-2"}
+    assert set(out["Deck A"]) == {"Dragonair Altaria"}
+
+
+def test_dense_contract_uses_deck_id_axis_with_duplicate_display_names():
+    raw = pd.DataFrame(
+        [
+            {"Deck A ID": "dragon-1", "Deck A": "Dragonair Altaria", "Deck B ID": "dragon-2", "Deck B": "Dragonair Altaria", "W": 1, "L": 0, "T": 0},
+            {"Deck A ID": "dragon-2", "Deck A": "Dragonair Altaria", "Deck B ID": "dragon-1", "Deck B": "Dragonair Altaria", "W": 0, "L": 1, "T": 0},
+        ]
+    )
+    dense = materialize_dense_score(
+        raw,
+        [("dragon-1", "Dragonair Altaria"), ("dragon-2", "Dragonair Altaria")],
+    )
+    assert len(dense) == 2
+    assert not (dense["Deck A ID"] == dense["Deck B ID"]).any()
+    assert (dense["Deck A"] == dense["Deck B"]).all()
+    assert set(zip(dense["Deck A ID"], dense["Deck B ID"])) == {
+        ("dragon-1", "dragon-2"),
+        ("dragon-2", "dragon-1"),
+    }
+
 def test_manifest_serialization_has_required_nested_sections_and_no_player_ids():
     meta = pd.DataFrame([{"Rank": 1, "Deck ID": "a", "Deck": "A", "Count": 1, "Share_%": 100.0}])
     matchup = adapt_matchup_raw(observed_matchups())
-    dense = materialize_dense_score(matchup, ["A", "B", "C"])
+    dense = materialize_dense_score(matchup, [("id-a", "A"), ("id-b", "B"), ("id-c", "C")])
     contracts = build_acquisition_contracts(meta, matchup, dense)
     started = datetime(2026, 8, 22, 12, tzinfo=UTC)
     manifest = AcquisitionManifest(

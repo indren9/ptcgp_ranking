@@ -190,13 +190,27 @@ def test_manifest_is_populated_and_public(tmp_path):
 
     assert payload["source"] == "Limitless Tournament API"
     assert payload["software"]["git_revision"] == "38d14a3"
-    assert payload["scope"]["catalog_version"] == "pocket-releases-2026-08-22-v1"
+    assert payload["scope"]["catalog_version"] == "pocket-releases-2026-08-22-v2"
     assert payload["selection"]["tournament_ids"] == ["t1", "t2"]
     assert len(payload["raw"]["snapshot_refs"]) == 9
     assert set(payload["normalized"]["hashes"]) == {"tournaments", "participants", "pairings"}
     assert payload["contracts"]["top_meta_decklist"]["sha256"]
     assert "player_id" not in raw
 
+
+
+def test_duplicate_display_name_diagnostics_are_public_without_collapsing_ids(tmp_path):
+    client = FakeClient()
+    client.standings["t1"] = _standings(("dragon-1", "Dragonair Altaria"), ("other", "Other"))
+    client.standings["t2"] = _standings(("dragon-2", "Dragonair Altaria"), ("deck-c", "Deck C"))
+
+    result = _run_live(tmp_path, client=client)
+
+    expected = {"Dragonair Altaria": ["dragon-1", "dragon-2"]}
+    assert result.diagnostics["deck_identity_diagnostics"]["duplicate_display_names"] == expected
+    assert result.manifest.to_dict()["aggregation"]["deck_identity_diagnostics"]["duplicate_display_names"] == expected
+    assert result.contracts.top_meta_decklist.row_count == 4
+    assert "player_id" not in result.manifest.to_json().lower()
 
 def test_offline_replay_zero_network_and_semantic_hash_equality(tmp_path):
     live = _run_live(tmp_path)

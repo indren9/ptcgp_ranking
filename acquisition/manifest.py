@@ -41,6 +41,7 @@ class AggregationSummary:
     unclassified_participants: int
     comparable_matches: int
     pairing_exclusion_counts: Mapping[str, int]
+    deck_identity_diagnostics: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
         values = (
@@ -61,6 +62,8 @@ class AggregationSummary:
         object.__setattr__(self, "comparable_matches", int(self.comparable_matches))
         counts = {str(key): int(value) for key, value in dict(self.pairing_exclusion_counts).items()}
         object.__setattr__(self, "pairing_exclusion_counts", MappingProxyType(counts))
+        identity_diag = dict(self.deck_identity_diagnostics or {})
+        object.__setattr__(self, "deck_identity_diagnostics", MappingProxyType(identity_diag))
 
 
 @dataclass(frozen=True)
@@ -158,6 +161,7 @@ class AcquisitionManifest:
                 "unclassified_participants": self.aggregation.unclassified_participants,
                 "comparable_matches": self.aggregation.comparable_matches,
                 "pairing_exclusion_counts": dict(self.aggregation.pairing_exclusion_counts),
+                "deck_identity_diagnostics": dict(self.aggregation.deck_identity_diagnostics),
             },
             "rate_limit_observations": [dict(item) for item in self.rate_limit_observations],
             "contracts": artifacts,

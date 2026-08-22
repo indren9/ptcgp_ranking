@@ -402,7 +402,7 @@ def _build_derivatives(
     match_result = aggregate_matchups(participants, pairings)
     top_meta = adapt_top_meta_decklist(meta_result.meta)
     matchup_raw = adapt_matchup_raw(match_result.matchups)
-    axis = tuple(top_meta["Deck"].tolist())
+    axis = tuple(zip(top_meta["Deck ID"].tolist(), top_meta["Deck"].tolist()))
     dense_score = materialize_dense_score(matchup_raw, axis)
     contracts = build_acquisition_contracts(top_meta, matchup_raw, dense_score)
     return (
@@ -588,6 +588,12 @@ def _live_run(
         unclassified_participants=meta_result.unclassified_participants,
         comparable_matches=match_result.comparable_matches,
         pairing_exclusion_counts=match_result.pairing_exclusion_counts,
+        deck_identity_diagnostics={
+            "duplicate_display_names": {
+                name: list(deck_ids)
+                for name, deck_ids in meta_result.duplicate_display_names.items()
+            }
+        },
     )
     manifest = AcquisitionManifest(
         schema_version=SCHEMA_VERSION,
@@ -628,6 +634,12 @@ def _live_run(
         "classified_participants": meta_result.classified_participants,
         "known_deck_matches": match_result.comparable_matches,
         "pairing_diagnostics": _pairing_diagnostics(match_result),
+        "deck_identity_diagnostics": {
+            "duplicate_display_names": {
+                name: list(deck_ids)
+                for name, deck_ids in meta_result.duplicate_display_names.items()
+            }
+        },
         "contract_hashes": {
             "top_meta_decklist": contracts.top_meta_decklist.sha256,
             "matchup_raw": contracts.matchup_raw.sha256,
@@ -725,6 +737,12 @@ def _offline_run(
         unclassified_participants=meta_result.unclassified_participants,
         comparable_matches=match_result.comparable_matches,
         pairing_exclusion_counts=match_result.pairing_exclusion_counts,
+        deck_identity_diagnostics={
+            "duplicate_display_names": {
+                name: list(deck_ids)
+                for name, deck_ids in meta_result.duplicate_display_names.items()
+            }
+        },
     )
     manifest = AcquisitionManifest(
         schema_version=SCHEMA_VERSION,
@@ -764,6 +782,12 @@ def _offline_run(
         "classified_participants": meta_result.classified_participants,
         "known_deck_matches": match_result.comparable_matches,
         "pairing_diagnostics": _pairing_diagnostics(match_result),
+        "deck_identity_diagnostics": {
+            "duplicate_display_names": {
+                name: list(deck_ids)
+                for name, deck_ids in meta_result.duplicate_display_names.items()
+            }
+        },
         "contract_hashes": {
             "top_meta_decklist": contracts.top_meta_decklist.sha256,
             "matchup_raw": contracts.matchup_raw.sha256,
