@@ -1,0 +1,26 @@
+[
+  {
+    "player": "p1",
+    "placing": 1,
+    "record": {"wins": 2, "losses": 0, "ties": 0},
+    "decklist": {"cards": []},
+    "deck": {"id": "deck-a", "name": "Deck A"},
+    "drop": null
+  },
+  {
+    "player": "p2",
+    "placing": 2,
+    "record": {"wins": 1, "losses": 1, "ties": 0},
+    "decklist": {"cards": []},
+    "deck": {"id": "deck-b", "name": "Deck B"},
+    "drop": null
+  },
+  {
+    "player": "p3",
+    "placing": 3,
+    "record": {"wins": 0, "losses": 2, "ties": 0},
+    "decklist": null,
+    "deck": null,
+    "drop": 2
+  }
+]

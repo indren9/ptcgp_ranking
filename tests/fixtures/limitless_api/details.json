@@ -1,0 +1,16 @@
+{
+  "id": "t1",
+  "game": "POCKET",
+  "format": "STANDARD",
+  "name": "Pocket Test Cup",
+  "date": "2026-08-15T12:00:00.000Z",
+  "players": 3,
+  "organizer": {"id": 42, "name": "Test Org"},
+  "platform": "PTCGP",
+  "decklists": true,
+  "isPublic": true,
+  "isOnline": true,
+  "phases": [{"phase": 1, "type": "SWISS", "rounds": 2, "mode": "BO1"}],
+  "bannedCards": [],
+  "specialRules": []
+}
