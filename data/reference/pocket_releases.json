@@ -1,0 +1,28 @@
+{
+  "catalog_version": "pocket-releases-2026-08-22-v1",
+  "source": "https://pocket.limitlesstcg.com/cards",
+  "releases": [
+    {
+      "code": "B3b",
+      "name": "Everyday Wonders",
+      "release_datetime": "2026-06-30T01:00:00Z",
+      "next_release_datetime": "2026-07-30T01:00:00Z",
+      "is_current": false,
+      "source": "https://pocket.limitlesstcg.com/cards",
+      "validation_source": "https://www.pokemon.com/us/news/pokemon-tcg-pocket-everyday-wonders-expansion-coming-soon",
+      "validation_note": "Limitless lists 30 Jun 2026; Pokemon.com states launch 29 Jun 2026 at 6:00 p.m. PDT = 2026-06-30T01:00:00Z.",
+      "catalog_version": "pocket-releases-2026-08-22-v1"
+    },
+    {
+      "code": "B4",
+      "name": "Ruler of the Skies",
+      "release_datetime": "2026-07-30T01:00:00Z",
+      "next_release_datetime": null,
+      "is_current": true,
+      "source": "https://pocket.limitlesstcg.com/cards",
+      "validation_source": "https://www.pokemon.com/us/news/pokemon-tcg-pocket-ruler-of-the-skies-expansion-coming-soon",
+      "validation_note": "Limitless lists 30 Jul 2026; Pokemon.com states launch 29 Jul 2026 at 6:00 p.m. PDT = 2026-07-30T01:00:00Z.",
+      "catalog_version": "pocket-releases-2026-08-22-v1"
+    }
+  ]
+}
