@@ -339,3 +339,55 @@ def test_public_contract_columns_do_not_expose_player_ids(tmp_path):
         result.contracts.dense_score,
     ):
         assert all("player" not in column.lower() for column in artifact.columns)
+
+
+def test_runtime_frames_are_present_and_match_contract_hashes(tmp_path):
+    from acquisition.contracts import hash_dataframe
+
+    result = _run_live(tmp_path)
+    assert result.frames.top_meta_decklist is not None
+    assert result.frames.matchup_raw is not None
+    assert result.frames.dense_score is not None
+    assert hash_dataframe(result.frames.top_meta_decklist) == result.contracts.top_meta_decklist.sha256
+    assert hash_dataframe(result.frames.matchup_raw) == result.contracts.matchup_raw.sha256
+    assert hash_dataframe(result.frames.dense_score) == result.contracts.dense_score.sha256
+
+
+def test_offline_replay_runtime_frames_are_semantically_identical(tmp_path):
+    live = _run_live(tmp_path)
+    replay = run_limitless_api_acquisition(
+        game="POCKET",
+        set_code="B3b",
+        acquisition_started_at=STARTED,
+        execution_mode="offline",
+        raw_store_root=tmp_path / "store",
+        release_catalog=CATALOG_PATH,
+        replay_run_id="live-b3b",
+        run_id="replay-frames",
+        software_git_revision="38d14a3",
+        now_fn=lambda: datetime(2026, 8, 22, 13, 0, tzinfo=UTC),
+    )
+
+    pd = pytest.importorskip("pandas")
+    pd.testing.assert_frame_equal(
+        live.frames.top_meta_decklist,
+        replay.frames.top_meta_decklist,
+    )
+    pd.testing.assert_frame_equal(live.frames.matchup_raw, replay.frames.matchup_raw)
+    pd.testing.assert_frame_equal(live.frames.dense_score, replay.frames.dense_score)
+
+
+def test_runtime_frames_are_public_and_preserve_duplicate_display_names_by_id(tmp_path):
+    client = FakeClient()
+    client.standings["t1"] = _standings(("dragon-1", "Dragonair Altaria"), ("other", "Other"))
+    client.standings["t2"] = _standings(("dragon-2", "Dragonair Altaria"), ("deck-c", "Deck C"))
+
+    result = _run_live(tmp_path, client=client)
+    frames = result.frames
+
+    for df in (frames.top_meta_decklist, frames.matchup_raw, frames.dense_score):
+        assert all("player" not in str(column).lower() for column in df.columns)
+
+    dragon = frames.top_meta_decklist[frames.top_meta_decklist["Deck"] == "Dragonair Altaria"]
+    assert set(dragon["Deck ID"]) == {"dragon-1", "dragon-2"}
+    assert len(dragon) == 2

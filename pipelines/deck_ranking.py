@@ -869,6 +869,7 @@ def _build_core_matrices(
     exp,
     df_matchup_raw: pd.DataFrame | None = None,
     df_top_meta: pd.DataFrame | None = None,
+    preserve_zero_evidence: bool = False,
 ) -> tuple[dict[str, pd.DataFrame], dict[str, Path], dict[str, Any]]:
     if df_matchup_raw is None:
         df_matchup_raw = _load_contract_frame(paths=paths, key="matchup_raw", exp=exp, cfg=cfg)
@@ -942,7 +943,11 @@ def _build_core_matrices(
     axis_kept = wr_kept.index.tolist()
     log.debug("[nan-filter] kept=%d | dropped=%d", len(axis_kept), len(dropped))
 
-    score_df = build_score_table_filtered(df_agg, axis_kept)
+    score_df = build_score_table_filtered(
+        df_agg,
+        axis_kept,
+        preserve_zero_evidence=preserve_zero_evidence,
+    )
     w_mat, l_mat, _, wr_mat = build_matrices(score_df, axis_kept)
     n_dir = n_dir_from_WL(w_mat, l_mat)
     wildcard_df, wildcard_summary = _build_wildcard_candidates(

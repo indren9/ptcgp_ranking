@@ -196,7 +196,8 @@ def build_score_table_filtered(
     kept_axis: list[str],
     *,
     round_wr: int = 2,
-    legacy_winrate_alias: bool = True
+    legacy_winrate_alias: bool = True,
+    preserve_zero_evidence: bool = False,
 ) -> pd.DataFrame:
     """
     Build the post-alias, post-NaN-filter score table.
@@ -253,11 +254,14 @@ def build_score_table_filtered(
     # 5) Re-enforce coherent directional symmetry.
     d = _enforce_directional_symmetry(d)
 
-    # 6) WR_dir = 100*W/(W+L); drop denom==0 rows, which should not exist on kept axis.
+    # 6) WR_dir = 100*W/(W+L). Legacy mode drops denom==0 rows.
+    # Dense acquisition mode preserves them with WR_dir=NaN so zero-evidence
+    # and tie-only pairs remain explicit on the kept axis.
     denom = (d["W"] + d["L"]).astype("Int64")
     wr = np.where(denom > 0, 100.0 * d["W"].astype(float) / denom.astype(float), np.nan)
     d["WR_dir"] = pd.Series(wr, index=d.index).round(int(round_wr))
-    d = d[denom > 0].copy()
+    if not preserve_zero_evidence:
+        d = d[denom > 0].copy()
 
     # 7) Deterministic sorting plus contract columns.
     out = d.sort_values(["Deck A", "Deck B"], kind="mergesort").reset_index(drop=True)

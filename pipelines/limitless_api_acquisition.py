@@ -19,6 +19,7 @@ from acquisition.aggregation import (
 )
 from acquisition.contracts import (
     AcquisitionContracts,
+    AcquisitionFrames,
     RawPayloadRef,
     adapt_matchup_raw,
     adapt_top_meta_decklist,
@@ -75,6 +76,7 @@ class AcquisitionRunResult:
     contracts: AcquisitionContracts
     manifest: AcquisitionManifest
     diagnostics: Mapping[str, Any]
+    frames: AcquisitionFrames
 
 
 def _atomic_write_json(path: Path, payload: Mapping[str, Any]) -> Path:
@@ -654,7 +656,16 @@ def _live_run(
         **discovery_diag,
     }
     _persist_run(raw_store=raw_store, run_id=run_id, manifest=manifest, diagnostics=diagnostics)
-    return AcquisitionRunResult(contracts=contracts, manifest=manifest, diagnostics=diagnostics)
+    return AcquisitionRunResult(
+        contracts=contracts,
+        manifest=manifest,
+        diagnostics=diagnostics,
+        frames=AcquisitionFrames(
+            top_meta_decklist=top_meta,
+            matchup_raw=matchup_raw,
+            dense_score=dense_score,
+        ),
+    )
 
 
 def _offline_run(
@@ -800,7 +811,16 @@ def _offline_run(
         },
     }
     _persist_run(raw_store=raw_store, run_id=run_id, manifest=manifest, diagnostics=diagnostics)
-    return AcquisitionRunResult(contracts=contracts, manifest=manifest, diagnostics=diagnostics)
+    return AcquisitionRunResult(
+        contracts=contracts,
+        manifest=manifest,
+        diagnostics=diagnostics,
+        frames=AcquisitionFrames(
+            top_meta_decklist=top_meta,
+            matchup_raw=matchup_raw,
+            dense_score=dense_score,
+        ),
+    )
 
 
 def run_limitless_api_acquisition(

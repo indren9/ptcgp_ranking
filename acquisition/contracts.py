@@ -110,6 +110,33 @@ class AcquisitionContracts:
                 raise ValueError(f"{name} columns do not match the canonical acquisition contract")
 
 
+@dataclass(frozen=True)
+class AcquisitionFrames:
+    """Runtime DataFrames matching the canonical acquisition contracts."""
+
+    top_meta_decklist: pd.DataFrame
+    matchup_raw: pd.DataFrame
+    dense_score: pd.DataFrame
+
+    def __post_init__(self) -> None:
+        top = adapt_top_meta_decklist(self.top_meta_decklist)
+        matchups = adapt_matchup_raw(self.matchup_raw)
+        dense = self.dense_score.copy()
+        if tuple(dense.columns) != DENSE_SCORE_COLUMNS:
+            raise ValueError("dense_score columns do not match canonical contract")
+        assert_no_player_ids(dense)
+        object.__setattr__(self, "top_meta_decklist", top)
+        object.__setattr__(self, "matchup_raw", matchups)
+        object.__setattr__(self, "dense_score", dense.reset_index(drop=True))
+
+    def hashes(self) -> dict[str, str]:
+        return {
+            "top_meta_decklist": hash_dataframe(self.top_meta_decklist),
+            "matchup_raw": hash_dataframe(self.matchup_raw),
+            "dense_score": hash_dataframe(self.dense_score),
+        }
+
+
 def _clean_deck(value: Any, *, field_name: str) -> str:
     text = str(value).strip()
     if not text or text.lower() in {"nan", "none"}:
@@ -316,6 +343,7 @@ def assert_no_player_ids(df: pd.DataFrame) -> None:
 
 __all__ = [
     "AcquisitionContracts",
+    "AcquisitionFrames",
     "ContractArtifact",
     "DENSE_SCORE_COLUMNS",
     "MATCHUP_COLUMNS",
