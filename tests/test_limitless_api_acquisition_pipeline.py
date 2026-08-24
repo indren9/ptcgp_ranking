@@ -391,3 +391,125 @@ def test_runtime_frames_are_public_and_preserve_duplicate_display_names_by_id(tm
     dragon = frames.top_meta_decklist[frames.top_meta_decklist["Deck"] == "Dragonair Altaria"]
     assert set(dragon["Deck ID"]) == {"dragon-1", "dragon-2"}
     assert len(dragon) == 2
+
+
+def test_live_and_offline_replay_propagate_pairing_normalization_diagnostics(tmp_path):
+    client = FakeClient()
+    client.pairings["t1"] = [
+        {
+            "phase": 1,
+            "round": 1,
+            "table": 1,
+            "player1": "p1",
+            "player2": "p2",
+            "winner": "p1",
+        },
+        {
+            "phase": 1,
+            "round": 1,
+            "table": 2,
+            "player2": "p2",
+            "winner": "p2",
+        },
+        {
+            "phase": 1,
+            "round": 1,
+            "table": 3,
+            "winner": -1,
+        },
+    ]
+
+    live = _run_live(tmp_path, client=client, run_id="live-pairing-normalization")
+    exploding = ExplodingClient()
+    replay = run_limitless_api_acquisition(
+        game="POCKET",
+        format="STANDARD",
+        set_code="B3b",
+        acquisition_started_at=STARTED,
+        execution_mode="offline",
+        raw_store_root=tmp_path / "store",
+        release_catalog=CATALOG_PATH,
+        client=exploding,
+        replay_run_id="live-pairing-normalization",
+        run_id="replay-pairing-normalization",
+        software_git_revision="38d14a3",
+        now_fn=lambda: datetime(2026, 8, 22, 13, 0, tzinfo=UTC),
+    )
+
+    expected = {
+        "canonicalized_player2_bye_count": 1,
+        "excluded_pairing_no_players_count": 1,
+        "pairing_base_collision_count": 0,
+        "pairing_rematch_occurrence_count": 0,
+        "pairing_match_discriminator_count": 0,
+        "pairing_table_fallback_count": 0,
+        "pairing_deduplicated_count": 0,
+        "pairing_unresolved_conflict_count": 0,
+    }
+    assert live.diagnostics["normalization_diagnostics"] == expected
+    assert live.manifest.to_dict()["normalized"]["diagnostics"] == expected
+    assert live.diagnostics["pairing_diagnostics"]["byes"] == 1
+    assert live.diagnostics["known_deck_matches"] == 2
+
+    assert exploding.calls == 0
+    assert replay.diagnostics["network_calls"] == 0
+    assert replay.diagnostics["normalization_diagnostics"] == expected
+    assert replay.manifest.to_dict()["normalized"]["diagnostics"] == expected
+    assert replay.diagnostics["known_deck_matches"] == live.diagnostics["known_deck_matches"]
+    assert replay.diagnostics["normalized_hashes"] == live.diagnostics["normalized_hashes"]
+    assert replay.diagnostics["contract_hashes"] == live.diagnostics["contract_hashes"]
+
+
+def test_hierarchical_pairing_occurrence_preserves_legitimate_rematch_and_replays_identically(tmp_path):
+    client = FakeClient()
+    client.pairings["t1"] = [
+        {
+            "phase": 1,
+            "round": 1,
+            "match": "F",
+            "player1": "p1",
+            "player2": "p2",
+            "winner": "p2",
+        },
+        {
+            "phase": 1,
+            "round": 1,
+            "match": "W3-1",
+            "player1": "p2",
+            "player2": "p1",
+            "winner": "p1",
+        },
+    ]
+    before = json.loads(json.dumps(client.pairings["t1"]))
+
+    live = _run_live(tmp_path, client=client, run_id="live-pairing-occurrence")
+    replay = run_limitless_api_acquisition(
+        game="POCKET",
+        format="STANDARD",
+        set_code="B3b",
+        acquisition_started_at=STARTED,
+        execution_mode="offline",
+        raw_store_root=tmp_path / "store",
+        release_catalog=CATALOG_PATH,
+        client=ExplodingClient(),
+        replay_run_id="live-pairing-occurrence",
+        run_id="replay-pairing-occurrence",
+        software_git_revision="38d14a3",
+        now_fn=lambda: datetime(2026, 8, 22, 13, 0, tzinfo=UTC),
+    )
+
+    # t1 contributes two legitimate rematch occurrences; t2 contributes one.
+    assert live.diagnostics["known_deck_matches"] == 3
+    assert client.pairings["t1"] == before
+    norm_diag = live.diagnostics["normalization_diagnostics"]
+    assert norm_diag["pairing_base_collision_count"] == 1
+    assert norm_diag["pairing_rematch_occurrence_count"] == 1
+    assert norm_diag["pairing_match_discriminator_count"] == 2
+    assert norm_diag["pairing_deduplicated_count"] == 0
+    assert live.manifest.to_dict()["normalized"]["diagnostics"] == norm_diag
+
+    assert replay.diagnostics["network_calls"] == 0
+    assert replay.diagnostics["known_deck_matches"] == live.diagnostics["known_deck_matches"]
+    assert replay.diagnostics["normalization_diagnostics"] == norm_diag
+    assert replay.diagnostics["normalized_hashes"] == live.diagnostics["normalized_hashes"]
+    assert replay.diagnostics["contract_hashes"] == live.diagnostics["contract_hashes"]

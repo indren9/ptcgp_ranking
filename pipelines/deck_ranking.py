@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
@@ -12,6 +12,7 @@ import os
 import pandas as pd
 import yaml
 
+from acquisition.production_bridge import bridge_tournament_api_frames, identity_mapping_diagnostics
 from core.consolidate import apply_alias_and_aggregate, build_score_table_filtered, maxN_flat
 from core.matrices import build_matrices, n_dir_from_WL, topmeta_post_alias
 from core.nan_diagnostics import build_nan_diagnostics
@@ -23,6 +24,7 @@ from mars.pipeline import run_mars as run_mars_core
 from mars.report import write_mars_matchup_report
 from reporting.logs import configure_logging
 from reporting.plots import show_wr_heatmap
+from pipelines.limitless_api_acquisition import run_limitless_api_acquisition
 from sources.limitless.client import make_session
 from sources.limitless.constants import LIMITLESS_DECKS_URL
 from sources.limitless.pages.decks import (
@@ -38,6 +40,10 @@ from sources.limitless.pages.sets import (
     parse_expansions_from_html,
     resolve_expansion_and_url_from_config,
 )
+from sources.limitless.tournament_api.release_catalog import (
+    load_release_catalog_snapshot,
+    resolve_release,
+)
 from storage.paths import ProjectPaths, init_paths
 from storage.routing import dest_for_key, find_latest, write_csv_versioned_setaware
 from storage.writers import save_plot_dual
@@ -50,6 +56,9 @@ OUTPUT_PROFILE_USER = "user"
 OUTPUT_PROFILE_REPRODUCIBLE = "reproducible"
 OUTPUT_PROFILE_DEBUG = "debug"
 OUTPUT_PROFILES = {OUTPUT_PROFILE_USER, OUTPUT_PROFILE_REPRODUCIBLE, OUTPUT_PROFILE_DEBUG}
+ACQUISITION_LEGACY_HTML = "legacy_html"
+ACQUISITION_TOURNAMENT_API = "tournament_api"
+ACQUISITION_SOURCES = {ACQUISITION_LEGACY_HTML, ACQUISITION_TOURNAMENT_API}
 
 ARTIFACT_TIERS: dict[str, str] = {
     "decklist_raw": OUTPUT_PROFILE_REPRODUCIBLE,
@@ -191,9 +200,13 @@ def _write_run_manifest(result: "DeckRankingResult") -> Path:
             for key, value in sorted(result.diagnostics.items())
             if key
             in {
+                "acquisition_source",
                 "axis_all_count",
                 "axis0_count",
                 "axis_kept_count",
+                "deck_identity_count",
+                "deck_identity_map",
+                "duplicate_display_names",
                 "decklist_rows",
                 "estimated_polite_delay_seconds",
                 "heatmap_shape",
@@ -205,6 +218,10 @@ def _write_run_manifest(result: "DeckRankingResult") -> Path:
                 "report_gamma",
                 "report_k_used",
                 "top_meta_rows",
+                "tournament_api_execution_mode",
+                "tournament_api_network_calls",
+                "tournament_api_replay_run_id",
+                "tournament_api_run_id",
                 "wildcard_full_scrape",
             }
         },
@@ -319,6 +336,163 @@ def _load_config(base_dir: Path, config_path: str | Path | None) -> tuple[dict[s
     if not alias_file.exists():
         log.warning("[init] alias_map.json not found: %s - continuing without aliases.", alias_file)
     return cfg, yaml_file, alias_file
+
+
+def _acquisition_source(cfg: dict[str, Any]) -> str:
+    source_cfg = cfg.get("source") or {}
+    value = str(source_cfg.get("acquisition") or ACQUISITION_LEGACY_HTML).strip().lower()
+    if value not in ACQUISITION_SOURCES:
+        raise ValueError(
+            "source.acquisition must be one of: " + ", ".join(sorted(ACQUISITION_SOURCES))
+        )
+    return value
+
+
+def _api_format_from_config(cfg: dict[str, Any]) -> str | None:
+    source_cfg = cfg.get("source") or {}
+    format_cfg = source_cfg.get("format") or {}
+    if isinstance(format_cfg, str):
+        value = format_cfg.strip()
+        return value.upper() or None
+    if isinstance(format_cfg, dict):
+        mode = str(format_cfg.get("mode") or "auto").strip().lower()
+        if mode == "code":
+            value = str(format_cfg.get("code") or "").strip()
+            return value.upper() or None
+    game = str(source_cfg.get("game") or "POCKET").strip().upper()
+    return "STANDARD" if game == "POCKET" else None
+
+
+def _api_set_params(cfg: dict[str, Any]) -> tuple[str, str | None]:
+    set_cfg = ((cfg.get("scraping") or {}).get("set") or {})
+    mode = str(set_cfg.get("mode") or "auto").strip().lower()
+    code = str(set_cfg.get("code") or "").strip() or None
+    return mode, code
+
+
+def _resolve_base_path(base: Path, value: Any, default: str) -> Path:
+    raw = Path(str(value or default)).expanduser()
+    return raw.resolve() if raw.is_absolute() else (base / raw).resolve()
+
+
+def _api_scope_url(*, game: str, format: str | None, set_code: str | None) -> str:
+    parsed = urlparse(LIMITLESS_DECKS_URL)
+    query: dict[str, str] = {"game": str(game).strip().upper()}
+    if format:
+        query["format"] = str(format).strip().lower()
+    if set_code:
+        query["set"] = str(set_code).strip()
+    return urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, urlencode(query), parsed.fragment))
+
+
+def _api_catalog_context(
+    *,
+    base: Path,
+    cfg: dict[str, Any],
+    acquisition_started_at: datetime,
+) -> tuple[Expansion, str, list[Expansion], Path]:
+    source_cfg = cfg.get("source") or {}
+    api_cfg = source_cfg.get("tournament_api") or {}
+    catalog_path = _resolve_base_path(
+        base,
+        api_cfg.get("release_catalog"),
+        "data/reference/pocket_releases.json",
+    )
+    release_catalog = load_release_catalog_snapshot(catalog_path)
+    set_mode, set_code = _api_set_params(cfg)
+    release = resolve_release(
+        release_catalog,
+        mode=set_mode,
+        code=set_code,
+        acquisition_started_at=acquisition_started_at,
+    )
+    game = str(source_cfg.get("game") or "POCKET").strip().upper()
+    fmt = _api_format_from_config(cfg)
+    exp = Expansion(code=release.code, name=release.name, is_current=release.is_current, rotation=None)
+    scope_url = _api_scope_url(game=game, format=fmt, set_code=release.code)
+    catalog = [
+        Expansion(code=item.code, name=item.name, is_current=item.is_current, rotation=None)
+        for item in release_catalog.releases
+    ]
+    return exp, scope_url, catalog, catalog_path
+
+
+def _run_tournament_api_acquisition_for_production(
+    *,
+    base: Path,
+    cfg: dict[str, Any],
+    paths: ProjectPaths,
+    acquisition_started_at: datetime,
+) -> tuple[dict[str, pd.DataFrame], dict[str, Path], dict[str, Any], Expansion, str, list[Expansion]]:
+    source_cfg = cfg.get("source") or {}
+    api_cfg = source_cfg.get("tournament_api") or {}
+    game = str(source_cfg.get("game") or "POCKET").strip().upper()
+    fmt = _api_format_from_config(cfg)
+    set_mode, set_code = _api_set_params(cfg)
+    execution_mode = str(api_cfg.get("execution_mode") or "live").strip().lower()
+    replay_run_id = str(api_cfg.get("replay_run_id") or "").strip() or None
+    raw_store_root = _resolve_base_path(base, api_cfg.get("raw_store_root"), "data/raw/limitless_api")
+    cache_root = _resolve_base_path(base, api_cfg.get("cache_root"), "cache/limitless_api")
+    _, _, catalog, catalog_path = _api_catalog_context(
+        base=base,
+        cfg=cfg,
+        acquisition_started_at=acquisition_started_at,
+    )
+
+    api_result = run_limitless_api_acquisition(
+        game=game,
+        format=fmt,
+        set_mode=set_mode,
+        set_code=set_code,
+        acquisition_started_at=None if execution_mode == "offline" else acquisition_started_at,
+        execution_mode=execution_mode,
+        raw_store_root=raw_store_root,
+        release_catalog=catalog_path,
+        cache_root=cache_root,
+        replay_run_id=replay_run_id,
+        reuse_latest_raw=bool(api_cfg.get("reuse_latest_raw", True)),
+    )
+
+    bridged = bridge_tournament_api_frames(api_result.frames)
+    scope = api_result.manifest.scope
+    exp = Expansion(code=scope.set_code, name=scope.set_name, is_current=False, rotation=None)
+    decks_url = _api_scope_url(game=scope.game, format=scope.format, set_code=scope.set_code)
+    paths = init_paths(base, cfg, source_url=decks_url)
+
+    top_meta_path = _save_csv_artifact(
+        bridged.top_meta_decklist, paths, "top_meta_decklist", exp, cfg, changed=False, index=False
+    )
+    matchup_path = _save_csv_artifact(
+        bridged.matchup_raw, paths, "matchup_raw", exp, cfg, changed=False, index=False
+    )
+    outputs: dict[str, Path] = {}
+    if top_meta_path is not None:
+        outputs["top_meta_decklist"] = top_meta_path
+    if matchup_path is not None:
+        outputs["matchup_raw"] = matchup_path
+
+    identity_diag = dict(identity_mapping_diagnostics(bridged.deck_identity_map))
+    frames = {
+        "top_meta_decklist": bridged.top_meta_decklist,
+        "matchup_raw": bridged.matchup_raw,
+        "dense_score": bridged.dense_score,
+        "deck_identity_map": bridged.deck_identity_map,
+        "acquisition_top_meta_decklist": api_result.frames.top_meta_decklist,
+        "acquisition_matchup_raw": api_result.frames.matchup_raw,
+        "acquisition_dense_score": api_result.frames.dense_score,
+    }
+    diagnostics = {
+        "acquisition_source": ACQUISITION_TOURNAMENT_API,
+        "tournament_api_execution_mode": execution_mode,
+        "tournament_api_run_id": api_result.manifest.run_id,
+        "tournament_api_replay_run_id": replay_run_id,
+        "tournament_api_network_calls": api_result.diagnostics.get("network_calls"),
+        "tournament_api_diagnostics": dict(api_result.diagnostics),
+        "deck_identity_count": identity_diag["count"],
+        "deck_identity_map": identity_diag["mapping"],
+        "duplicate_display_names": identity_diag["duplicate_display_names"],
+    }
+    return frames, outputs, diagnostics, exp, decks_url, catalog
 
 
 def _is_nullish(value: Any) -> bool:
@@ -853,7 +1027,15 @@ def _load_matrix_contract(
     return pd.read_csv(path, index_col=0)
 
 
-def _top_meta_for_mars(cfg: dict[str, Any], paths: ProjectPaths, df_top_meta: pd.DataFrame) -> pd.DataFrame:
+def _top_meta_for_mars(
+    cfg: dict[str, Any],
+    paths: ProjectPaths,
+    df_top_meta: pd.DataFrame,
+    *,
+    alias_index_override: dict[str, str] | None = None,
+) -> pd.DataFrame:
+    if alias_index_override is not None:
+        return topmeta_post_alias(df_top_meta, dict(alias_index_override))
     alias_cfg = cfg.get("alias") or {}
     if not bool(alias_cfg.get("apply", True)):
         return df_top_meta
@@ -870,16 +1052,20 @@ def _build_core_matrices(
     df_matchup_raw: pd.DataFrame | None = None,
     df_top_meta: pd.DataFrame | None = None,
     preserve_zero_evidence: bool = False,
+    alias_index_override: dict[str, str] | None = None,
 ) -> tuple[dict[str, pd.DataFrame], dict[str, Path], dict[str, Any]]:
     if df_matchup_raw is None:
         df_matchup_raw = _load_contract_frame(paths=paths, key="matchup_raw", exp=exp, cfg=cfg)
     if df_top_meta is None:
         df_top_meta = _load_contract_frame(paths=paths, key="top_meta_decklist", exp=exp, cfg=cfg)
 
-    alias_cfg = cfg.get("alias") or {}
-    apply_alias = bool(alias_cfg.get("apply", True))
-    alias_path = paths.base / alias_cfg.get("file", "config/alias_map.json")
-    alias_idx = build_alias_index(load_alias_map(alias_path)) if apply_alias else {}
+    if alias_index_override is None:
+        alias_cfg = cfg.get("alias") or {}
+        apply_alias = bool(alias_cfg.get("apply", True))
+        alias_path = paths.base / alias_cfg.get("file", "config/alias_map.json")
+        alias_idx = build_alias_index(load_alias_map(alias_path)) if apply_alias else {}
+    else:
+        alias_idx = dict(alias_index_override)
 
     nan_cfg = cfg.get("nan_filter") or {}
     nan_filter_mode = str(nan_cfg.get("mode", "fixed")).strip().lower()
@@ -1040,6 +1226,7 @@ def _run_mars_stage(
     wr_matrix: pd.DataFrame | None = None,
     n_dir_matrix: pd.DataFrame | None = None,
     top_meta_df: pd.DataFrame | None = None,
+    alias_index_override: dict[str, str] | None = None,
 ) -> tuple[dict[str, pd.DataFrame], dict[str, Path], dict[str, Any]]:
     if score_df is None:
         score_df = _load_contract_frame(paths=paths, key="score_flat", exp=exp, cfg=cfg)
@@ -1051,7 +1238,9 @@ def _run_mars_stage(
         top_meta_df = _load_contract_frame(paths=paths, key="top_meta_decklist", exp=exp, cfg=cfg)
 
     mars_cfg = MARSConfig(**(cfg.get("mars") or {}))
-    top_meta_mars = _top_meta_for_mars(cfg, paths, top_meta_df)
+    top_meta_mars = _top_meta_for_mars(
+        cfg, paths, top_meta_df, alias_index_override=alias_index_override
+    )
     try:
         ranking, diag, coverage_df, missing_pairs_long = run_mars_core(
             filtered_wr=wr_matrix,
@@ -1239,12 +1428,11 @@ def run_deck_ranking(
     configure_logs: bool = True,
     show_progress: bool = False,
 ) -> DeckRankingResult:
-    """
-    First Python pipeline entry point for the deck ranking workflow.
+    """Run the production ranking pipeline with one acquisition-source boundary.
 
-    This currently covers config, expansion resolution, scraping, top-meta,
-    matchup raw, consolidation, matrices, optional MARS ranking, heatmap and
-    Excel report.
+    ``source.acquisition`` defaults to ``legacy_html``. Tournament API is an
+    explicit opt-in and feeds the common downstream core with its dense score
+    contract keyed by canonical deck IDs.
     """
     base = Path(base_dir or Path.cwd()).resolve()
     if configure_logs:
@@ -1260,41 +1448,93 @@ def run_deck_ranking(
     if output_dir is not None:
         cfg.setdefault("paths", {})["output_dir"] = str(output_dir)
 
-    decks_url_cfg = (cfg.get("scraping", {}) or {}).get("decks_url") or LIMITLESS_DECKS_URL
-    exp, decks_url, catalog = resolve_expansion_and_url_from_config(
-        cfg,
-        paths,
-        decks_url=decks_url_cfg,
-    )
-    paths = init_paths(base, cfg, source_url=decks_url)
+    acquisition_source = _acquisition_source(cfg)
+    preserve_zero_evidence = False
+    alias_index_override: dict[str, str] | None = None
+    core_input_required = False
+    core_input: pd.DataFrame | None = None
 
-    result = DeckRankingResult(cfg=cfg, paths=paths, expansion=exp, decks_url=decks_url, catalog=catalog)
-    result.diagnostics["source_scope"] = list(paths.outputs.relative_to(paths.output_root).parts)
-    result.diagnostics["output_profile"] = _output_profile(cfg)
-
-    if run_scrape:
-        frames, outputs, diagnostics, exp = _scrape_decklists_and_matchups(
-            cfg=cfg,
-            paths=paths,
-            exp=exp,
-            decks_url=decks_url,
-            show_progress=show_progress,
+    # The only source-specific production dispatch lives in this block.
+    if acquisition_source == ACQUISITION_LEGACY_HTML:
+        decks_url_cfg = (cfg.get("scraping", {}) or {}).get("decks_url") or LIMITLESS_DECKS_URL
+        exp, decks_url, catalog = resolve_expansion_and_url_from_config(
+            cfg,
+            paths,
+            decks_url=decks_url_cfg,
         )
-        decks_url = build_decks_url_for_expansion(exp, decks_url, cfg=cfg)
-        result.expansion = exp
-        result.decks_url = decks_url
-        result.frames.update(frames)
-        result.outputs.update(outputs)
-        result.diagnostics.update(diagnostics)
+        paths = init_paths(base, cfg, source_url=decks_url)
+        result = DeckRankingResult(
+            cfg=cfg, paths=paths, expansion=exp, decks_url=decks_url, catalog=catalog
+        )
+
+        if run_scrape:
+            frames, outputs, diagnostics, exp = _scrape_decklists_and_matchups(
+                cfg=cfg,
+                paths=paths,
+                exp=exp,
+                decks_url=decks_url,
+                show_progress=show_progress,
+            )
+            decks_url = build_decks_url_for_expansion(exp, decks_url, cfg=cfg)
+            result.expansion = exp
+            result.decks_url = decks_url
+            result.frames.update(frames)
+            result.outputs.update(outputs)
+            result.diagnostics.update(diagnostics)
+        core_input = result.frames.get("matchup_raw")
+    else:
+        acquisition_started_at = datetime.now(UTC)
+        exp, decks_url, catalog, _ = _api_catalog_context(
+            base=base,
+            cfg=cfg,
+            acquisition_started_at=acquisition_started_at,
+        )
+        paths = init_paths(base, cfg, source_url=decks_url)
+        result = DeckRankingResult(
+            cfg=cfg, paths=paths, expansion=exp, decks_url=decks_url, catalog=catalog
+        )
+
+        if run_scrape:
+            frames, outputs, diagnostics, exp, decks_url, catalog = (
+                _run_tournament_api_acquisition_for_production(
+                    base=base,
+                    cfg=cfg,
+                    paths=paths,
+                    acquisition_started_at=acquisition_started_at,
+                )
+            )
+            paths = init_paths(base, cfg, source_url=decks_url)
+            result.paths = paths
+            result.expansion = exp
+            result.decks_url = decks_url
+            result.catalog = catalog
+            result.frames.update(frames)
+            result.outputs.update(outputs)
+            result.diagnostics.update(diagnostics)
+
+        # Dense contract is the authoritative API input to the common core.
+        core_input = result.frames.get("dense_score")
+        preserve_zero_evidence = True
+        alias_index_override = {}
+        core_input_required = True
+
+    result.diagnostics["source_scope"] = list(result.paths.outputs.relative_to(result.paths.output_root).parts)
+    result.diagnostics["output_profile"] = _output_profile(cfg)
 
     should_run_core = run_scrape if run_core is None else run_core
     if should_run_core:
+        if core_input_required and core_input is None:
+            raise RuntimeError(
+                "tournament_api core rebuild requires dense_score from acquisition in the same run"
+            )
         frames, outputs, diagnostics = _build_core_matrices(
             cfg=cfg,
-            paths=paths,
-            exp=exp,
-            df_matchup_raw=result.frames.get("matchup_raw"),
+            paths=result.paths,
+            exp=result.expansion,
+            df_matchup_raw=core_input,
             df_top_meta=result.frames.get("top_meta_decklist"),
+            preserve_zero_evidence=preserve_zero_evidence,
+            alias_index_override=alias_index_override,
         )
         result.frames.update(frames)
         result.outputs.update(outputs)
@@ -1303,12 +1543,13 @@ def run_deck_ranking(
     if run_mars:
         frames, outputs, diagnostics = _run_mars_stage(
             cfg=cfg,
-            paths=paths,
-            exp=exp,
+            paths=result.paths,
+            exp=result.expansion,
             score_df=result.frames.get("score_flat"),
             wr_matrix=result.frames.get("wr_matrix"),
             n_dir_matrix=result.frames.get("n_dir_matrix"),
             top_meta_df=result.frames.get("top_meta_decklist"),
+            alias_index_override=alias_index_override,
         )
         result.frames.update(frames)
         result.outputs.update(outputs)
@@ -1317,8 +1558,8 @@ def run_deck_ranking(
     if run_heatmap:
         frames, outputs, diagnostics = _save_heatmap_stage(
             cfg=cfg,
-            paths=paths,
-            exp=exp,
+            paths=result.paths,
+            exp=result.expansion,
             ranking=result.frames.get("mars_ranking"),
             wr_matrix=result.frames.get("wr_matrix"),
             top_n=heatmap_top_n,
@@ -1330,8 +1571,8 @@ def run_deck_ranking(
     if run_report:
         frames, outputs, diagnostics = _write_report_stage(
             cfg=cfg,
-            paths=paths,
-            exp=exp,
+            paths=result.paths,
+            exp=result.expansion,
             ranking=result.frames.get("mars_ranking"),
             wr_matrix=result.frames.get("wr_matrix"),
             n_dir_matrix=result.frames.get("n_dir_matrix"),

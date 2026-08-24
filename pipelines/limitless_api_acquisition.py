@@ -334,10 +334,20 @@ def _normalize_selected(
     raw_store: ImmutableRawStore,
     selection: TournamentSelection,
     tournament_snapshot_ids: Mapping[str, str],
-) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict[str, int]]:
     tournament_frames: list[pd.DataFrame] = []
     participant_frames: list[pd.DataFrame] = []
     pairing_frames: list[pd.DataFrame] = []
+    normalization_diagnostics = {
+        "canonicalized_player2_bye_count": 0,
+        "excluded_pairing_no_players_count": 0,
+        "pairing_base_collision_count": 0,
+        "pairing_rematch_occurrence_count": 0,
+        "pairing_match_discriminator_count": 0,
+        "pairing_table_fallback_count": 0,
+        "pairing_deduplicated_count": 0,
+        "pairing_unresolved_conflict_count": 0,
+    }
 
     for tid in selection.tournament_ids:
         if tid not in tournament_snapshot_ids:
@@ -350,6 +360,7 @@ def _normalize_selected(
             details=loaded["details"],
             standings=loaded["standings"],
             pairings=loaded["pairings"],
+            diagnostics=normalization_diagnostics,
         )
         tournament_frames.append(tournaments)
         participant_frames.append(participants)
@@ -373,13 +384,14 @@ def _normalize_selected(
     if participant_fk_missing or pairing_fk_missing:
         raise ValueError("normalized tournament foreign-key invariant failed")
 
-    return tournaments, participants, pairings
+    return tournaments, participants, pairings, normalization_diagnostics
 
 
 def _build_derivatives(
     tournaments: pd.DataFrame,
     participants: pd.DataFrame,
     pairings: pd.DataFrame,
+    normalization_diagnostics: Mapping[str, int] | None = None,
 ) -> tuple[
     MetaAggregationResult,
     MatchAggregationResult,
@@ -398,6 +410,7 @@ def _build_derivatives(
             "participants": hash_dataframe(participants),
             "pairings": hash_dataframe(pairings),
         },
+        diagnostics=dict(normalization_diagnostics or {}),
     )
 
     meta_result = aggregate_meta(participants)
@@ -569,7 +582,7 @@ def _live_run(
         refs=raw_refs_tuple,
     )
 
-    tournaments, participants, pairings = _normalize_selected(
+    tournaments, participants, pairings, normalization_diagnostics = _normalize_selected(
         raw_store=raw_store,
         selection=selection,
         tournament_snapshot_ids=snapshot_ids,
@@ -582,7 +595,12 @@ def _live_run(
         dense_score,
         contracts,
         normalized,
-    ) = _build_derivatives(tournaments, participants, pairings)
+    ) = _build_derivatives(
+        tournaments,
+        participants,
+        pairings,
+        normalization_diagnostics=normalization_diagnostics,
+    )
 
     aggregation = AggregationSummary(
         total_participants=meta_result.total_participants,
@@ -632,6 +650,7 @@ def _live_run(
             "pairings": normalized.pairings_rows,
         },
         "normalized_hashes": dict(normalized.hashes),
+        "normalization_diagnostics": dict(normalized.diagnostics),
         "meta_rows": len(top_meta),
         "classified_participants": meta_result.classified_participants,
         "known_deck_matches": match_result.comparable_matches,
@@ -727,7 +746,7 @@ def _offline_run(
             raise FileNotFoundError(f"offline replay has incomplete raw refs for selected tournament: {tid}")
 
     raw_store.write_run_raw_refs(run_id, tournament_ids=selection.tournament_ids, refs=refs)
-    tournaments, participants, pairings = _normalize_selected(
+    tournaments, participants, pairings, normalization_diagnostics = _normalize_selected(
         raw_store=raw_store,
         selection=selection,
         tournament_snapshot_ids=snapshot_ids,
@@ -740,7 +759,12 @@ def _offline_run(
         dense_score,
         contracts,
         normalized,
-    ) = _build_derivatives(tournaments, participants, pairings)
+    ) = _build_derivatives(
+        tournaments,
+        participants,
+        pairings,
+        normalization_diagnostics=normalization_diagnostics,
+    )
 
     aggregation = AggregationSummary(
         total_participants=meta_result.total_participants,
@@ -789,6 +813,7 @@ def _offline_run(
             "pairings": normalized.pairings_rows,
         },
         "normalized_hashes": dict(normalized.hashes),
+        "normalization_diagnostics": dict(normalized.diagnostics),
         "meta_rows": len(top_meta),
         "classified_participants": meta_result.classified_participants,
         "known_deck_matches": match_result.comparable_matches,

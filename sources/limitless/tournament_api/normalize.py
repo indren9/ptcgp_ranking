@@ -223,27 +223,304 @@ def _normalize_winner(value: Any) -> str | int | None:
     return _clean_required_str(value, field_name="winner")
 
 
-def _pairing_key(
+def _pairing_base_key(
     *,
     tournament_id: str,
     phase: int,
     round_number: int,
-    table: int | None,
-    match: str | None,
     player1: str,
     player2: str | None,
 ) -> str:
-    if match is not None:
-        locator = f"match:{match}"
-    elif table is not None:
-        locator = f"table:{table}"
+    if player2 is None:
+        participant_identity = f"bye:{json.dumps(player1, ensure_ascii=False)}"
     else:
-        locator = f"players:{player1}>{player2 or ''}"
-    return f"{tournament_id}|phase:{phase}|round:{round_number}|{locator}"
+        pair = sorted((player1, player2))
+        participant_identity = (
+            "players:"
+            + json.dumps(pair, ensure_ascii=False, separators=(",", ":"))
+        )
+    return (
+        f"{tournament_id}|phase:{phase}|round:{round_number}|"
+        f"{participant_identity}"
+    )
 
 
-def normalize_pairings(tournament_id: str, pairings: Iterable[Mapping[str, Any]]) -> pd.DataFrame:
+def _pairing_analytic_signature(row: Mapping[str, Any]) -> str:
+    player1 = row.get("player1")
+    player2 = row.get("player2")
+    if player2 is None:
+        classification = "bye"
+        participants = [player1]
+    else:
+        classification = "normal"
+        participants = sorted((player1, player2))
+    return _signature(
+        {
+            "tournament_id": row.get("tournament_id"),
+            "phase": row.get("phase"),
+            "round": row.get("round"),
+            "classification": classification,
+            "participants": participants,
+            "winner": row.get("winner"),
+        }
+    )
+
+
+def _increment_diagnostic(
+    diagnostics: dict[str, int] | None,
+    key: str,
+    amount: int = 1,
+) -> None:
+    if diagnostics is not None and amount:
+        diagnostics[key] = int(diagnostics.get(key, 0)) + int(amount)
+
+
+def _raise_pairing_conflict(
+    *,
+    context: str,
+    base_key: str,
+    diagnostics: dict[str, int] | None,
+) -> None:
+    _increment_diagnostic(diagnostics, "pairing_unresolved_conflict_count")
+    raise NormalizationConflictError(f"conflicting duplicate {context}: {base_key}")
+
+
+def _occurrence_key(base_key: str, *, kind: str, value: Any = None) -> str:
+    if kind == "single":
+        return f"{base_key}|occurrence:single"
+    if kind == "match":
+        return f"{base_key}|match:{json.dumps(value, ensure_ascii=False)}"
+    if kind == "table":
+        return f"{base_key}|table:{json.dumps(value, ensure_ascii=False)}"
+    raise ValueError(f"unsupported occurrence key kind: {kind}")
+
+
+def _deterministic_representative(
+    rows: list[dict[str, Any]],
+    *,
+    match: str | None = None,
+    table: int | None = None,
+) -> dict[str, Any]:
+    candidates = rows
+    if match is not None:
+        candidates = [row for row in rows if row.get("match") == match]
+    elif table is not None:
+        candidates = [
+            row
+            for row in rows
+            if row.get("match") is None and row.get("table") == table
+        ]
+    if not candidates:
+        candidates = rows
+    return min(candidates, key=_signature)
+
+
+def _resolve_pairing_base_group(
+    base_key: str,
+    rows: list[dict[str, Any]],
+    *,
+    context: str,
+    diagnostics: dict[str, int] | None,
+) -> list[dict[str, Any]]:
+    if len(rows) > 1:
+        _increment_diagnostic(diagnostics, "pairing_base_collision_count")
+
+    by_semantic: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        by_semantic.setdefault(_pairing_analytic_signature(row), []).append(row)
+
+    # One analytical occurrence: locator disagreement is only context noise.
+    if len(by_semantic) == 1:
+        representative = _deterministic_representative(rows)
+        representative = dict(representative)
+        representative["pairing_key"] = _occurrence_key(base_key, kind="single")
+        _increment_diagnostic(
+            diagnostics,
+            "pairing_deduplicated_count",
+            len(rows) - 1,
+        )
+        return [representative]
+
+    with_match = [row for row in rows if row.get("match") is not None]
+    without_match = [row for row in rows if row.get("match") is None]
+
+    if with_match:
+        match_semantics: dict[str, set[str]] = {}
+        semantic_matches: dict[str, set[str]] = {}
+        for row in with_match:
+            match = str(row["match"])
+            semantic = _pairing_analytic_signature(row)
+            match_semantics.setdefault(match, set()).add(semantic)
+            semantic_matches.setdefault(semantic, set()).add(match)
+
+        if any(len(values) > 1 for values in match_semantics.values()):
+            _raise_pairing_conflict(
+                context=context,
+                base_key=base_key,
+                diagnostics=diagnostics,
+            )
+
+        # In a mixed group, a match-missing row can only be absorbed into a
+        # uniquely evidenced analytical occurrence. A new semantic outcome
+        # without a match label is ambiguous and must fail fast.
+        for row in without_match:
+            semantic = _pairing_analytic_signature(row)
+            if semantic not in semantic_matches:
+                _raise_pairing_conflict(
+                    context=context,
+                    base_key=base_key,
+                    diagnostics=diagnostics,
+                )
+
+        if set(by_semantic) != set(semantic_matches):
+            _raise_pairing_conflict(
+                context=context,
+                base_key=base_key,
+                diagnostics=diagnostics,
+            )
+
+        resolved: list[dict[str, Any]] = []
+        for semantic in sorted(by_semantic):
+            match_label = min(semantic_matches[semantic])
+            representative = _deterministic_representative(
+                by_semantic[semantic],
+                match=match_label,
+            )
+            representative = dict(representative)
+            representative["pairing_key"] = _occurrence_key(
+                base_key,
+                kind="match",
+                value=match_label,
+            )
+            resolved.append(representative)
+
+        _increment_diagnostic(
+            diagnostics,
+            "pairing_rematch_occurrence_count",
+            len(resolved) - 1,
+        )
+        _increment_diagnostic(
+            diagnostics,
+            "pairing_match_discriminator_count",
+            len(resolved),
+        )
+        _increment_diagnostic(
+            diagnostics,
+            "pairing_deduplicated_count",
+            len(rows) - len(resolved),
+        )
+        return resolved
+
+    # No match labels exist in this base group. Table is allowed only as the
+    # local fallback discriminator for analytically incompatible occurrences.
+    with_table = [row for row in rows if row.get("table") is not None]
+    without_table = [row for row in rows if row.get("table") is None]
+    if not with_table:
+        _raise_pairing_conflict(
+            context=context,
+            base_key=base_key,
+            diagnostics=diagnostics,
+        )
+
+    table_semantics: dict[int, set[str]] = {}
+    semantic_tables: dict[str, set[int]] = {}
+    for row in with_table:
+        table = int(row["table"])
+        semantic = _pairing_analytic_signature(row)
+        table_semantics.setdefault(table, set()).add(semantic)
+        semantic_tables.setdefault(semantic, set()).add(table)
+
+    if any(len(values) > 1 for values in table_semantics.values()):
+        _raise_pairing_conflict(
+            context=context,
+            base_key=base_key,
+            diagnostics=diagnostics,
+        )
+
+    for row in without_table:
+        semantic = _pairing_analytic_signature(row)
+        if semantic not in semantic_tables:
+            _raise_pairing_conflict(
+                context=context,
+                base_key=base_key,
+                diagnostics=diagnostics,
+            )
+
+    if set(by_semantic) != set(semantic_tables):
+        _raise_pairing_conflict(
+            context=context,
+            base_key=base_key,
+            diagnostics=diagnostics,
+        )
+
+    resolved = []
+    for semantic in sorted(by_semantic):
+        table = min(semantic_tables[semantic])
+        representative = _deterministic_representative(
+            by_semantic[semantic],
+            table=table,
+        )
+        representative = dict(representative)
+        representative["pairing_key"] = _occurrence_key(
+            base_key,
+            kind="table",
+            value=table,
+        )
+        resolved.append(representative)
+
+    _increment_diagnostic(
+        diagnostics,
+        "pairing_rematch_occurrence_count",
+        len(resolved) - 1,
+    )
+    _increment_diagnostic(
+        diagnostics,
+        "pairing_table_fallback_count",
+        len(resolved),
+    )
+    _increment_diagnostic(
+        diagnostics,
+        "pairing_deduplicated_count",
+        len(rows) - len(resolved),
+    )
+    return resolved
+
+
+def _resolve_pairing_occurrences(
+    rows: list[dict[str, Any]],
+    *,
+    context: str,
+    diagnostics: dict[str, int] | None,
+) -> list[dict[str, Any]]:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        grouped.setdefault(str(row["pairing_key"]), []).append(row)
+
+    resolved: list[dict[str, Any]] = []
+    for base_key in sorted(grouped):
+        resolved.extend(
+            _resolve_pairing_base_group(
+                base_key,
+                grouped[base_key],
+                context=context,
+                diagnostics=diagnostics,
+            )
+        )
+    return resolved
+
+def normalize_pairings(
+    tournament_id: str,
+    pairings: Iterable[Mapping[str, Any]],
+    *,
+    participant_ids: Iterable[str] | None = None,
+    diagnostics: dict[str, int] | None = None,
+) -> pd.DataFrame:
     tid = _clean_required_str(tournament_id, field_name="tournament_id")
+    known_participants = (
+        {_clean_required_str(value, field_name="participant_id") for value in participant_ids}
+        if participant_ids is not None
+        else None
+    )
     rows: list[dict[str, Any]] = []
     for item in pairings:
         if not isinstance(item, Mapping):
@@ -252,8 +529,34 @@ def normalize_pairings(tournament_id: str, pairings: Iterable[Mapping[str, Any]]
         round_number = _required_nonnegative_int(item.get("round"), field_name="round")
         table = _optional_int(item.get("table"), field_name="table")
         match = _clean_optional_str(item.get("match"))
-        player1 = _clean_required_str(item.get("player1"), field_name="player1")
+        player1 = _clean_optional_str(item.get("player1"))
         player2 = _clean_optional_str(item.get("player2"))
+        winner = _normalize_winner(item.get("winner"))
+
+        if player1 is None:
+            if player2 is None:
+                if diagnostics is not None:
+                    diagnostics["excluded_pairing_no_players_count"] = (
+                        int(diagnostics.get("excluded_pairing_no_players_count", 0)) + 1
+                    )
+                continue
+            if winner != player2:
+                raise ValueError(
+                    "player1 is missing but player2 cannot be canonicalized: "
+                    "winner must equal player2"
+                )
+            if known_participants is not None and player2 not in known_participants:
+                raise ValueError(
+                    "player1 is missing but player2 cannot be canonicalized: "
+                    "player2 is not a normalized participant"
+                )
+            player1 = player2
+            player2 = None
+            if diagnostics is not None:
+                diagnostics["canonicalized_player2_bye_count"] = (
+                    int(diagnostics.get("canonicalized_player2_bye_count", 0)) + 1
+                )
+
         row = {
             "tournament_id": tid,
             "phase": phase,
@@ -262,19 +565,21 @@ def normalize_pairings(tournament_id: str, pairings: Iterable[Mapping[str, Any]]
             "match": match,
             "player1": player1,
             "player2": player2,
-            "winner": _normalize_winner(item.get("winner")),
-            "pairing_key": _pairing_key(
+            "winner": winner,
+            "pairing_key": _pairing_base_key(
                 tournament_id=tid,
                 phase=phase,
                 round_number=round_number,
-                table=table,
-                match=match,
                 player1=player1,
                 player2=player2,
             ),
         }
         rows.append(row)
-    rows = _dedupe_rows(rows, key_field="pairing_key", context=f"pairing in tournament {tid}")
+    rows = _resolve_pairing_occurrences(
+        rows,
+        context=f"pairing in tournament {tid}",
+        diagnostics=diagnostics,
+    )
     rows.sort(
         key=lambda row: (
             row["phase"],
@@ -295,13 +600,21 @@ def normalize_snapshot(
     details: Mapping[str, Any],
     standings: Iterable[Mapping[str, Any]],
     pairings: Iterable[Mapping[str, Any]],
+    diagnostics: dict[str, int] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     details_id = _clean_required_str(details.get("id"), field_name="details.id")
     if details_id != _clean_required_str(tournament_id, field_name="tournament_id"):
         raise ValueError("tournament_id does not match details.id")
     tournaments = normalize_tournaments(((details, raw_snapshot_id),))
     participants = normalize_participants(tournament_id, standings)
-    pairing_df = normalize_pairings(tournament_id, pairings)
+    normalization_diagnostics = diagnostics
+    participant_ids = participants["player_id"].astype(str).tolist()
+    pairing_df = normalize_pairings(
+        tournament_id,
+        pairings,
+        participant_ids=participant_ids,
+        diagnostics=normalization_diagnostics,
+    )
     return tournaments, participants, pairing_df
 
 

@@ -23,6 +23,7 @@ class NormalizedSummary:
     participants_rows: int
     pairings_rows: int
     hashes: Mapping[str, str]
+    diagnostics: Mapping[str, int] | None = None
 
     def __post_init__(self) -> None:
         for field_name in ("tournaments_rows", "participants_rows", "pairings_rows"):
@@ -32,6 +33,10 @@ class NormalizedSummary:
             object.__setattr__(self, field_name, value)
         hashes = {str(key): str(value).strip().lower() for key, value in dict(self.hashes).items()}
         object.__setattr__(self, "hashes", MappingProxyType(hashes))
+        diagnostics = {str(key): int(value) for key, value in dict(self.diagnostics or {}).items()}
+        if any(value < 0 for value in diagnostics.values()):
+            raise ValueError("normalization diagnostics must be non-negative")
+        object.__setattr__(self, "diagnostics", MappingProxyType(diagnostics))
 
 
 @dataclass(frozen=True)
@@ -154,6 +159,7 @@ class AcquisitionManifest:
                     "pairings": self.normalized.pairings_rows,
                 },
                 "hashes": dict(self.normalized.hashes),
+                "diagnostics": dict(self.normalized.diagnostics),
             },
             "aggregation": {
                 "total_participants": self.aggregation.total_participants,
