@@ -48,9 +48,8 @@ def _write_config(tmp_path: Path, *, acquisition: str | None, api: dict | None =
     return path
 
 
-@pytest.mark.parametrize("selector", [None, "legacy_html"])
-def test_legacy_missing_or_explicit_selector_uses_legacy_path(monkeypatch, tmp_path, selector):
-    cfg_path = _write_config(tmp_path, acquisition=selector)
+def test_explicit_legacy_selector_uses_legacy_path(monkeypatch, tmp_path):
+    cfg_path = _write_config(tmp_path, acquisition="legacy_html")
     exp = Expansion(code="B3b", name="Everyday Wonders", is_current=False)
     source_url = "https://play.limitlesstcg.com/decks?game=POCKET&format=standard&set=B3b"
     top = pd.DataFrame([{"Deck": "A", "Share_%": 50.0}, {"Deck": "B", "Share_%": 50.0}])
@@ -160,7 +159,8 @@ class FakeClient:
         return [{"phase": 1, "round": 1, "table": 1, "player1": "p1", "player2": "p2", "winner": "p1" if tid == "t1" else 0}]
 
 
-def test_offline_api_replay_feeds_dense_id_keyed_production_core(tmp_path):
+@pytest.mark.parametrize("selector", [None, "tournament_api"])
+def test_offline_api_replay_feeds_dense_id_keyed_production_core(tmp_path, selector):
     raw_store = tmp_path / "raw_store"
     run_limitless_api_acquisition(
         game="POCKET",
@@ -180,7 +180,7 @@ def test_offline_api_replay_feeds_dense_id_keyed_production_core(tmp_path):
 
     cfg_path = _write_config(
         tmp_path,
-        acquisition="tournament_api",
+        acquisition=selector,
         api={
             "execution_mode": "offline",
             "replay_run_id": "seed-live",
@@ -222,11 +222,11 @@ def test_offline_api_replay_feeds_dense_id_keyed_production_core(tmp_path):
     assert pd.isna(zero.WR_dir)
     assert float(result.frames["n_dir_matrix"].loc["id-2", "id-3"]) == 0.0
     assert pd.isna(result.frames["wr_matrix"].loc["id-2", "id-3"])
-
     manifest_path = result.outputs["run_manifest"]
     manifest_raw = manifest_path.read_text(encoding="utf-8")
     assert "player_id" not in manifest_raw.lower()
     payload = json.loads(manifest_raw)
+    assert payload["diagnostics"]["acquisition_source"] == "tournament_api"
     assert payload["diagnostics"]["deck_identity_count"] == 3
     assert payload["diagnostics"]["deck_identity_map"][1] == {"deck_id": "id-2", "deck_name": "Twin Name"}
 

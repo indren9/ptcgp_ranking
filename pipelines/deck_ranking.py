@@ -340,7 +340,13 @@ def _load_config(base_dir: Path, config_path: str | Path | None) -> tuple[dict[s
 
 def _acquisition_source(cfg: dict[str, Any]) -> str:
     source_cfg = cfg.get("source") or {}
-    value = str(source_cfg.get("acquisition") or ACQUISITION_LEGACY_HTML).strip().lower()
+    game = str(source_cfg.get("game") or "").strip().upper()
+    default_source = (
+        ACQUISITION_TOURNAMENT_API
+        if game == "POCKET"
+        else ACQUISITION_LEGACY_HTML
+    )
+    value = str(source_cfg.get("acquisition") or default_source).strip().lower()
     if value not in ACQUISITION_SOURCES:
         raise ValueError(
             "source.acquisition must be one of: " + ", ".join(sorted(ACQUISITION_SOURCES))
@@ -1430,9 +1436,10 @@ def run_deck_ranking(
 ) -> DeckRankingResult:
     """Run the production ranking pipeline with one acquisition-source boundary.
 
-    ``source.acquisition`` defaults to ``legacy_html``. Tournament API is an
-    explicit opt-in and feeds the common downstream core with its dense score
-    contract keyed by canonical deck IDs.
+    For ``POCKET``, missing ``source.acquisition`` defaults to
+    ``tournament_api``. Other games retain the historical ``legacy_html``
+    fallback unless explicitly configured. Tournament API feeds the common
+    downstream core with its dense score contract keyed by canonical deck IDs.
     """
     base = Path(base_dir or Path.cwd()).resolve()
     if configure_logs:

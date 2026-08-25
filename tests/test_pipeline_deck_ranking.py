@@ -26,6 +26,7 @@ def write_config(base: Path) -> Path:
 source:
   provider: limitless
   game: POCKET
+  acquisition: legacy_html
 scraping:
   decks_url: https://example.com/decks?game=POCKET
   cache_ttl_min: 720

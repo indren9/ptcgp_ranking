@@ -27,6 +27,23 @@ win-rate heatmap, a styled Excel matchup report, and a machine-readable run
 manifest. One Python pipeline is the source of truth; the CLI and notebooks are
 convenient interfaces around it.
 
+### Pocket acquisition source
+
+For **Pokemon TCG Pocket**, the default and canonical acquisition source is the
+Limitless Tournament API. Frozen event-level tournament records are scoped by
+the versioned Pocket release catalog, normalized and aggregated locally, and
+retain exact tournament IDs plus immutable raw snapshots for deterministic
+offline replay. Production identity is the canonical `deck_id`; `deck_name` is
+display metadata.
+
+`legacy_html` remains supported as an explicit rollback and historical
+diagnostic path. Legacy HTML aggregates are non-authoritative benchmarks and
+are not a numerical-parity target for the Tournament API cutover. The
+historical +/-2% comparable-match gate is retained as evidence but is
+`NOT_APPLICABLE_TO_LEGACY_CUTOVER`; previous deltas have not been reclassified
+as passes. Tournament API failures are explicit and never trigger an automatic
+fallback to `legacy_html`.
+
 > [!IMPORTANT]
 > MARS is an analytical ranking, not a tournament forecast. Sparse matchups,
 > metagame shifts, player skill, and the selected time window still matter.
@@ -82,9 +99,9 @@ Built from public tournament data provided by [Limitless TCG](https://limitlesst
 
 ```mermaid
 flowchart LR
-    A[Limitless catalog] --> B[Decklists]
-    B --> C[Matchup pages]
-    C --> D[Directional W/L matrix]
+    A[Limitless Tournament API] --> B[Frozen tournament records]
+    B --> C[Local meta + matchup aggregation]
+    C --> D[Directional W/L + dense score]
     D --> E[Coverage + NaN filter]
     E --> F[MARS]
     F --> G[Ranking CSV]
@@ -387,6 +404,7 @@ knobs looks like this:
 ```yaml
 source:
   provider: limitless
+  acquisition: tournament_api  # tournament_api | legacy_html
   game: POCKET
   format:
     mode: auto      # auto | code
@@ -415,6 +433,10 @@ nan_filter:
   max_nan_ratio: 0.15
   min_nan_allowed: 1
 ```
+
+For Pocket, `tournament_api` is the production default. Set
+`source.acquisition: legacy_html` only for an explicit rollback or historical
+diagnostic run; there is no silent API-to-legacy fallback.
 
 `paths.output_dir` may be relative to the repository or absolute. For temporary
 overrides, prefer `--output-dir` so the tracked profiles remain portable.

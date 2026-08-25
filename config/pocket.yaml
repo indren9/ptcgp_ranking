@@ -1,6 +1,6 @@
 source:
   provider: limitless
-  acquisition: legacy_html  # legacy_html | tournament_api
+  acquisition: tournament_api  # tournament_api | legacy_html
   game: POCKET
   format:
     mode: auto   # auto | code
