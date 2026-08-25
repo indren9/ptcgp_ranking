@@ -8,7 +8,9 @@ from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 import json
 import logging
 import os
+import time
 
+import numpy as np
 import pandas as pd
 import yaml
 
@@ -1052,6 +1054,205 @@ def _top_meta_for_mars(
     return topmeta_post_alias(df_top_meta, alias_idx)
 
 
+
+def _emit_phase_progress(
+    label: str | None,
+    phase: str,
+    current: int,
+    total: int,
+    started_at: float,
+) -> None:
+    if not label:
+        return
+    log.info(
+        "[%s] phase=%s %d/%d elapsed=%.2fs",
+        label,
+        phase,
+        current,
+        total,
+        time.perf_counter() - started_at,
+    )
+
+
+def _prepare_canonical_dense_core_input(
+    df: pd.DataFrame,
+    axis: list[str],
+) -> pd.DataFrame:
+    """Validate an already-canonical dense Tournament API core input."""
+    required = {
+        "Deck A",
+        "Deck B",
+        "W",
+        "L",
+        "T",
+        "N",
+    }
+    missing = required - set(df.columns)
+    if missing:
+        raise KeyError(
+            "canonical dense input missing columns: "
+            f"{sorted(missing)}"
+        )
+
+    axis_clean = [str(deck).strip() for deck in axis]
+    if len(axis_clean) != len(set(axis_clean)):
+        raise ValueError(
+            "canonical dense axis contains duplicate deck IDs"
+        )
+
+    axis_set = set(axis_clean)
+    d = df.copy()
+
+    d["Deck A"] = d["Deck A"].astype(str).str.strip()
+    d["Deck B"] = d["Deck B"].astype(str).str.strip()
+
+    if not d["Deck A"].isin(axis_set).all():
+        raise ValueError(
+            "canonical dense input contains Deck A outside axis"
+        )
+    if not d["Deck B"].isin(axis_set).all():
+        raise ValueError(
+            "canonical dense input contains Deck B outside axis"
+        )
+    if (d["Deck A"] == d["Deck B"]).any():
+        raise ValueError(
+            "canonical dense input contains diagonal rows"
+        )
+    if d.duplicated(["Deck A", "Deck B"]).any():
+        raise ValueError(
+            "canonical dense input contains duplicate directional rows"
+        )
+
+    expected = len(axis_clean) * max(0, len(axis_clean) - 1)
+    if len(d) != expected:
+        raise ValueError(
+            "canonical dense input cardinality mismatch: "
+            f"expected {expected}, got {len(d)}"
+        )
+
+    provided_n = pd.to_numeric(
+        d["N"],
+        errors="coerce",
+    )
+
+    for column in ("W", "L", "T"):
+        d[column] = (
+            pd.to_numeric(
+                d[column],
+                errors="coerce",
+            )
+            .fillna(0)
+            .clip(lower=0)
+            .astype("Int64")
+        )
+
+    computed_n = (
+        d["W"] + d["L"] + d["T"]
+    ).astype("Int64")
+
+    if provided_n.isna().any():
+        raise ValueError(
+            "canonical dense input contains invalid N"
+        )
+
+    if not bool(
+        (
+            provided_n.astype("Int64")
+            == computed_n
+        ).all()
+    ):
+        raise ValueError(
+            "canonical dense input violates N=W+L+T"
+        )
+
+    d["N"] = computed_n
+
+    lhs = d[
+        ["Deck A", "Deck B", "W", "L", "T"]
+    ].copy()
+
+    reverse = d[
+        ["Deck A", "Deck B", "W", "L", "T"]
+    ].rename(
+        columns={
+            "Deck A": "Deck B",
+            "Deck B": "Deck A",
+            "W": "_rev_L",
+            "L": "_rev_W",
+            "T": "_rev_T",
+        }
+    )
+
+    check = lhs.merge(
+        reverse,
+        on=["Deck A", "Deck B"],
+        how="left",
+        validate="one_to_one",
+    )
+
+    reverse_columns = [
+        "_rev_W",
+        "_rev_L",
+        "_rev_T",
+    ]
+    if check[reverse_columns].isna().any().any():
+        raise ValueError(
+            "canonical dense input is missing a reverse direction"
+        )
+
+    symmetry_ok = (
+        (
+            check["W"].astype("int64")
+            == check["_rev_W"].astype("int64")
+        )
+        & (
+            check["L"].astype("int64")
+            == check["_rev_L"].astype("int64")
+        )
+        & (
+            check["T"].astype("int64")
+            == check["_rev_T"].astype("int64")
+        )
+    )
+
+    if not bool(symmetry_ok.all()):
+        raise ValueError(
+            "canonical dense input directional symmetry failed"
+        )
+
+    denom = (d["W"] + d["L"]).astype("Int64")
+    wr = np.where(
+        denom > 0,
+        100.0
+        * d["W"].astype(float)
+        / denom.astype(float),
+        np.nan,
+    )
+    d["Winrate"] = pd.Series(
+        wr,
+        index=d.index,
+    ).round(2)
+
+    return (
+        d[
+            [
+                "Deck A",
+                "Deck B",
+                "W",
+                "L",
+                "T",
+                "N",
+                "Winrate",
+            ]
+        ]
+        .sort_values(
+            ["Deck A", "Deck B"],
+            kind="mergesort",
+        )
+        .reset_index(drop=True)
+    )
+
+
 def _build_core_matrices(
     *,
     cfg: dict[str, Any],
@@ -1061,66 +1262,209 @@ def _build_core_matrices(
     df_top_meta: pd.DataFrame | None = None,
     preserve_zero_evidence: bool = False,
     alias_index_override: dict[str, str] | None = None,
+    canonical_dense_input: bool = False,
+    progress_label: str | None = None,
 ) -> tuple[dict[str, pd.DataFrame], dict[str, Path], dict[str, Any]]:
+    progress_started_at = time.perf_counter()
+
     if df_matchup_raw is None:
-        df_matchup_raw = _load_contract_frame(paths=paths, key="matchup_raw", exp=exp, cfg=cfg)
+        df_matchup_raw = _load_contract_frame(
+            paths=paths,
+            key="matchup_raw",
+            exp=exp,
+            cfg=cfg,
+        )
     if df_top_meta is None:
-        df_top_meta = _load_contract_frame(paths=paths, key="top_meta_decklist", exp=exp, cfg=cfg)
+        df_top_meta = _load_contract_frame(
+            paths=paths,
+            key="top_meta_decklist",
+            exp=exp,
+            cfg=cfg,
+        )
 
     if alias_index_override is None:
         alias_cfg = cfg.get("alias") or {}
         apply_alias = bool(alias_cfg.get("apply", True))
-        alias_path = paths.base / alias_cfg.get("file", "config/alias_map.json")
-        alias_idx = build_alias_index(load_alias_map(alias_path)) if apply_alias else {}
+        alias_path = (
+            paths.base
+            / alias_cfg.get(
+                "file",
+                "config/alias_map.json",
+            )
+        )
+        alias_idx = (
+            build_alias_index(
+                load_alias_map(alias_path)
+            )
+            if apply_alias
+            else {}
+        )
     else:
         alias_idx = dict(alias_index_override)
 
     nan_cfg = cfg.get("nan_filter") or {}
-    nan_filter_mode = str(nan_cfg.get("mode", "fixed")).strip().lower()
-    max_nan_ratio = _float_config(nan_cfg.get("max_nan_ratio"), 0.15)
-    min_nan_allowed = _int_config(nan_cfg.get("min_nan_allowed"), 1)
-    use_ceil = bool(nan_cfg.get("use_ceil", False))
+    nan_filter_mode = str(
+        nan_cfg.get("mode", "fixed")
+    ).strip().lower()
+    max_nan_ratio = _float_config(
+        nan_cfg.get("max_nan_ratio"),
+        0.15,
+    )
+    min_nan_allowed = _int_config(
+        nan_cfg.get("min_nan_allowed"),
+        1,
+    )
+    use_ceil = bool(
+        nan_cfg.get("use_ceil", False)
+    )
 
-    top_meta_alias_all = topmeta_post_alias(df_top_meta, alias_idx)
-    axis_all = top_meta_alias_all["Deck"].astype(str).str.strip().tolist()
+    top_meta_alias_all = topmeta_post_alias(
+        df_top_meta,
+        alias_idx,
+    )
+    axis_all = (
+        top_meta_alias_all["Deck"]
+        .astype(str)
+        .str.strip()
+        .tolist()
+    )
+
     if len(axis_all) < 2:
         raise InsufficientRankingDataError(
-            f"Asse iniziale troppo piccolo (T0={len(axis_all)}). Controlla top-meta/alias."
+            "Asse iniziale troppo piccolo "
+            f"(T0={len(axis_all)}). "
+            "Controlla top-meta/alias."
         )
 
-    top_meta_alias, candidate_pool_diag = _candidate_pool_from_top_meta(top_meta_alias_all, cfg)
-    axis0 = top_meta_alias["Deck"].astype(str).str.strip().tolist()
+    top_meta_alias, candidate_pool_diag = (
+        _candidate_pool_from_top_meta(
+            top_meta_alias_all,
+            cfg,
+        )
+    )
+
+    axis0 = (
+        top_meta_alias["Deck"]
+        .astype(str)
+        .str.strip()
+        .tolist()
+    )
+
     if len(axis0) < 2:
-        raise RuntimeError(f"Candidate pool troppo piccolo (T0={len(axis0)}). Controlla analysis.candidate_pool.")
+        raise RuntimeError(
+            "Candidate pool troppo piccolo "
+            f"(T0={len(axis0)}). "
+            "Controlla analysis.candidate_pool."
+        )
 
-    df_max = maxN_flat(df_matchup_raw)
-    df_agg = apply_alias_and_aggregate(df_max, alias_idx)
-    w_all, l_all, _, wr_all = build_matrices(df_agg, axis_all)
-    n_dir_all = n_dir_from_WL(w_all, l_all)
-    nan_diag_df, nan_diag_summary = build_nan_diagnostics(wr_all, n_dir_all, top_meta_alias_all)
-    w0, l0, _, wr0 = build_matrices(df_agg, axis0)
+    if canonical_dense_input:
+        if alias_idx:
+            raise ValueError(
+                "canonical dense input cannot apply legacy aliases"
+            )
 
-    nan_filter_selection: dict[str, Any] = {"mode": nan_filter_mode}
+        df_agg = _prepare_canonical_dense_core_input(
+            df_matchup_raw,
+            axis_all,
+        )
+    else:
+        df_max = maxN_flat(df_matchup_raw)
+        df_agg = apply_alias_and_aggregate(
+            df_max,
+            alias_idx,
+        )
+
+    _emit_phase_progress(
+        progress_label,
+        "core_prepare",
+        1,
+        5,
+        progress_started_at,
+    )
+
+    w_all, l_all, _, wr_all = build_matrices(
+        df_agg,
+        axis_all,
+    )
+    n_dir_all = n_dir_from_WL(
+        w_all,
+        l_all,
+    )
+
+    nan_diag_df, nan_diag_summary = (
+        build_nan_diagnostics(
+            wr_all,
+            n_dir_all,
+            top_meta_alias_all,
+        )
+    )
+
+    w0, l0, _, wr0 = build_matrices(
+        df_agg,
+        axis0,
+    )
+
+    _emit_phase_progress(
+        progress_label,
+        "core_matrices",
+        2,
+        5,
+        progress_started_at,
+    )
+
+    nan_filter_selection: dict[str, Any] = {
+        "mode": nan_filter_mode
+    }
     nan_filter_simulation = pd.DataFrame()
+
     if nan_filter_mode == "dynamic":
         dyn_cfg = nan_cfg.get("dynamic", {}) or {}
-        min_axis_raw = dyn_cfg.get("min_axis_count", 40)
-        max_nan_ratio, nan_filter_simulation, nan_filter_selection = choose_dynamic_nan_filter(
+        min_axis_raw = dyn_cfg.get(
+            "min_axis_count",
+            40,
+        )
+
+        (
+            max_nan_ratio,
+            nan_filter_simulation,
+            nan_filter_selection,
+        ) = choose_dynamic_nan_filter(
             wr0,
             top_meta_alias,
-            min_nan_ratio=_float_config(dyn_cfg.get("min_nan_ratio"), max_nan_ratio),
-            max_nan_ratio=_float_config(dyn_cfg.get("max_nan_ratio"), 0.50),
-            step=_float_config(dyn_cfg.get("step"), 0.05),
-            target_share_pct=_float_config(dyn_cfg.get("target_share_pct"), 80.0),
-            min_axis_count=_optional_int_config(min_axis_raw),
+            min_nan_ratio=_float_config(
+                dyn_cfg.get("min_nan_ratio"),
+                max_nan_ratio,
+            ),
+            max_nan_ratio=_float_config(
+                dyn_cfg.get("max_nan_ratio"),
+                0.50,
+            ),
+            step=_float_config(
+                dyn_cfg.get("step"),
+                0.05,
+            ),
+            target_share_pct=_float_config(
+                dyn_cfg.get("target_share_pct"),
+                80.0,
+            ),
+            min_axis_count=_optional_int_config(
+                min_axis_raw
+            ),
             min_nan_allowed=min_nan_allowed,
             use_ceil=use_ceil,
         )
+
     elif nan_filter_mode != "fixed":
-        raise ValueError("nan_filter.mode deve essere 'fixed' oppure 'dynamic'.")
+        raise ValueError(
+            "nan_filter.mode deve essere "
+            "'fixed' oppure 'dynamic'."
+        )
 
     log.info(
-        "[nan-filter] mode=%s | selected_max_nan_ratio=%.3f | axis_all=%d | axis_pool=%d | min_nan_allowed=%d | ceil=%s",
+        "[nan-filter] mode=%s | "
+        "selected_max_nan_ratio=%.3f | "
+        "axis_all=%d | axis_pool=%d | "
+        "min_nan_allowed=%d | ceil=%s",
         nan_filter_mode,
         max_nan_ratio,
         len(axis_all),
@@ -1128,35 +1472,95 @@ def _build_core_matrices(
         min_nan_allowed,
         use_ceil,
     )
+
     wr_kept, dropped = filter_wr_nan_iterative(
         wr0,
         max_nan_ratio=max_nan_ratio,
         min_nan_allowed=min_nan_allowed,
         use_ceil=use_ceil,
     )
+
     axis_kept = wr_kept.index.tolist()
-    log.debug("[nan-filter] kept=%d | dropped=%d", len(axis_kept), len(dropped))
+
+    log.debug(
+        "[nan-filter] kept=%d | dropped=%d",
+        len(axis_kept),
+        len(dropped),
+    )
+
+    _emit_phase_progress(
+        progress_label,
+        "core_filter",
+        3,
+        5,
+        progress_started_at,
+    )
 
     score_df = build_score_table_filtered(
         df_agg,
         axis_kept,
-        preserve_zero_evidence=preserve_zero_evidence,
-    )
-    w_mat, l_mat, _, wr_mat = build_matrices(score_df, axis_kept)
-    n_dir = n_dir_from_WL(w_mat, l_mat)
-    wildcard_df, wildcard_summary = _build_wildcard_candidates(
-        cfg=cfg,
-        top_meta_alias_all=top_meta_alias_all,
-        nan_diag_df=nan_diag_df,
-        df_agg=df_agg,
-        n_dir_all=n_dir_all,
-        axis0=axis0,
-        axis_kept=axis_kept,
+        preserve_zero_evidence=(
+            preserve_zero_evidence
+        ),
     )
 
-    score_path = _save_csv_artifact(score_df, paths, "score_flat", exp, cfg, changed=True, index=False)
-    wr_path = _save_csv_artifact(wr_mat, paths, "wr_matrix", exp, cfg, changed=True, index=True)
-    n_dir_path = _save_csv_artifact(n_dir, paths, "n_dir_matrix", exp, cfg, changed=True, index=True)
+    w_mat, l_mat, _, wr_mat = build_matrices(
+        score_df,
+        axis_kept,
+    )
+    n_dir = n_dir_from_WL(
+        w_mat,
+        l_mat,
+    )
+
+    wildcard_df, wildcard_summary = (
+        _build_wildcard_candidates(
+            cfg=cfg,
+            top_meta_alias_all=top_meta_alias_all,
+            nan_diag_df=nan_diag_df,
+            df_agg=df_agg,
+            n_dir_all=n_dir_all,
+            axis0=axis0,
+            axis_kept=axis_kept,
+        )
+    )
+
+    _emit_phase_progress(
+        progress_label,
+        "core_contracts",
+        4,
+        5,
+        progress_started_at,
+    )
+
+    score_path = _save_csv_artifact(
+        score_df,
+        paths,
+        "score_flat",
+        exp,
+        cfg,
+        changed=True,
+        index=False,
+    )
+    wr_path = _save_csv_artifact(
+        wr_mat,
+        paths,
+        "wr_matrix",
+        exp,
+        cfg,
+        changed=True,
+        index=True,
+    )
+    n_dir_path = _save_csv_artifact(
+        n_dir,
+        paths,
+        "n_dir_matrix",
+        exp,
+        cfg,
+        changed=True,
+        index=True,
+    )
+
     nan_diag_path = _save_csv_artifact(
         nan_diag_df,
         paths,
@@ -1166,6 +1570,7 @@ def _build_core_matrices(
         changed=True,
         index=False,
     )
+
     wildcard_path = _save_csv_artifact(
         wildcard_df,
         paths,
@@ -1175,7 +1580,9 @@ def _build_core_matrices(
         changed=True,
         index=False,
     )
+
     nan_filter_sim_path = None
+
     if not nan_filter_simulation.empty:
         nan_filter_sim_path = _save_csv_artifact(
             nan_filter_simulation,
@@ -1191,11 +1598,17 @@ def _build_core_matrices(
         "score_flat": score_df,
         "wr_matrix": wr_mat,
         "n_dir_matrix": n_dir,
-        "nan_diagnostics_pre_filter": nan_diag_df,
-        "nan_filter_simulation": nan_filter_simulation,
+        "nan_diagnostics_pre_filter": (
+            nan_diag_df
+        ),
+        "nan_filter_simulation": (
+            nan_filter_simulation
+        ),
         "wildcard_candidates": wildcard_df,
     }
+
     outputs = {}
+
     if score_path is not None:
         outputs["score_flat"] = score_path
     if wr_path is not None:
@@ -1203,25 +1616,50 @@ def _build_core_matrices(
     if n_dir_path is not None:
         outputs["n_dir_matrix"] = n_dir_path
     if nan_diag_path is not None:
-        outputs["nan_diagnostics_pre_filter"] = nan_diag_path
+        outputs[
+            "nan_diagnostics_pre_filter"
+        ] = nan_diag_path
     if wildcard_path is not None:
-        outputs["wildcard_candidates"] = wildcard_path
+        outputs[
+            "wildcard_candidates"
+        ] = wildcard_path
     if nan_filter_sim_path is not None:
-        outputs["nan_filter_simulation"] = nan_filter_sim_path
+        outputs[
+            "nan_filter_simulation"
+        ] = nan_filter_sim_path
+
     diagnostics = {
         "axis_all_count": len(axis_all),
         "axis0_count": len(axis0),
         "axis_kept_count": len(axis_kept),
         "dropped_decks": dropped,
         "candidate_pool": candidate_pool_diag,
-        "nan_diagnostics_pre_filter": nan_diag_summary,
-        "wildcard_candidates": wildcard_summary,
+        "nan_diagnostics_pre_filter": (
+            nan_diag_summary
+        ),
+        "wildcard_candidates": (
+            wildcard_summary
+        ),
         "nan_filter": {
             **nan_filter_selection,
-            "applied_max_nan_ratio": max_nan_ratio,
+            "applied_max_nan_ratio": (
+                max_nan_ratio
+            ),
             "dropped_count": len(dropped),
         },
+        "canonical_dense_fast_path": (
+            bool(canonical_dense_input)
+        ),
     }
+
+    _emit_phase_progress(
+        progress_label,
+        "core_done",
+        5,
+        5,
+        progress_started_at,
+    )
+
     return frames, outputs, diagnostics
 
 
@@ -1460,6 +1898,7 @@ def run_deck_ranking(
     acquisition_source = _acquisition_source(cfg)
     preserve_zero_evidence = False
     alias_index_override: dict[str, str] | None = None
+    canonical_dense_input = False
     core_input_required = False
     core_input: pd.DataFrame | None = None
 
@@ -1525,6 +1964,7 @@ def run_deck_ranking(
         core_input = result.frames.get("dense_score")
         preserve_zero_evidence = True
         alias_index_override = {}
+        canonical_dense_input = True
         core_input_required = True
 
     result.diagnostics["source_scope"] = list(result.paths.outputs.relative_to(result.paths.output_root).parts)
@@ -1544,6 +1984,15 @@ def run_deck_ranking(
             df_top_meta=result.frames.get("top_meta_decklist"),
             preserve_zero_evidence=preserve_zero_evidence,
             alias_index_override=alias_index_override,
+            canonical_dense_input=canonical_dense_input,
+            progress_label=(
+                "OFFLINE"
+                if result.diagnostics.get(
+                    "tournament_api_execution_mode"
+                )
+                == "offline"
+                else None
+            ),
         )
         result.frames.update(frames)
         result.outputs.update(outputs)

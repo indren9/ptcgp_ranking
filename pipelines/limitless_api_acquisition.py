@@ -3,10 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import json
+import logging
 import os
 from pathlib import Path
 import subprocess
 import tempfile
+import time
 from typing import Any, Callable, Iterable, Mapping
 
 import pandas as pd
@@ -62,6 +64,8 @@ DEFAULT_RELEASE_CATALOG = Path("data/reference/pocket_releases.json")
 SOURCE_NAME = "Limitless Tournament API"
 SCHEMA_VERSION = "1"
 STABILITY_HORIZON_HOURS = 72.0
+
+log = logging.getLogger("ptcgp")
 
 
 class AcquisitionPipelineError(RuntimeError):
@@ -450,10 +454,42 @@ def _selection_from_manifest(payload: Mapping[str, Any]) -> TournamentSelection:
     )
 
 
-def _concat_or_empty(frames: list[pd.DataFrame], columns: tuple[str, ...]) -> pd.DataFrame:
-    if not frames:
-        return pd.DataFrame(columns=list(columns))
-    return pd.concat(frames, ignore_index=True).reindex(columns=list(columns))
+def _concat_or_empty(
+    frames: list[pd.DataFrame],
+    columns: tuple[str, ...],
+) -> pd.DataFrame:
+    """Concatenate with explicit pre-Pandas-change dtype inference.
+
+    Empty frames and all-NA columns do not participate in concat dtype
+    inference. Canonical columns are restored after concatenation.
+    """
+    prepared: list[pd.DataFrame] = []
+
+    for frame in frames:
+        if frame is None or frame.empty:
+            continue
+
+        prepared.append(
+            frame.dropna(
+                axis=1,
+                how="all",
+            )
+        )
+
+    if not prepared:
+        return pd.DataFrame(
+            columns=list(columns)
+        )
+
+    return (
+        pd.concat(
+            prepared,
+            ignore_index=True,
+        )
+        .reindex(
+            columns=list(columns)
+        )
+    )
 
 
 def _normalize_selected(
@@ -519,6 +555,9 @@ def _build_derivatives(
     participants: pd.DataFrame,
     pairings: pd.DataFrame,
     normalization_diagnostics: Mapping[str, int] | None = None,
+    *,
+    progress_label: str | None = None,
+    progress_started_at: float | None = None,
 ) -> tuple[
     MetaAggregationResult,
     MatchAggregationResult,
@@ -540,13 +579,70 @@ def _build_derivatives(
         diagnostics=dict(normalization_diagnostics or {}),
     )
 
+    if progress_label and progress_started_at is not None:
+        log.info(
+            "[%s] phase=normalized_hashes "
+            "1/5 elapsed=%.2fs",
+            progress_label,
+            time.perf_counter()
+            - progress_started_at,
+        )
+
     meta_result = aggregate_meta(participants)
-    match_result = aggregate_matchups(participants, pairings)
+
+    if progress_label and progress_started_at is not None:
+        log.info(
+            "[%s] phase=meta_aggregation "
+            "2/5 elapsed=%.2fs",
+            progress_label,
+            time.perf_counter()
+            - progress_started_at,
+        )
+
+    match_result = aggregate_matchups(
+        participants,
+        pairings,
+    )
+
+    if progress_label and progress_started_at is not None:
+        log.info(
+            "[%s] phase=matchup_aggregation "
+            "3/5 elapsed=%.2fs",
+            progress_label,
+            time.perf_counter()
+            - progress_started_at,
+        )
     top_meta = adapt_top_meta_decklist(meta_result.meta)
     matchup_raw = adapt_matchup_raw(match_result.matchups)
     axis = tuple(zip(top_meta["Deck ID"].tolist(), top_meta["Deck"].tolist()))
-    dense_score = materialize_dense_score(matchup_raw, axis)
-    contracts = build_acquisition_contracts(top_meta, matchup_raw, dense_score)
+    dense_score = materialize_dense_score(
+        matchup_raw,
+        axis,
+    )
+
+    if progress_label and progress_started_at is not None:
+        log.info(
+            "[%s] phase=dense_contract "
+            "4/5 elapsed=%.2fs",
+            progress_label,
+            time.perf_counter()
+            - progress_started_at,
+        )
+
+    contracts = build_acquisition_contracts(
+        top_meta,
+        matchup_raw,
+        dense_score,
+    )
+
+    if progress_label and progress_started_at is not None:
+        log.info(
+            "[%s] phase=contract_hashes "
+            "5/5 elapsed=%.2fs",
+            progress_label,
+            time.perf_counter()
+            - progress_started_at,
+        )
     return (
         meta_result,
         match_result,
@@ -832,11 +928,15 @@ def _live_run(
         refs=raw_refs_tuple,
     )
 
+
     tournaments, participants, pairings, normalization_diagnostics = _normalize_selected(
         raw_store=raw_store,
         selection=selection,
         tournament_snapshot_ids=snapshot_ids,
     )
+
+
+
     (
         meta_result,
         match_result,
@@ -851,6 +951,7 @@ def _live_run(
         pairings,
         normalization_diagnostics=normalization_diagnostics,
     )
+
 
     aggregation = AggregationSummary(
         total_participants=meta_result.total_participants,
@@ -960,6 +1061,8 @@ def _offline_run(
     software_git_revision: str,
     now_fn: Callable[[], datetime],
 ) -> AcquisitionRunResult:
+    offline_started_at = time.perf_counter()
+
     source_manifest_path = raw_store.paths.runs / replay_run_id / "manifest.json"
     if not source_manifest_path.exists():
         raise FileNotFoundError(f"offline replay manifest not found: {source_manifest_path}")
@@ -986,9 +1089,32 @@ def _offline_run(
     if catalog.catalog_version != scope.catalog_version:
         raise ValueError("offline replay release catalog version does not match source manifest scope")
 
-    refs = tuple(_raw_ref_from_manifest(item) for item in source_payload["raw"]["snapshot_refs"])
-    for ref in refs:
+    refs = tuple(
+        _raw_ref_from_manifest(item)
+        for item in source_payload["raw"]["snapshot_refs"]
+    )
+
+    total_refs = len(refs)
+
+    for index, ref in enumerate(
+        refs,
+        start=1,
+    ):
         _load_raw_ref(raw_store, ref)
+
+        if (
+            index == 1
+            or index % 50 == 0
+            or index == total_refs
+        ):
+            log.info(
+                "[OFFLINE] phase=raw_validate "
+                "%d/%d elapsed=%.2fs",
+                index,
+                total_refs,
+                time.perf_counter()
+                - offline_started_at,
+            )
 
     snapshot_ids: dict[str, str] = {}
     by_tid_types: dict[str, set[str]] = {}
@@ -1006,10 +1132,27 @@ def _offline_run(
             raise FileNotFoundError(f"offline replay has incomplete raw refs for selected tournament: {tid}")
 
     raw_store.write_run_raw_refs(run_id, tournament_ids=selection.tournament_ids, refs=refs)
+    log.info(
+        "[OFFLINE] phase=normalize "
+        "0/%d elapsed=%.2fs",
+        len(selection.tournament_ids),
+        time.perf_counter()
+        - offline_started_at,
+    )
+
     tournaments, participants, pairings, normalization_diagnostics = _normalize_selected(
         raw_store=raw_store,
         selection=selection,
         tournament_snapshot_ids=snapshot_ids,
+    )
+
+    log.info(
+        "[OFFLINE] phase=normalize "
+        "%d/%d elapsed=%.2fs",
+        len(selection.tournament_ids),
+        len(selection.tournament_ids),
+        time.perf_counter()
+        - offline_started_at,
     )
     (
         meta_result,
@@ -1024,6 +1167,8 @@ def _offline_run(
         participants,
         pairings,
         normalization_diagnostics=normalization_diagnostics,
+        progress_label="OFFLINE",
+        progress_started_at=offline_started_at,
     )
 
     aggregation = AggregationSummary(
