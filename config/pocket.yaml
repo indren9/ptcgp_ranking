@@ -2,6 +2,11 @@ source:
   provider: limitless
   acquisition: tournament_api  # tournament_api | legacy_html
   game: POCKET
+  tournament_api:
+    # HTTP cache freshness only. Persistent API responses are not reused.
+    # Tournament raw reuse is governed separately by the frozen 72h
+    # stability horizon in the Tournament API acquisition pipeline.
+    cache_ttl_min: 0
   format:
     mode: auto   # auto | code
     code: ""     # when mode=code, force the Limitless format, e.g. "standard"

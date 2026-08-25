@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from collections import deque
+from datetime import UTC, datetime, timedelta
+import json
 
 import pytest
 import requests
@@ -159,7 +161,88 @@ def test_invalid_tournament_id_cannot_change_path():
 def test_concrete_file_json_cache_roundtrip(tmp_path):
     from storage.acquisition import FileJsonCache
 
-    cache = FileJsonCache(tmp_path / "cache")
+    now = datetime(2026, 8, 25, 10, 0, tzinfo=UTC)
+    cache = FileJsonCache(
+        tmp_path / "cache",
+        ttl_min=60,
+        now_fn=lambda: now,
+    )
     cache.set_json("key-a", {"x": [1, 2, 3]})
     assert cache.get_json("key-a") == {"x": [1, 2, 3]}
     assert cache.get_json("missing") is None
+
+
+def test_file_json_cache_fresh_timestamped_entry_is_hit(tmp_path):
+    from storage.acquisition import FileJsonCache
+
+    clock = [datetime(2026, 8, 25, 10, 0, tzinfo=UTC)]
+    cache = FileJsonCache(
+        tmp_path / "cache",
+        ttl_min=10,
+        now_fn=lambda: clock[0],
+    )
+
+    cache.set_json("fresh", {"value": 1})
+    clock[0] += timedelta(minutes=10)
+
+    assert cache.get_json("fresh") == {"value": 1}
+    assert cache.hit_count == 1
+    assert cache.expired_miss_count == 0
+
+
+def test_file_json_cache_expired_entry_is_miss(tmp_path):
+    from storage.acquisition import FileJsonCache
+
+    clock = [datetime(2026, 8, 25, 10, 0, tzinfo=UTC)]
+    cache = FileJsonCache(
+        tmp_path / "cache",
+        ttl_min=10,
+        now_fn=lambda: clock[0],
+    )
+
+    cache.set_json("expired", {"value": 1})
+    clock[0] += timedelta(minutes=10, seconds=1)
+
+    assert cache.get_json("expired") is None
+    assert cache.expired_miss_count == 1
+
+
+def test_file_json_cache_legacy_entry_without_cached_at_is_miss(tmp_path):
+    from storage.acquisition import FileJsonCache
+
+    now = datetime(2026, 8, 25, 10, 0, tzinfo=UTC)
+    cache = FileJsonCache(
+        tmp_path / "cache",
+        ttl_min=60,
+        now_fn=lambda: now,
+    )
+
+    cache._path("legacy").write_text(
+        json.dumps(
+            {
+                "cache_key": "legacy",
+                "value": {"old": True},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert cache.get_json("legacy") is None
+    assert cache.legacy_miss_count == 1
+
+
+def test_file_json_cache_ttl_zero_disables_persistent_read(tmp_path):
+    from storage.acquisition import FileJsonCache
+
+    now = datetime(2026, 8, 25, 10, 0, tzinfo=UTC)
+    cache = FileJsonCache(
+        tmp_path / "cache",
+        ttl_min=0,
+        now_fn=lambda: now,
+    )
+
+    cache.set_json("zero", {"value": 1})
+
+    assert cache.get_json("zero") is None
+    assert cache.hit_count == 0
+    assert cache.expired_miss_count == 1

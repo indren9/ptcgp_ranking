@@ -439,6 +439,7 @@ def _run_tournament_api_acquisition_for_production(
     replay_run_id = str(api_cfg.get("replay_run_id") or "").strip() or None
     raw_store_root = _resolve_base_path(base, api_cfg.get("raw_store_root"), "data/raw/limitless_api")
     cache_root = _resolve_base_path(base, api_cfg.get("cache_root"), "cache/limitless_api")
+    cache_ttl_min = float(api_cfg.get("cache_ttl_min", 0))
     _, _, catalog, catalog_path = _api_catalog_context(
         base=base,
         cfg=cfg,
@@ -455,6 +456,7 @@ def _run_tournament_api_acquisition_for_production(
         raw_store_root=raw_store_root,
         release_catalog=catalog_path,
         cache_root=cache_root,
+        cache_ttl_min=cache_ttl_min,
         replay_run_id=replay_run_id,
         reuse_latest_raw=bool(api_cfg.get("reuse_latest_raw", True)),
     )

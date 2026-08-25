@@ -320,15 +320,56 @@ def test_offline_replay_rejects_changed_acquisition_started_at(tmp_path):
         )
 
 
-def test_live_reuses_immutable_tournament_snapshots_when_details_are_unchanged(tmp_path):
+def test_live_reuses_stable_raw_without_tournament_payload_calls(tmp_path):
     first_client = FakeClient()
     first = _run_live(tmp_path, run_id="live-1", client=first_client)
+
     second_client = FakeClient()
     second = _run_live(tmp_path, run_id="live-2", client=second_client)
 
+    payload_calls = [
+        call
+        for call in second_client.calls
+        if call[0] in {"details", "standings", "pairings"}
+    ]
+
+    # t1/t2 were selected in the first run and therefore have valid raw.
+    # At age >=72h they must produce zero tournament payload GETs.
+    stable_payload_calls = [
+        call
+        for call in payload_calls
+        if call[1] in {"t1", "t2"}
+    ]
+    assert stable_payload_calls == []
+
+    # Excluded discovery candidates have no frozen tournament snapshot.
+    # They must conservatively re-fetch details so eligibility can be
+    # evaluated again, but never reach standings/pairings when excluded.
+    nonselected_payload_calls = [
+        call
+        for call in payload_calls
+        if call[1] in {"t-private", "t-no-decks", "t-custom"}
+    ]
+    assert {
+        (call[0], call[1])
+        for call in nonselected_payload_calls
+    } == {
+        ("details", "t-private"),
+        ("details", "t-no-decks"),
+        ("details", "t-custom"),
+    }
+
+    assert second.diagnostics["stability_horizon_hours"] == 72.0
+    assert second.diagnostics["tournaments_stable_reused"] == 2
     assert second.diagnostics["reused_tournament_snapshots"] == 2
-    assert not [call for call in second_client.calls if call[0] in {"standings", "pairings"}]
-    assert second.diagnostics["contract_hashes"] == first.diagnostics["contract_hashes"]
+    assert (
+        second.diagnostics["normalized_hashes"]
+        == first.diagnostics["normalized_hashes"]
+    )
+    assert (
+        second.diagnostics["contract_hashes"]
+        == first.diagnostics["contract_hashes"]
+    )
 
 
 def test_public_contract_columns_do_not_expose_player_ids(tmp_path):

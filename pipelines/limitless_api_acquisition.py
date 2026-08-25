@@ -61,6 +61,7 @@ from storage.acquisition import FileJsonCache
 DEFAULT_RELEASE_CATALOG = Path("data/reference/pocket_releases.json")
 SOURCE_NAME = "Limitless Tournament API"
 SCHEMA_VERSION = "1"
+STABILITY_HORIZON_HOURS = 72.0
 
 
 class AcquisitionPipelineError(RuntimeError):
@@ -169,42 +170,92 @@ def _discovery_candidates(
 ) -> tuple[tuple[str, ...], dict[str, Any]]:
     valid_dates: list[datetime] = []
     candidate_ids: list[str] = []
+    conservative_candidate_ids: list[str] = []
     invalid = 0
     wrong_game = 0
+
     for row in records:
-        try:
-            date = parse_utc_datetime(row.get("date"), field_name="tournament.date")
-            game = str(row.get("game") or "").strip().upper()
-            tid = str(row.get("id") or "").strip()
-            if not tid:
-                raise ValueError("missing id")
-        except (TypeError, ValueError):
+        tid = str(row.get("id") or "").strip()
+        game = str(row.get("game") or "").strip().upper()
+
+        if not tid:
             invalid += 1
             continue
+
+        try:
+            date = parse_utc_datetime(
+                row.get("date"),
+                field_name="tournament.date",
+            )
+        except (TypeError, ValueError):
+            invalid += 1
+
+            # Discovery cannot prove the release window from this row.
+            # Preserve same-game rows only as conservative fetch
+            # candidates; final scope/eligibility is decided from fresh
+            # tournament details by select_tournaments().
+            if game == scope.game:
+                candidate_ids.append(tid)
+                conservative_candidate_ids.append(tid)
+            continue
+
+        # Preserve the historical discovery-completeness signal:
+        # all valid dates contribute, including rows for another game.
         valid_dates.append(date)
+
         if game != scope.game:
             wrong_game += 1
             continue
+
         if scope.start_datetime <= date < scope.end_datetime:
             candidate_ids.append(tid)
 
-    if not valid_dates:
-        raise DiscoveryWindowIncompleteError("tournament discovery returned no valid dates")
+    exhausted = (
+        len(records) < page_size
+        or (len(records) % page_size) != 0
+    )
 
-    oldest = min(valid_dates)
-    exhausted = len(records) < page_size or (len(records) % page_size) != 0
-    if oldest > scope.start_datetime and not exhausted:
-        raise DiscoveryWindowIncompleteError(
-            "discovery pagination did not reach the scope start; increase discovery_max_pages"
+    if valid_dates:
+        oldest = min(valid_dates)
+
+        if oldest > scope.start_datetime and not exhausted:
+            raise DiscoveryWindowIncompleteError(
+                "discovery pagination did not reach the scope start; "
+                "increase discovery_max_pages"
+            )
+
+        discovery_oldest = (
+            oldest.isoformat().replace("+00:00", "Z")
         )
+    else:
+        # If discovery is exhausted, invalid-date same-game candidates
+        # can still be resolved conservatively from fresh details.
+        # If pagination is not exhausted, release-window completeness
+        # still cannot be established.
+        if not conservative_candidate_ids:
+            raise DiscoveryWindowIncompleteError(
+                "tournament discovery returned no valid dates"
+            )
+
+        if not exhausted:
+            raise DiscoveryWindowIncompleteError(
+                "discovery pagination returned no valid dates before "
+                "reaching the scope boundary"
+            )
+
+        discovery_oldest = None
 
     diagnostics = {
         "discovery_rows": len(records),
-        "discovery_oldest": oldest.isoformat().replace("+00:00", "Z"),
+        "discovery_oldest": discovery_oldest,
         "discovery_invalid_rows": invalid,
         "discovery_wrong_game_rows": wrong_game,
+        "discovery_conservative_candidates": len(
+            set(conservative_candidate_ids)
+        ),
         "candidate_count": len(set(candidate_ids)),
     }
+
     return tuple(sorted(set(candidate_ids))), diagnostics
 
 
@@ -243,6 +294,84 @@ def _snapshot_refs_from_loaded(
     )
 
 
+
+def _load_latest_valid_snapshot(
+    raw_store: ImmutableRawStore,
+    tournament_id: str,
+) -> tuple[TournamentRawSnapshot, Mapping[str, Any]] | None:
+    """Load the latest immutable raw snapshot only if it validates fully."""
+    try:
+        latest_id = raw_store.latest_snapshot_id(tournament_id)
+        if not latest_id:
+            return None
+
+        loaded = raw_store.load_tournament_snapshot(
+            tournament_id,
+            latest_id,
+            validate=True,
+        )
+
+        snapshot = TournamentRawSnapshot(
+            tournament_id=tournament_id,
+            snapshot_id=latest_id,
+            refs=_snapshot_refs_from_loaded(
+                tournament_id=tournament_id,
+                snapshot_id=latest_id,
+                loaded=loaded,
+            ),
+        )
+
+        return snapshot, loaded
+
+    except (
+        FileNotFoundError,
+        OSError,
+        TypeError,
+        ValueError,
+        KeyError,
+    ):
+        # Invalid/missing prior raw evidence must never authorize reuse.
+        return None
+
+
+def _tournament_age_hours(
+    discovery_row: Mapping[str, Any],
+    *,
+    acquisition_started_at: datetime,
+) -> float | None:
+    """Age at the single frozen timestamp for the current LIVE run."""
+    try:
+        tournament_date = parse_utc_datetime(
+            discovery_row.get("date"),
+            field_name="tournament.date",
+        )
+    except (TypeError, ValueError):
+        return None
+
+    return (
+        acquisition_started_at - tournament_date
+    ).total_seconds() / 3600.0
+
+
+def _stability_action(
+    *,
+    age_hours: float | None,
+    has_valid_raw: bool,
+) -> str:
+    """Return new/recent/stable/conservative under the frozen 72h policy."""
+    # An unavailable discovery date can never authorize stable reuse.
+    # Fresh details must resolve final release-window eligibility.
+    if age_hours is None:
+        return "conservative"
+
+    if not has_valid_raw:
+        return "new"
+
+    if age_hours < STABILITY_HORIZON_HOURS:
+        return "recent"
+
+    return "stable"
+
 def _acquire_selected_snapshot(
     *,
     tournament_id: str,
@@ -252,23 +381,22 @@ def _acquire_selected_snapshot(
     fetched_at: datetime,
     reuse_latest_raw: bool,
 ) -> TournamentRawSnapshot:
-    if reuse_latest_raw:
-        latest_id = raw_store.latest_snapshot_id(tournament_id)
-        if latest_id:
-            loaded = raw_store.load_tournament_snapshot(tournament_id, latest_id, validate=True)
-            if sha256_json(loaded["details"]) == sha256_json(dict(details)):
-                return TournamentRawSnapshot(
-                    tournament_id=tournament_id,
-                    snapshot_id=latest_id,
-                    refs=_snapshot_refs_from_loaded(
-                        tournament_id=tournament_id,
-                        snapshot_id=latest_id,
-                        loaded=loaded,
-                    ),
-                )
+    # Compatibility parameter only. LIVE freshness is decided by the
+    # HTTP cache policy; prior raw content must never authorize skipping
+    # standings or pairings source observation.
+    _ = reuse_latest_raw
 
-    standings = client.get_tournament_standings(tournament_id, use_cache=True)
-    pairings = client.get_tournament_pairings(tournament_id, use_cache=True)
+    standings = client.get_tournament_standings(
+        tournament_id,
+        use_cache=True,
+    )
+    pairings = client.get_tournament_pairings(
+        tournament_id,
+        use_cache=True,
+    )
+
+    # ImmutableRawStore performs content-addressed dedupe only AFTER
+    # all three fresh payloads have been obtained.
     return raw_store.save_tournament_snapshot(
         tournament_id,
         details=details,
@@ -276,7 +404,6 @@ def _acquire_selected_snapshot(
         pairings=pairings,
         fetched_at=fetched_at,
     )
-
 
 def _load_raw_ref(raw_store: ImmutableRawStore, ref: RawPayloadRef) -> Any:
     path = raw_store.paths.root / ref.relative_path
@@ -450,6 +577,27 @@ def _rate_limit_rows(client: Any) -> tuple[Mapping[str, Any], ...]:
     return tuple(rows)
 
 
+
+def _cache_diagnostics(client: Any) -> dict[str, int]:
+    cache = getattr(client, "cache", None)
+    if cache is None:
+        return {}
+
+    diagnostics: dict[str, int] = {}
+    fields = {
+        "cache_hits": "hit_count",
+        "cache_misses": "miss_count",
+        "expired_cache_misses": "expired_miss_count",
+        "legacy_cache_misses": "legacy_miss_count",
+    }
+
+    for public_name, attr_name in fields.items():
+        value = getattr(cache, attr_name, None)
+        if value is not None:
+            diagnostics[public_name] = int(value)
+
+    return diagnostics
+
 def _pairing_diagnostics(match_result: MatchAggregationResult) -> dict[str, int]:
     diagnostics = dict(match_result.pairing_exclusion_counts)
     tie_total = int(pd.to_numeric(match_result.matchups.get("T", pd.Series(dtype=int)), errors="coerce").fillna(0).sum())
@@ -488,6 +636,7 @@ def _live_run(
     discovery_page_size: int,
     discovery_max_pages: int,
     reuse_latest_raw: bool,
+    cache_ttl_min: float,
     now_fn: Callable[[], datetime],
 ) -> AcquisitionRunResult:
     release = resolve_release(
@@ -514,7 +663,8 @@ def _live_run(
         format=None,
         page_size=discovery_page_size,
         max_pages=discovery_max_pages,
-        use_cache=True,
+        # Frozen RF1 policy: discovery is always fresh per LIVE run.
+        use_cache=False,
     )
     discovery, duplicate_discovery = _canonical_discovery_records(discovery_raw)
     candidate_ids, discovery_diag = _discovery_candidates(
@@ -528,12 +678,61 @@ def _live_run(
         fetched_at=now_fn(),
     )
 
+    discovery_by_id = {
+        str(row["id"]): row
+        for row in discovery
+    }
+
     details_by_id: dict[str, dict[str, Any]] = {}
     failures: dict[str, str] = {}
+
+    age_hours_by_id: dict[str, float | None] = {}
+    latest_valid_by_id: dict[
+        str,
+        tuple[TournamentRawSnapshot, Mapping[str, Any]] | None,
+    ] = {}
+    stability_action_by_id: dict[str, str] = {}
+    stable_snapshot_by_id: dict[str, TournamentRawSnapshot] = {}
+
     for tid in candidate_ids:
+        discovery_row = discovery_by_id[tid]
+
+        age_hours = _tournament_age_hours(
+            discovery_row,
+            acquisition_started_at=acquisition_started_at,
+        )
+        latest_valid = _load_latest_valid_snapshot(
+            raw_store,
+            tid,
+        )
+
+        action = _stability_action(
+            age_hours=age_hours,
+            has_valid_raw=latest_valid is not None,
+        )
+
+        age_hours_by_id[tid] = age_hours
+        latest_valid_by_id[tid] = latest_valid
+        stability_action_by_id[tid] = action
+
+        if action == "stable":
+            assert latest_valid is not None
+            snapshot, loaded = latest_valid
+
+            # Stable tournament: zero tournament payload GETs.
+            # Existing frozen details are used only for deterministic
+            # eligibility/selection.
+            details_by_id[tid] = dict(loaded["details"])
+            stable_snapshot_by_id[tid] = snapshot
+            continue
+
         try:
-            details_by_id[tid] = client.get_tournament_details(tid, use_cache=True)
-        except Exception as exc:  # captured as deterministic selection failure diagnostic
+            # New/recent/conservative tournament: details are observed fresh.
+            details_by_id[tid] = client.get_tournament_details(
+                tid,
+                use_cache=True,
+            )
+        except Exception as exc:
             failures[tid] = f"{type(exc).__name__}: {exc}"
 
     selection_rows = [_selection_record(details_by_id[tid]) for tid in sorted(details_by_id)]
@@ -545,6 +744,29 @@ def _live_run(
         acquisition_failures=failures,
     )
 
+    selected_ids = set(selection.tournament_ids)
+
+    tournaments_new = sum(
+        1
+        for tid in selected_ids
+        if stability_action_by_id.get(tid) == "new"
+    )
+    tournaments_recent_refetched = sum(
+        1
+        for tid in selected_ids
+        if stability_action_by_id.get(tid) == "recent"
+    )
+    tournaments_stable_reused = sum(
+        1
+        for tid in selected_ids
+        if stability_action_by_id.get(tid) == "stable"
+    )
+    tournaments_conservative_refetched = sum(
+        1
+        for tid in selected_ids
+        if stability_action_by_id.get(tid) == "conservative"
+    )
+
     selection_details_ref = raw_store.save_catalog_snapshot(
         "tournament-selection-details",
         {
@@ -554,24 +776,52 @@ def _live_run(
         fetched_at=now_fn(),
     )
 
-    raw_refs: list[RawPayloadRef] = [catalog_ref, discovery_ref, selection_details_ref]
+    raw_refs: list[RawPayloadRef] = [
+        catalog_ref,
+        discovery_ref,
+        selection_details_ref,
+    ]
     snapshot_ids: dict[str, str] = {}
     reused_snapshot_count = 0
+
     for tid in selection.tournament_ids:
         details = details_by_id.get(tid)
         if details is None:
-            raise AcquisitionPipelineError(f"selected tournament has no details payload: {tid}")
-        previous = raw_store.latest_snapshot_id(tid) if reuse_latest_raw else None
-        snapshot = _acquire_selected_snapshot(
-            tournament_id=tid,
-            details=details,
-            raw_store=raw_store,
-            client=client,
-            fetched_at=now_fn(),
-            reuse_latest_raw=reuse_latest_raw,
+            raise AcquisitionPipelineError(
+                f"selected tournament has no details payload: {tid}"
+            )
+
+        latest_valid = latest_valid_by_id.get(tid)
+        previous_snapshot_id = (
+            latest_valid[0].snapshot_id
+            if latest_valid is not None
+            else None
         )
-        if previous is not None and snapshot.snapshot_id == previous:
+
+        stable_snapshot = stable_snapshot_by_id.get(tid)
+
+        if stable_snapshot is not None:
+            # Explicit frozen-raw reuse. No details/standings/pairings GET.
+            snapshot = stable_snapshot
+        else:
+            # New/recent/conservative path.
+            # details was already observed fresh above; standings/pairings
+            # must also be observed fresh through the HTTP freshness policy.
+            snapshot = _acquire_selected_snapshot(
+                tournament_id=tid,
+                details=details,
+                raw_store=raw_store,
+                client=client,
+                fetched_at=now_fn(),
+                reuse_latest_raw=reuse_latest_raw,
+            )
+
+        if (
+            previous_snapshot_id is not None
+            and snapshot.snapshot_id == previous_snapshot_id
+        ):
             reused_snapshot_count += 1
+
         snapshot_ids[tid] = snapshot.snapshot_id
         raw_refs.extend(snapshot.refs)
 
@@ -644,6 +894,16 @@ def _live_run(
         "selection_failures": list(selection.failures),
         "raw_ref_count": len(raw_refs_tuple),
         "reused_tournament_snapshots": reused_snapshot_count,
+        "effective_cache_ttl_min": float(cache_ttl_min),
+        "stability_horizon_hours": STABILITY_HORIZON_HOURS,
+        "tournaments_discovered": len(discovery),
+        "tournaments_new": tournaments_new,
+        "tournaments_recent_refetched": tournaments_recent_refetched,
+        "tournaments_stable_reused": tournaments_stable_reused,
+        "tournaments_conservative_refetched": (
+            tournaments_conservative_refetched
+        ),
+        **_cache_diagnostics(client),
         "normalized_row_counts": {
             "tournaments": normalized.tournaments_rows,
             "participants": normalized.participants_rows,
@@ -860,6 +1120,7 @@ def run_limitless_api_acquisition(
     release_catalog: ReleaseCatalog | str | Path | None = None,
     client: LimitlessTournamentApiClient | None = None,
     cache_root: str | Path = "cache/limitless_api",
+    cache_ttl_min: float = 0.0,
     eligibility: EligibilityPolicy | None = None,
     run_id: str | None = None,
     replay_run_id: str | None = None,
@@ -877,6 +1138,8 @@ def run_limitless_api_acquisition(
         raise ValueError("discovery_page_size must be positive")
     if discovery_max_pages <= 0:
         raise ValueError("discovery_max_pages must be positive")
+    if float(cache_ttl_min) < 0:
+        raise ValueError("cache_ttl_min must be non-negative")
 
     now = now_fn or (lambda: datetime.now(UTC))
     catalog = _coerce_catalog(release_catalog)
@@ -910,7 +1173,20 @@ def run_limitless_api_acquisition(
     )
     policy = eligibility or EligibilityPolicy(game=game)
     own_client = client is None
-    api_client = client or LimitlessTournamentApiClient(cache=FileJsonCache(cache_root))
+    api_client = client or LimitlessTournamentApiClient(
+        cache=FileJsonCache(
+            cache_root,
+            ttl_min=float(cache_ttl_min),
+            now_fn=now,
+        )
+    )
+    effective_cache_ttl_min = float(
+        getattr(
+            getattr(api_client, "cache", None),
+            "ttl_min",
+            cache_ttl_min,
+        )
+    )
     try:
         return _live_run(
             game=game,
@@ -927,6 +1203,7 @@ def run_limitless_api_acquisition(
             discovery_page_size=discovery_page_size,
             discovery_max_pages=discovery_max_pages,
             reuse_latest_raw=reuse_latest_raw,
+            cache_ttl_min=effective_cache_ttl_min,
             now_fn=now,
         )
     finally:
