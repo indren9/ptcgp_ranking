@@ -11,6 +11,7 @@
 [![Games: Pocket + TCG](https://img.shields.io/badge/Games-Pocket%20%2B%20TCG-7c3aed)](#game-profiles)
 [![Tests](https://github.com/indren9/ptcgp_ranking/actions/workflows/tests.yml/badge.svg)](https://github.com/indren9/ptcgp_ranking/actions/workflows/tests.yml)
 [![Expansion catalog](https://github.com/indren9/ptcgp_ranking/actions/workflows/update-expansion-catalog.yml/badge.svg)](https://github.com/indren9/ptcgp_ranking/actions/workflows/update-expansion-catalog.yml)
+[![Release: v1.0.0](https://img.shields.io/badge/release-v1.0.0-blue.svg)](https://github.com/indren9/ptcgp_ranking/releases/tag/v1.0.0)
 
 [Quick start](#quick-start) · [Choose a workflow](#choose-a-workflow) · [See the outputs](#outputs) · [Understand MARS](#mars-in-one-minute) · [Use the Python API](#python-api)
 
@@ -27,22 +28,48 @@ win-rate heatmap, a styled Excel matchup report, and a machine-readable run
 manifest. One Python pipeline is the source of truth; the CLI and notebooks are
 convenient interfaces around it.
 
+**v1.0.0 is the stable release published on 2026-08-28 and the first
+production-ready Tournament API release.**
+
 ### Pocket acquisition source
 
 For **Pokemon TCG Pocket**, the default and canonical acquisition source is the
-Limitless Tournament API. Frozen event-level tournament records are scoped by
-the versioned Pocket release catalog, normalized and aggregated locally, and
-retain exact tournament IDs plus immutable raw snapshots for deterministic
-offline replay. Production identity is the canonical `deck_id`; `deck_name` is
-display metadata.
+Limitless Tournament API. Event-level tournament records are scoped by the
+versioned Pocket release catalog, normalized and aggregated locally, and retain
+exact tournament IDs plus immutable, hash-validated raw snapshots. Canonical
+technical deck identity is `deck_id`; `deck_name` is display metadata.
 
-`legacy_html` remains supported as an explicit rollback and historical
-diagnostic path. Legacy HTML aggregates are non-authoritative benchmarks and
-are not a numerical-parity target for the Tournament API cutover. The
-historical +/-2% comparable-match gate is retained as evidence but is
-`NOT_APPLICABLE_TO_LEGACY_CUTOVER`; previous deltas have not been reclassified
-as passes. Tournament API failures are explicit and never trigger an automatic
-fallback to `legacy_html`.
+`legacy_html` remains available only as an explicit rollback and historical,
+non-authoritative diagnostic path. It is not a numerical-parity target.
+Tournament API failures never trigger a silent fallback to `legacy_html`.
+
+#### LIVE freshness
+
+Each Pocket LIVE run performs fresh `/tournaments` discovery.
+
+- `NEW`: fetch details, standings, and pairings.
+- `RECENT` (`<72h`): fetch the tournament payloads again.
+- `STABLE` (`>=72h`) with validated immutable raw: reuse the frozen raw
+  snapshot with zero tournament-payload GETs.
+- Invalid or missing discovery date: use the conservative fresh-details path.
+
+The Tournament API HTTP cache TTL and the 72-hour tournament-stability horizon
+are separate mechanisms. The shipped Pocket profile uses
+`source.tournament_api.cache_ttl_min: 0`. `scraping.cache_ttl_min` belongs to
+the HTML/page acquisition path and does not govern Tournament API freshness.
+The 72-hour horizon is an operational stability rule, not an official
+tournament-ended signal or an HTTP response cache TTL.
+
+#### Exact OFFLINE replay
+
+Tournament API OFFLINE replay starts from a frozen prior-run manifest and its
+exact raw refs. It validates their hashes, performs zero network calls, reports
+progress, and deterministically rebuilds the normalized and acquisition
+contracts.
+
+After strict validation, canonical Tournament API dense contracts enter the
+common core through the **canonical dense fast path**, bypassing legacy
+`maxN_flat` and alias consolidation.
 
 > [!IMPORTANT]
 > MARS is an analytical ranking, not a tournament forecast. Sparse matchups,
@@ -54,7 +81,7 @@ fallback to `legacy_html`.
 | --- | --- |
 | Two games | Separate profiles for Pocket and the physical Pokemon TCG |
 | Automatic scope | Set and format resolution from the Limitless catalog |
-| Responsible collection | Cache, retry, delay, jitter, and scrape timing diagnostics |
+| Responsible collection | Fresh discovery, retry/backoff, provenance, and acquisition timing diagnostics |
 | Evidence controls | Candidate-pool selection, NaN filtering, coverage, and volume checks |
 | Robust ranking | Bayesian smoothing, MAS/SE/LB, Bradley-Terry strength, and meta weighting |
 | Exploration | Optional wildcard review for low-play decks outside the ranking core |
@@ -159,8 +186,9 @@ python -m cli.deck_ranking run --config config/pocket.yaml --progress
 ```
 
 By default, outputs are written below `outputs/` and automatically scoped by
-game, format, and set. The scraper deliberately uses a polite delay; the first
-uncached run can take time.
+game, format, and set. Pocket uses rate-limited Tournament API acquisition;
+runtime depends on fresh discovery, tournament fetch/reuse decisions, and any
+retry/backoff required by the service.
 
 ### 3. Open the results
 
@@ -184,7 +212,7 @@ outputs/<GAME>/<FORMAT>/<CODE>__<NAME>/
 | Run every catalog format | `python -m scripts.run_all_sets --formats all --continue-on-error --progress` |
 | Inspect each intermediate table | Open `notebooks/deck_ranking_run_all.ipynb` |
 | Embed the pipeline in code | Call `run_deck_ranking(...)` from the [Python API](#python-api) |
-| Rebuild without scraping | Use the `reproducible` output profile, then rerun with `--skip-scrape` |
+| Rebuild without network acquisition | Use saved/frozen inputs with the compatibility flag `--skip-scrape` |
 
 <details>
 <summary><strong>More CLI recipes</strong></summary>
@@ -217,7 +245,12 @@ python -m scripts.run_all_sets \
   --progress
 ```
 
-Rebuild analysis and reports from previously saved reproducible inputs:
+Rebuild downstream analysis and reports from previously saved/frozen inputs.
+`--skip-scrape` is a retained compatibility flag name: on canonical Pocket
+Tournament API runs it performs a no-network rebuild from existing acquisition
+contracts. It does not switch to `legacy_html`, and it is distinct from exact
+Tournament API OFFLINE replay configured with `execution_mode: offline` and a
+frozen `replay_run_id`.
 
 ```bash
 python -m cli.deck_ranking run \
@@ -282,7 +315,7 @@ The `saving.output_profile` setting controls how much is persisted:
 | Profile | Keeps | Use it when… |
 | --- | --- | --- |
 | `user` | Ranking, heatmap, Excel report, relevant wildcard table, manifest | You want compact final deliverables |
-| `reproducible` | Everything in `user`, plus raw decklist/top-meta/matchups | You need to rebuild without scraping |
+| `reproducible` | Everything in `user`, plus saved acquisition contracts | You need a no-network rebuild from saved inputs |
 | `debug` | Rich intermediate matrices, diagnostics, and timestamped artifacts | You are developing or investigating |
 
 The in-memory `result.frames` stays rich even when the compact `user` profile
@@ -367,6 +400,11 @@ Score_% = 100 × Phi(z_comp)
 This is the mapping implemented in `mars/composite.py`. `Score_%` is a
 percentile-like composite score, not a matchup win probability.
 
+All four shipped YAML profiles use `MU: 0.5`, `Z_PENALTY: 1.96`,
+`ALPHA_COMPOSITE: 0.72`, `AUTO_K: true`, `GAMMA_META_BLEND: 0.30`, and
+`META_GAP_POLICY: encounter`. The `MARSConfig` dataclass retains `1.2` only as
+the fallback `Z_PENALTY` when instantiated without a shipped profile.
+
 ```mermaid
 flowchart TB
     WR[Smoothed matchup probabilities] --> MAS[Meta-adjusted score]
@@ -406,6 +444,8 @@ source:
   provider: limitless
   acquisition: tournament_api  # tournament_api | legacy_html
   game: POCKET
+  tournament_api:
+    cache_ttl_min: 0
   format:
     mode: auto      # auto | code
     code: ""
@@ -444,11 +484,15 @@ overrides, prefer `--output-dir` so the tracked profiles remain portable.
 <details>
 <summary><strong>Cache and collection behavior</strong></summary>
 
-- Expansion catalogs and page responses are cached with configurable TTLs.
-- Retries use backoff; uncached requests use delay plus jitter.
-- Duplicate matchup URLs are fetched once and diagnosed.
-- Cache hits do not incur artificial network delay.
-- Timing diagnostics record page counts, cache hits/misses, and elapsed time.
+- Pocket Tournament API discovery is fresh on every LIVE run.
+- `source.tournament_api.cache_ttl_min` controls only API HTTP caching; the
+  shipped Pocket profile uses `0`.
+- The independent 72-hour stability policy controls validated immutable raw
+  tournament reuse.
+- Retryable API responses use retry/backoff and rate-limit observations are
+  retained in acquisition provenance.
+- `scraping.cache_ttl_min`, delay, and jitter apply to HTML/page acquisition
+  and do not change Tournament API stability semantics.
 
 Please keep responsible request settings when adapting the project.
 
@@ -495,6 +539,8 @@ the workflow, expectations, and legal notes.
 - [MARS method](MARS_explained.md)
 - [Saved output contract](docs/output_contract.md)
 - [Latest completed meta automation](docs/latest_completed_meta.md)
+- [Changelog](CHANGELOG.md)
+- [v1.0.0 release notes](docs/releases/v1.0.0.md)
 - [Google Sheets expansion export](docs/google_sheets_expansions.md)
 - [Contributing guide](CONTRIBUTING.md)
 - [Citation metadata](CITATION.cff)
@@ -505,7 +551,7 @@ Released under the [MIT License](LICENSE). If this project supports your work,
 please use the citation metadata in [`CITATION.cff`](CITATION.cff):
 
 ```text
-Visentin, A. (2025). PTCGP Ranking — MARS.
+Visentin, A. (2026). PTCGP Ranking — MARS (v1.0.0).
 https://github.com/indren9/ptcgp_ranking
 ```
 

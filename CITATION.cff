@@ -4,8 +4,8 @@ title: "PTCGP Ranking — MARS"
 authors:
   - family-names: "Visentin"
     given-names: "Andrea"
-version: "0.1.0"
-date-released: "2025-09-13"
+version: "1.0.0"
+date-released: "2026-08-28"
 license: "MIT"
 repository-code: "https://github.com/indren9/ptcgp_ranking"
 preferred-citation:
@@ -14,4 +14,4 @@ preferred-citation:
   authors:
     - family-names: "Visentin"
       given-names: "Andrea"
-  year: 2025
+  year: 2026

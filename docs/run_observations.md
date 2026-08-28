@@ -1,21 +1,50 @@
-# Diario Run
+# HISTORICAL RUN DIARY
 
-Diario operativo per monitorare le run Pocket / Pokemon TCG nei prossimi
-giorni.
+This file preserves a dated operational diary. Statements such as "current
+set", `B3b = current`, or `PBL = current` mean current at the time of the
+recorded July 2026 runs; they do not define the v1.0.0 release state on
+2026-08-28.
 
-Obiettivo: capire se ranking, diagnostiche, wildcard e tempi di esecuzione
-restano stabili nell'uso quotidiano. Aggiungere una voce per ogni run.
+Historical objective: capire se ranking, diagnostiche, wildcard e tempi di
+esecuzione restavano stabili nell'uso quotidiano.
 
-Scope monitoraggio:
-- Pocket: solo ultimo set attivo, `B3b - Everyday Wonders`.
-- Pokemon TCG: set corrente, `PBL - Pitch Black`, quando viene runnato.
+Historical monitoring scope at the time:
+- Pocket current set: `B3b - Everyday Wonders`.
+- Pokemon TCG current set: `PBL - Pitch Black`, quando veniva runnato.
 - `CRI - Chaos Rising` resta nel diario come baseline storica chiusa.
 - I set Pocket storici non vengono monitorati nel diario perche' non cambiano
   piu'.
 
-## Pocket Trend Watch
+## v1.0.0 release context
 
-Set osservato: `B3b - Everyday Wonders`.
+B13 on 2026-08-25 was the first canonical Tournament API production run.
+
+- Set: `B4 — Ruler of the Skies`
+- Format: `Standard`
+- Tournaments discovered: 1000
+- Selected tournaments: 99
+- Participants: 9546
+- Pairings: 27545
+- Acquisition deck IDs: 701
+- Dense directional rows: 490700
+- Filtered MARS axis: 40
+- Filtered directional score rows: 1560
+- Final ranking decks: 40
+- Coverage rows: 40
+- Missing pairs: 80
+- HTTP 429: 3, all recovered by retry/backoff
+- Retries: 3
+- Surviving acquisition failures: 0
+- Legacy fallback: no
+- P1: PASS
+- P4: PASS
+
+B4 is the current release window. It does not replace B3b — Everyday Wonders
+as the published latest completed meta.
+
+## Historical Pocket Trend Watch
+
+Historical set observed: `B3b - Everyday Wonders`.
 
 Decisione attuale: mantenere il ranking principale conservativo con candidate
 pool all'80% della share cumulata e filtro NaN iterativo. Le wildcard restano

@@ -1,9 +1,28 @@
-# Refactor Roadmap
+# Historical Pre-v1 Refactor Record
 
-This document records the current architecture and the remaining cleanup work
-before publishing a clean commit series.
+This document preserves the pre-Tournament-API, pre-v1 refactor plan and its
+engineering evidence. It is not the current authoritative roadmap. Present-
+tense language below describes the project state when this record was active.
 
-## Goals
+## v1.0.0 current status
+
+- The Limitless Tournament API is the canonical/default Pocket source.
+- `legacy_html` is an explicit rollback and historical diagnostic path only;
+  there is no silent fallback or numerical-parity requirement.
+- Every LIVE run performs fresh `/tournaments` discovery. NEW and RECENT
+  tournaments (`<72h`) are fetched fresh; STABLE tournaments (`>=72h`) may
+  reuse validated immutable raw. The 72-hour horizon is operational, not an
+  official completion signal or HTTP cache TTL.
+- OFFLINE replay is deterministic and zero-network from exact frozen raw refs
+  with hash validation and progress reporting.
+- Validated Tournament API dense input uses the canonical dense fast path.
+- `mars/composite.py` and shipped YAML are authoritative: the score mapping is
+  `100 * Phi(z_comp)`, production profiles use `Z_PENALTY: 1.96`, and the
+  profile-free dataclass fallback remains `1.2`.
+- B4 is the v1.0.0 release window and B13 validation evidence. The published
+  Latest Completed Pocket Meta remains `B3b — Everyday Wonders`.
+
+## Historical goals
 
 - Keep the deck ranking pipeline reproducible from CLI, Python, and notebook.
 - Keep notebooks as thin run and preview interfaces.
@@ -12,7 +31,7 @@ before publishing a clean commit series.
 - Keep `pytest -q` green after every change.
 - Keep public documentation and user-facing messages in English.
 
-## Current Architecture
+## Historical architecture
 
 ```text
 config/                 Run profiles and config loading
@@ -29,7 +48,7 @@ scraper/, utils/        Compatibility wrappers for older imports
 tests/                  Contract and regression tests
 ```
 
-## Completed Work
+## Historical completed work
 
 - Added scoped output routing:
   `outputs/<GAME>/<FORMAT>/<CODE>__<NAME>/...`.
@@ -58,7 +77,7 @@ tests/                  Contract and regression tests
   run cell executes.
 - Added notebook-facing saved artifact classification by output tier.
 
-## Normal Run Profiles
+## Historical run profiles
 
 - Pocket: `config/pocket.yaml`
 - Pocket wildcard exploration: `config/pocket_wildcard.yaml`
@@ -68,7 +87,7 @@ tests/                  Contract and regression tests
 The wildcard profiles scrape the full decklist and report excluded decks with
 enough evidence against the core. They do not change the main MARS ranking.
 
-## Validated Decisions
+## Historical validated decisions
 
 - Keep the main ranking conservative:
   candidate pool at 80% cumulative share plus iterative NaN filtering.
@@ -88,7 +107,10 @@ enough evidence against the core. They do not change the main MARS ranking.
 - NaN diagnostics stay notebook-only in the `user` output profile; the Excel
   report remains focused on final ranking/matchup results.
 
-## Remaining Pre-Commit Checklist
+## Historical pre-commit checklist (closed)
+
+This checklist is retained as evidence of the pre-v1 closeout process and is
+not an active release checklist.
 
 1. Run `pytest -q`.
 2. Search for remaining Italian public text:
@@ -99,7 +121,7 @@ enough evidence against the core. They do not change the main MARS ranking.
 5. Regenerate `project_tree.txt` when the file layout changes.
 6. Keep generated output, cache, and log files out of the commit.
 
-## Backlog
+## Historical pre-v1 backlog
 
 - Move the repository/workspace out of OneDrive into a local `C:\...` path, then
   keep heavy `outputs/`, cache, and run artifacts on OneDrive through configured
@@ -130,7 +152,10 @@ enough evidence against the core. They do not change the main MARS ranking.
 - Add future Limitless pages, such as tournaments or metagame pages, through new
   modules in `sources.limitless.pages` and dedicated pipelines.
 
-## Commit Strategy
+## Historical commit strategy
+
+The suggested grouping below predates v1.0.0 and is retained only as a record;
+it is not a current release plan.
 
 Suggested commit grouping:
 

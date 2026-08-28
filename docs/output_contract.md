@@ -58,7 +58,8 @@ Do not save by default:
 
 ### Reproducible Profile
 
-For runs where we want to be able to rebuild reports without scraping again.
+For runs where reports must be rebuilt from saved inputs with no network
+acquisition.
 
 Keep everything in the user profile, plus:
 - `decklists/raw/decklist_raw_latest.csv`
@@ -66,8 +67,8 @@ Keep everything in the user profile, plus:
 - `matchups/raw/matchup_raw_latest.csv`
 - config snapshot or run manifest
 
-This profile supports `--skip-scrape` and rebuilding core/MARS/report stages
-from saved data.
+This profile supports the retained `--skip-scrape` compatibility flag and a
+no-network rebuild of core/MARS/report stages from saved data.
 Timestamped CSV/PNG/XLSX copies remain disabled by default in this profile.
 
 ### Debug Profile
@@ -86,6 +87,22 @@ Keep the current rich artifact set:
 
 This is the backward-compatible fallback when `saving.output_profile` is not
 configured.
+
+## Pocket Tournament API replay
+
+For Pocket, the `reproducible` profile plus the compatibility
+`--skip-scrape` flag rebuilds downstream stages from saved files. That is
+different from exact Tournament API OFFLINE replay. The flag name is retained
+for compatibility: on canonical Pocket Tournament API runs it means a
+no-network rebuild from saved/frozen acquisition inputs, not a switch to
+`legacy_html`.
+
+Exact OFFLINE replay is anchored to a frozen LIVE manifest and raw refs,
+validates their hashes, performs zero network calls, rebuilds normalized and
+acquisition contracts deterministically, and reports replay progress.
+
+Validated canonical dense Tournament API input uses the common-core fast path
+and bypasses legacy `maxN_flat` and alias consolidation.
 
 ## Implementation Notes
 
