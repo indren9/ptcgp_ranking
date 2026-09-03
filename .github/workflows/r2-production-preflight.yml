@@ -1,0 +1,82 @@
+name: R2 production secret preflight
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/r2-production-preflight.yml
+
+permissions:
+  contents: read
+
+jobs:
+  r2-preflight:
+    runs-on: ubuntu-latest
+
+    env:
+      MARS_RAW_S3_ENDPOINT: ${{ secrets.MARS_RAW_S3_ENDPOINT }}
+      MARS_RAW_S3_BUCKET: ${{ secrets.MARS_RAW_S3_BUCKET }}
+      MARS_RAW_S3_REGION: ${{ secrets.MARS_RAW_S3_REGION }}
+      MARS_RAW_S3_ACCESS_KEY_ID: ${{ secrets.MARS_RAW_S3_ACCESS_KEY_ID }}
+      MARS_RAW_S3_SECRET_ACCESS_KEY: ${{ secrets.MARS_RAW_S3_SECRET_ACCESS_KEY }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install S3 dependency
+        run: python -m pip install boto3==1.43.87
+
+      - name: Verify private R2 object store
+        shell: bash
+        run: |
+          python - <<'PY'
+          import uuid
+
+          from sources.limitless.tournament_api.object_store import (
+              S3ObjectStoreBackend,
+          )
+
+          backend = S3ObjectStoreBackend.from_env()
+
+          key = f"mars-preflight/{uuid.uuid4().hex}/probe.txt"
+          payload = b"MARS R2 production preflight v1\n"
+
+          try:
+              backend.put_bytes(
+                  key,
+                  payload,
+                  metadata={"purpose": "mars-r2-preflight"},
+              )
+
+              info = backend.head(key)
+              if info is None:
+                  raise RuntimeError("HEAD failed after PUT")
+
+              if info.size != len(payload):
+                  raise RuntimeError("object size mismatch")
+
+              if info.metadata.get("purpose") != "mars-r2-preflight":
+                  raise RuntimeError("object metadata mismatch")
+
+              restored = backend.get_bytes(key)
+              if restored != payload:
+                  raise RuntimeError("GET payload mismatch")
+
+          finally:
+              backend._client.delete_object(
+                  Bucket=backend.config.bucket,
+                  Key=key,
+              )
+
+          if backend.head(key) is not None:
+              raise RuntimeError("DELETE verification failed")
+
+          print("R2_PREFLIGHT=PASS")
+          PY
