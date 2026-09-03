@@ -1,5 +1,5 @@
 {
-  "catalog_version": "pocket-releases-2026-08-22-v2",
+  "catalog_version": "pocket-releases-2026-09-03-v3",
   "source": "https://pocket.limitlesstcg.com/cards",
   "releases": [
     {
@@ -12,7 +12,7 @@
       "validation_source": "https://game8.co/games/Pokemon-TCG-Pocket/archives/474419",
       "validation_tier": "third_party_operational",
       "validation_note": "Limitless lists 30 Oct 2024. Game8 records the worldwide game/Genetic Apex launch at 30 Oct 2024 10:00 JST = 2024-10-30T01:00:00Z.",
-      "catalog_version": "pocket-releases-2026-08-22-v2"
+      "catalog_version": "pocket-releases-2026-09-03-v3"
     },
     {
       "code": "A1a",
@@ -25,7 +25,7 @@
       "corroboration_source": "https://www.reddit.com/r/PTCGP/comments/1hg3adi",
       "validation_tier": "third_party_operational",
       "validation_note": "Pokemon.com and Limitless establish 17 Dec 2024 but no official exact hour was found. Shacknews identified the daily-reset launch as 16 Dec 22:00 PT / 17 Dec 06:00 GMT; contemporaneous player observations corroborate the 01:00 ET / 06:00 UTC release. Exact-time provenance is therefore explicitly third-party operational.",
-      "catalog_version": "pocket-releases-2026-08-22-v2"
+      "catalog_version": "pocket-releases-2026-09-03-v3"
     },
     {
       "code": "A2",
@@ -38,7 +38,7 @@
       "official_date_source": "https://www.pokemon.com/us/pokemon-news/explore-pokemon-tcg-pockets-newest-expansion-space-time-smackdown",
       "validation_tier": "third_party_operational",
       "validation_note": "Pokemon.com states launch on 30 Jan 2025. Dexerto records 29 Jan 22:00 PT / 30 Jan 06:00 UTC, matching the global daily-reset release.",
-      "catalog_version": "pocket-releases-2026-08-22-v2"
+      "catalog_version": "pocket-releases-2026-09-03-v3"
     },
     {
       "code": "A2a",
@@ -51,7 +51,7 @@
       "official_date_source": "https://www.pokemon.com/us/pokemon-news/celebrate-pokemon-day-with-pokemon-tcg-pockets-latest-expansion-triumphant-light",
       "validation_tier": "third_party_operational",
       "validation_note": "Pokemon.com establishes the 28 Feb 2025 release. Dexerto records the daily-reset time as 27 Feb 22:00 PT / 28 Feb 06:00 UTC (its article contains an obvious year typo in one sentence; publication and event context are 2025).",
-      "catalog_version": "pocket-releases-2026-08-22-v2"
+      "catalog_version": "pocket-releases-2026-09-03-v3"
     },
     {
       "code": "A2b",
@@ -64,7 +64,7 @@
       "official_date_source": "https://www.pokemon.com/us/pokemon-news/shiny-pokemon-arrive-in-pokemon-tcg-pockets-latest-expansion-shining-revelry",
       "validation_tier": "third_party_press_release",
       "validation_note": "Limitless/Pokemon.com establish 27 Mar 2025. Polygon reports, from a Pokemon Company press release, 26 Mar 23:00 PDT = 2025-03-27T06:00:00Z.",
-      "catalog_version": "pocket-releases-2026-08-22-v2"
+      "catalog_version": "pocket-releases-2026-09-03-v3"
     },
     {
       "code": "A3",
@@ -76,7 +76,7 @@
       "validation_source": "https://www.pokemon.com/us/pokemon-news/look-to-the-skies-with-pokemon-tcg-pockets-upcoming-expansion-celestial-guardians",
       "validation_tier": "pokemon_official",
       "validation_note": "Pokemon.com states launch 29 Apr 2025 at 11:00 p.m. PDT = 2025-04-30T06:00:00Z.",
-      "catalog_version": "pocket-releases-2026-08-22-v2"
+      "catalog_version": "pocket-releases-2026-09-03-v3"
     },
     {
       "code": "A3a",
@@ -88,7 +88,7 @@
       "validation_source": "https://www.pokemon.com/us/pokemon-news/ultra-beasts-invade-pokemon-tcg-pocket-in-the-extradimensional-crisis-expansion",
       "validation_tier": "pokemon_official",
       "validation_note": "Pokemon.com states launch 28 May 2025 at 11:00 p.m. PDT = 2025-05-29T06:00:00Z.",
-      "catalog_version": "pocket-releases-2026-08-22-v2"
+      "catalog_version": "pocket-releases-2026-09-03-v3"
     },
     {
       "code": "A3b",
@@ -100,7 +100,7 @@
       "validation_source": "https://www.pokemon.com/us/news/its-a-cuteness-overload-in-pokemon-tcg-pockets-upcoming-eevee-grove-expansion",
       "validation_tier": "pokemon_official",
       "validation_note": "Pokemon.com states launch 25 Jun 2025 at 11:00 p.m. PDT = 2025-06-26T06:00:00Z.",
-      "catalog_version": "pocket-releases-2026-08-22-v2"
+      "catalog_version": "pocket-releases-2026-09-03-v3"
     },
     {
       "code": "A4",
@@ -112,7 +112,7 @@
       "validation_source": "https://www.pokemon.com/uk/pokemon-news/bring-deep-blue-power-with-wisdom-of-sea-and-sky",
       "validation_tier": "pokemon_official",
       "validation_note": "Pokemon.com states launch 29 Jul 2025 at 11:00 p.m. PDT = 2025-07-30T06:00:00Z.",
-      "catalog_version": "pocket-releases-2026-08-22-v2"
+      "catalog_version": "pocket-releases-2026-09-03-v3"
     },
     {
       "code": "A4a",
@@ -124,7 +124,7 @@
       "validation_source": "https://www.pokemon.com/uk/pokemon-news/venture-into-the-secluded-springs-in-pokemon-tcg-pocket",
       "validation_tier": "pokemon_official",
       "validation_note": "Pokemon.com states launch 27 Aug 2025 at 11:00 p.m. PDT = 2025-08-28T06:00:00Z.",
-      "catalog_version": "pocket-releases-2026-08-22-v2"
+      "catalog_version": "pocket-releases-2026-09-03-v3"
     },
     {
       "code": "A4b",
@@ -136,7 +136,7 @@
       "validation_source": "https://www.pokemon.com/us/news/deluxe-pack-ex-is-coming-to-pokemon-tcg-pocket",
       "validation_tier": "pokemon_official",
       "validation_note": "Pokemon.com states launch 29 Sep 2025 at 11:00 p.m. PDT = 2025-09-30T06:00:00Z.",
-      "catalog_version": "pocket-releases-2026-08-22-v2"
+      "catalog_version": "pocket-releases-2026-09-03-v3"
     },
     {
       "code": "B1",
@@ -148,7 +148,7 @@
       "validation_source": "https://www.pokemon.com/us/pokemon-news/the-mega-rising-expansion-brings-mega-evolution-pokemon-ex-to-pokemon-tcg-pocket",
       "validation_tier": "pokemon_official",
       "validation_note": "Pokemon.com states launch 29 Oct 2025 at 11:00 p.m. PDT = 2025-10-30T06:00:00Z.",
-      "catalog_version": "pocket-releases-2026-08-22-v2"
+      "catalog_version": "pocket-releases-2026-09-03-v3"
     },
     {
       "code": "B1a",
@@ -160,7 +160,7 @@
       "validation_source": "https://www.pokemon.com/us/pokemon-news/the-crimson-blaze-expansion-brings-the-heat-to-pokemon-tcg-pocket",
       "validation_tier": "pokemon_official",
       "validation_note": "Pokemon.com states launch 16 Dec 2025 at 10:00 p.m. PST = 2025-12-17T06:00:00Z.",
-      "catalog_version": "pocket-releases-2026-08-22-v2"
+      "catalog_version": "pocket-releases-2026-09-03-v3"
     },
     {
       "code": "B2",
@@ -172,7 +172,7 @@
       "validation_source": "https://www.pokemon.com/us/news/get-ready-to-march-on-with-fantastical-parade-in-pokemon-tcg-pocket",
       "validation_tier": "pokemon_official",
       "validation_note": "Pokemon.com states launch 28 Jan 2026 at 5:00 p.m. PST = 2026-01-29T01:00:00Z.",
-      "catalog_version": "pocket-releases-2026-08-22-v2"
+      "catalog_version": "pocket-releases-2026-09-03-v3"
     },
     {
       "code": "B2a",
@@ -184,7 +184,7 @@
       "validation_source": "https://www.pokemon.com/uk/news/more-pokemon-from-paldea-arrive-in-the-pokemon-tcg-pocket-paldean-wonders-expansion",
       "validation_tier": "pokemon_official",
       "validation_note": "Pokemon.com states launch 25 Feb 2026 at 5:00 p.m. PST = 2026-02-26T01:00:00Z.",
-      "catalog_version": "pocket-releases-2026-08-22-v2"
+      "catalog_version": "pocket-releases-2026-09-03-v3"
     },
     {
       "code": "B2b",
@@ -196,7 +196,7 @@
       "validation_source": "https://www.pokemon.com/uk/pokemon-news/shiny-pokemon-glimmer-again-in-the-pokemon-tcg-pocket-mega-shine-expansion",
       "validation_tier": "pokemon_official",
       "validation_note": "Pokemon.com states launch 25 Mar 2026 at 6:00 p.m. PDT = 2026-03-26T01:00:00Z.",
-      "catalog_version": "pocket-releases-2026-08-22-v2"
+      "catalog_version": "pocket-releases-2026-09-03-v3"
     },
     {
       "code": "B3",
@@ -208,7 +208,7 @@
       "validation_source": "https://www.pokemon.com/us/news/pokemon-tcg-pocket-pulsing-aura-expansion-coming-soon",
       "validation_tier": "pokemon_official",
       "validation_note": "Pokemon.com states launch 27 Apr 2026 at 6:00 p.m. PDT = 2026-04-28T01:00:00Z.",
-      "catalog_version": "pocket-releases-2026-08-22-v2"
+      "catalog_version": "pocket-releases-2026-09-03-v3"
     },
     {
       "code": "B3a",
@@ -220,7 +220,7 @@
       "validation_source": "https://www.pokemon.com/us/pokemon-news/pokemon-tcg-pocket-paradox-drive-expansion-coming-soon",
       "validation_tier": "pokemon_official",
       "validation_note": "Pokemon.com states launch 27 May 2026 at 6:00 p.m. PDT = 2026-05-28T01:00:00Z.",
-      "catalog_version": "pocket-releases-2026-08-22-v2"
+      "catalog_version": "pocket-releases-2026-09-03-v3"
     },
     {
       "code": "B3b",
@@ -232,19 +232,31 @@
       "validation_source": "https://www.pokemon.com/us/news/pokemon-tcg-pocket-everyday-wonders-expansion-coming-soon",
       "validation_tier": "pokemon_official",
       "validation_note": "Pokemon.com states launch 29 Jun 2026 at 6:00 p.m. PDT = 2026-06-30T01:00:00Z.",
-      "catalog_version": "pocket-releases-2026-08-22-v2"
+      "catalog_version": "pocket-releases-2026-09-03-v3"
     },
     {
       "code": "B4",
       "name": "Ruler of the Skies",
       "release_datetime": "2026-07-30T01:00:00Z",
-      "next_release_datetime": null,
-      "is_current": true,
+      "next_release_datetime": "2026-08-27T01:00:00Z",
+      "is_current": false,
       "source": "https://pocket.limitlesstcg.com/cards",
       "validation_source": "https://www.pokemon.com/us/news/pokemon-tcg-pocket-ruler-of-the-skies-expansion-coming-soon",
       "validation_tier": "pokemon_official",
       "validation_note": "Pokemon.com states launch 29 Jul 2026 at 6:00 p.m. PDT = 2026-07-30T01:00:00Z.",
-      "catalog_version": "pocket-releases-2026-08-22-v2"
+      "catalog_version": "pocket-releases-2026-09-03-v3"
+    },
+    {
+      "code": "B4a",
+      "name": "Team Rocket's Ambition",
+      "release_datetime": "2026-08-27T01:00:00Z",
+      "next_release_datetime": null,
+      "is_current": true,
+      "source": "https://pocket.limitlesstcg.com/cards",
+      "validation_source": "https://www.pokemon.com/uk/news/pokemon-tcg-pocket-team-rockets-ambition-expansion-is-coming-soon",
+      "validation_tier": "pokemon_official",
+      "validation_note": "Pokemon.com states launch 26 Aug 2026 at 6:00 p.m. PDT = 2026-08-27T01:00:00Z.",
+      "catalog_version": "pocket-releases-2026-09-03-v3"
     }
   ]
 }

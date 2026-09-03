@@ -35,6 +35,7 @@ EXPECTED_CODES = (
     "B3a",
     "B3b",
     "B4",
+    "B4a",
 )
 
 
@@ -71,7 +72,7 @@ def test_reference_catalog_has_strict_utc_order_and_coherent_next_chain():
 
 def test_reference_catalog_snapshot_has_complete_provenance():
     payload = _raw_catalog()
-    assert payload["catalog_version"] == "pocket-releases-2026-08-22-v2"
+    assert payload["catalog_version"] == "pocket-releases-2026-09-03-v3"
     assert payload["source"] == "https://pocket.limitlesstcg.com/cards"
 
     for item in payload["releases"]:
@@ -132,24 +133,39 @@ def test_completed_release_scope_uses_next_release_boundary():
     assert scope.end_datetime == datetime(2025, 9, 30, 6, 0, tzinfo=UTC)
 
 
-def test_current_release_scope_uses_frozen_acquisition_started_at():
+def test_completed_b4_scope_uses_b4a_release_boundary():
     catalog = _catalog()
-    started = datetime(2026, 8, 22, 16, 31, 42, tzinfo=UTC)
+    started = datetime(2026, 9, 3, 10, 0, tzinfo=UTC)
     release = resolve_release(
         catalog,
-        mode="auto",
+        mode="code",
+        code="B4",
         acquisition_started_at=started,
     )
     assert release.code == "B4"
     scope = scope_for_release(release, acquisition_started_at=started)
     assert scope.start_datetime == datetime(2026, 7, 30, 1, 0, tzinfo=UTC)
+    assert scope.end_datetime == datetime(2026, 8, 27, 1, 0, tzinfo=UTC)
+
+
+def test_current_b4a_scope_uses_frozen_acquisition_started_at():
+    catalog = _catalog()
+    started = datetime(2026, 9, 3, 10, 0, tzinfo=UTC)
+    release = resolve_release(
+        catalog,
+        mode="auto",
+        acquisition_started_at=started,
+    )
+    assert release.code == "B4a"
+    scope = scope_for_release(release, acquisition_started_at=started)
+    assert scope.start_datetime == datetime(2026, 8, 27, 1, 0, tzinfo=UTC)
     assert scope.end_datetime == started
 
 
 def test_current_flag_is_snapshot_informational_but_auto_is_time_based():
     catalog = _catalog()
     # AUTO before B4 must still resolve B3b even though the versioned snapshot
-    # marks B4 as the current expansion at catalog publication time.
+    # marks B4a as the current expansion at catalog publication time.
     started = datetime(2026, 7, 15, 12, 0, tzinfo=UTC)
     selected = resolve_release(
         catalog,
