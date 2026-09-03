@@ -266,8 +266,9 @@ def _try_restore_prior(
         return False, None
     try:
         hook(plan, window)
-    except Exception as exc:  # cold LIVE remains canonical; later persistence is mandatory
-        return False, type(exc).__name__
+    except FileNotFoundError:
+        # Missing historical evidence permits a fresh canonical LIVE.
+        return False, "FileNotFoundError"
     return True, None
 
 

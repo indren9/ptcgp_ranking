@@ -1,21 +1,39 @@
-name: Latest completed meta preview
+name: Latest completed meta rollover
 
 on:
+  workflow_run:
+    workflows:
+      - Update public expansion catalog
+    types:
+      - completed
   workflow_dispatch:
     inputs:
-      completed_set:
-        description: Optional completed set override, for example B3b
-        required: false
-        type: string
+      mode:
+        description: Safe shadow validation or real production rollover
+        required: true
+        default: shadow
+        type: choice
+        options:
+          - shadow
+          - production
 
 permissions:
   contents: read
 
+concurrency:
+  group: latest-completed-meta-rollover
+  cancel-in-progress: false
+
 jobs:
-  plan:
+  shadow:
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.mode == 'shadow'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - name: Check out repository
+      - name: Check out selected ref
         uses: actions/checkout@v6
 
       - name: Set up Python
@@ -23,34 +41,135 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Plan latest completed meta
-        id: latest_meta
+      - name: Install project dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Run local rollover shadow
+        run: python -m scripts.d2b_shadow_rollover --root "$RUNNER_TEMP/d2b4-shadow"
+
+  production:
+    if: >-
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main') ||
+      (github.event_name == 'workflow_dispatch' &&
+       inputs.mode == 'production' &&
+       github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out current main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Capture publication base
+        id: base
+        shell: bash
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install project dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Run canonical completed-meta rollover
+        env:
+          MARS_RAW_S3_ENDPOINT: ${{ secrets.MARS_RAW_S3_ENDPOINT }}
+          MARS_RAW_S3_BUCKET: ${{ secrets.MARS_RAW_S3_BUCKET }}
+          MARS_RAW_S3_REGION: ${{ secrets.MARS_RAW_S3_REGION }}
+          MARS_RAW_S3_ACCESS_KEY_ID: ${{ secrets.MARS_RAW_S3_ACCESS_KEY_ID }}
+          MARS_RAW_S3_SECRET_ACCESS_KEY: ${{ secrets.MARS_RAW_S3_SECRET_ACCESS_KEY }}
+        run: >-
+          python -m scripts.automatic_completed_meta_rollover_job
+          --repo-root "$GITHUB_WORKSPACE"
+          --work-root "$RUNNER_TEMP/latest-meta-rollover"
+          --report "$RUNNER_TEMP/latest-meta-rollover/report.json"
+          --allow-public-write
+
+      - name: Enforce publication allowlist
+        id: diff
+        shell: bash
+        run: |
+          mapfile -t changed < <(git diff --name-only)
+          if [[ ${#changed[@]} -eq 0 ]]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Latest Completed Meta already current."
+            exit 0
+          fi
+
+          for path in "${changed[@]}"; do
+            case "$path" in
+              README.md|\
+              .github/latest-completed-meta-state.json|\
+              public/latest-meta/ranking.csv|\
+              public/latest-meta/heatmap.png|\
+              public/latest-meta/manifest.json)
+                ;;
+              *)
+                echo "Unexpected tracked publication change: $path" >&2
+                exit 1
+                ;;
+            esac
+          done
+
+          if git ls-files data/raw cache outputs | grep -q .; then
+            echo "Raw/cache/output data must never be tracked." >&2
+            exit 1
+          fi
+
+          git add -- \
+            README.md \
+            .github/latest-completed-meta-state.json \
+            public/latest-meta/ranking.csv \
+            public/latest-meta/heatmap.png \
+            public/latest-meta/manifest.json
+
+          mapfile -t staged < <(git diff --cached --name-only)
+          for path in "${staged[@]}"; do
+            case "$path" in
+              README.md|\
+              .github/latest-completed-meta-state.json|\
+              public/latest-meta/ranking.csv|\
+              public/latest-meta/heatmap.png|\
+              public/latest-meta/manifest.json)
+                ;;
+              *)
+                echo "Unexpected staged publication change: $path" >&2
+                exit 1
+                ;;
+            esac
+          done
+
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Run full regression before publication
+        if: steps.diff.outputs.changed == 'true'
+        run: pytest -q --basetemp="$RUNNER_TEMP/pytest"
+
+      - name: Abort if main advanced
+        if: steps.diff.outputs.changed == 'true'
         shell: bash
         env:
-          COMPLETED_SET: ${{ inputs.completed_set }}
+          BASE_SHA: ${{ steps.base.outputs.sha }}
         run: |
-          args=(
-            --catalog public/expansions_pocket_standard.csv
-            --state .github/latest-completed-meta-state.json
-            --output latest-meta-plan.json
-            --github-output "$GITHUB_OUTPUT"
-          )
-          if [[ -n "$COMPLETED_SET" ]]; then
-            args+=(--force-completed-set "$COMPLETED_SET")
+          git fetch origin main --quiet
+          remote_sha="$(git rev-parse origin/main)"
+          if [[ "$remote_sha" != "$BASE_SHA" ]]; then
+            echo "origin/main advanced during rollover; refusing publication." >&2
+            exit 1
           fi
-          python -m scripts.latest_completed_meta plan "${args[@]}"
 
-      - name: Write plan summary
+      - name: Commit and push one atomic publication
+        if: steps.diff.outputs.changed == 'true'
         shell: bash
         run: |
-          {
-            echo "## Latest completed meta plan"
-            echo
-            echo '```json'
-            cat latest-meta-plan.json
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Explain preview boundary
-        run: |
-          echo "Detection only: no ranking data or repository files were published."
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(publication): roll latest completed Pocket meta"
+          git push origin HEAD:main

@@ -519,16 +519,30 @@ def test_missing_prior_raw_restore_falls_back_only_to_fresh_canonical_live(tmp_p
 
 
 # 16
-def test_failed_prior_restore_is_safe_and_cold_live_can_continue(tmp_path: Path):
+def test_object_store_outage_fails_closed_before_acquisition(tmp_path: Path):
+    calls: list[str] = []
+
     def failed(plan, window):
         raise OSError("private object store temporarily unavailable")
 
-    hooks, calls = _success_hooks(tmp_path, restore=failed)
-    result, *_ = _run(tmp_path, hooks)
-    assert result.published is True
-    assert result.restored_prior_raw is False
-    assert result.restore_failure_type == "OSError"
-    assert "persist" in calls
+    hooks, _ = _success_hooks(tmp_path, restore=failed)
+
+    def forbidden_acquire(*args, **kwargs):
+        calls.append("acquire")
+        raise AssertionError("acquisition must not run after object-store outage")
+
+    hooks = RolloverHooks(
+        acquire_live=forbidden_acquire,
+        persist_raw=hooks.persist_raw,
+        replay_offline=hooks.replay_offline,
+        produce_bundle=hooks.produce_bundle,
+        restore_prior_raw=failed,
+    )
+
+    with pytest.raises(OSError, match="object store temporarily unavailable"):
+        _run(tmp_path, hooks)
+
+    assert calls == []
 
 
 # 17
