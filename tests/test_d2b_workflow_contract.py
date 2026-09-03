@@ -54,7 +54,7 @@ def test_permissions_are_minimal_by_job():
     assert data["permissions"] == {"contents": "read"}
     assert data["jobs"]["shadow"]["permissions"] == {"contents": "read"}
     assert data["jobs"]["production"]["permissions"] == {
-        "contents": "write"
+        "contents": "read"
     }
 
 
@@ -74,6 +74,18 @@ def test_production_checkout_is_main_and_captures_base_sha():
     )
     assert checkout["with"]["ref"] == "main"
     assert checkout["with"]["fetch-depth"] == "0"
+    assert checkout["with"]["token"] == "${{ steps.app-token.outputs.token }}"
+    app_token = next(
+        step for step in production
+        if step.get("name") == "Create publisher token"
+    )
+    assert app_token["uses"] == "actions/create-github-app-token@v3"
+    assert app_token["with"]["app-id"] == (
+        "${{ vars.MARS_PUBLISHER_APP_ID }}"
+    )
+    assert app_token["with"]["private-key"] == (
+        "${{ secrets.MARS_PUBLISHER_PRIVATE_KEY }}"
+    )
     text = WORKFLOW.read_text(encoding="utf-8")
     assert "git rev-parse HEAD" in text
 
