@@ -5,6 +5,7 @@ from pathlib import Path
 
 import yaml
 
+from domain.releases import ExpansionRelease, ReleaseCatalog
 from pipelines.limitless_api_acquisition import (
     STABILITY_HORIZON_HOURS,
     _stability_action,
@@ -16,6 +17,30 @@ from sources.limitless.tournament_api.raw_store import ImmutableRawStore
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CATALOG = REPO_ROOT / "data" / "reference" / "pocket_releases.json"
+
+# RF1 tests exercise freshness semantics, not the evolving production
+# release catalog. Freeze B4 as current exactly as it was at RUN_AT so
+# future catalog rollovers cannot invalidate these fixtures.
+RF1_CATALOG_VERSION = "rf1-b4-current-fixture-v1"
+RF1_CATALOG_SOURCE = "https://example.invalid/rf1-b4-current-fixture"
+
+RF1_CATALOG = ReleaseCatalog(
+    catalog_version=RF1_CATALOG_VERSION,
+    source=RF1_CATALOG_SOURCE,
+    releases=(
+        ExpansionRelease(
+            code="B4",
+            name="Ruler of the Skies",
+            release_datetime=datetime(
+                2026, 7, 30, 1, 0, tzinfo=UTC
+            ),
+            next_release_datetime=None,
+            is_current=True,
+            source=RF1_CATALOG_SOURCE,
+            catalog_version=RF1_CATALOG_VERSION,
+        ),
+    ),
+)
 
 RUN_AT = datetime(2026, 8, 25, 12, 0, tzinfo=UTC)
 NOW = datetime(2026, 8, 25, 12, 5, tzinfo=UTC)
@@ -181,7 +206,7 @@ def _run_live(
         acquisition_started_at=RUN_AT,
         execution_mode="live",
         raw_store_root=raw_root,
-        release_catalog=CATALOG,
+        release_catalog=RF1_CATALOG,
         client=client,
         cache_ttl_min=0,
         run_id=run_id,
@@ -556,7 +581,7 @@ def test_offline_replay_remains_zero_network_and_hash_identical(tmp_path):
         acquisition_started_at=RUN_AT,
         execution_mode="offline",
         raw_store_root=raw_root,
-        release_catalog=CATALOG,
+        release_catalog=RF1_CATALOG,
         client=exploding,
         replay_run_id="offline-source-live",
         run_id="offline-replay",

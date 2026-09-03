@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from domain.releases import ExpansionRelease, ReleaseCatalog
 from pipelines.limitless_api_acquisition import run_limitless_api_acquisition
 from sources.limitless.tournament_api.release_catalog import load_release_catalog_snapshot
 
@@ -13,6 +14,29 @@ from sources.limitless.tournament_api.release_catalog import load_release_catalo
 CATALOG_PATH = Path(__file__).resolve().parents[1] / "data" / "reference" / "pocket_releases.json"
 STARTED = datetime(2026, 8, 22, 12, 0, tzinfo=UTC)
 NOW = datetime(2026, 8, 22, 12, 5, tzinfo=UTC)
+
+HISTORICAL_B4_CATALOG_VERSION = "historical-b4-current-fixture-v1"
+HISTORICAL_B4_CATALOG_SOURCE = (
+    "https://example.invalid/historical-b4-current-fixture"
+)
+
+HISTORICAL_B4_CURRENT_CATALOG = ReleaseCatalog(
+    catalog_version=HISTORICAL_B4_CATALOG_VERSION,
+    source=HISTORICAL_B4_CATALOG_SOURCE,
+    releases=(
+        ExpansionRelease(
+            code="B4",
+            name="Ruler of the Skies",
+            release_datetime=datetime(
+                2026, 7, 30, 1, 0, tzinfo=UTC
+            ),
+            next_release_datetime=None,
+            is_current=True,
+            source=HISTORICAL_B4_CATALOG_SOURCE,
+            catalog_version=HISTORICAL_B4_CATALOG_VERSION,
+        ),
+    ),
+)
 
 
 def _details(
@@ -150,14 +174,33 @@ def _run_live(tmp_path, *, run_id="live-b3b", client=None):
     )
 
 
-def test_reference_catalog_has_verified_b3b_b4_boundaries():
+def test_reference_catalog_has_verified_b3b_b4_b4a_boundaries():
     catalog = load_release_catalog_snapshot(CATALOG_PATH)
-    by_code = {release.code: release for release in catalog.releases}
-    assert by_code["B3b"].release_datetime == datetime(2026, 6, 30, 1, 0, tzinfo=UTC)
-    assert by_code["B3b"].next_release_datetime == datetime(2026, 7, 30, 1, 0, tzinfo=UTC)
-    assert by_code["B4"].release_datetime == datetime(2026, 7, 30, 1, 0, tzinfo=UTC)
-    assert by_code["B4"].is_current is True
+    by_code = {
+        release.code: release
+        for release in catalog.releases
+    }
 
+    assert by_code["B3b"].release_datetime == datetime(
+        2026, 6, 30, 1, 0, tzinfo=UTC
+    )
+    assert by_code["B3b"].next_release_datetime == datetime(
+        2026, 7, 30, 1, 0, tzinfo=UTC
+    )
+
+    assert by_code["B4"].release_datetime == datetime(
+        2026, 7, 30, 1, 0, tzinfo=UTC
+    )
+    assert by_code["B4"].next_release_datetime == datetime(
+        2026, 8, 27, 1, 0, tzinfo=UTC
+    )
+    assert by_code["B4"].is_current is False
+
+    assert by_code["B4a"].release_datetime == datetime(
+        2026, 8, 27, 1, 0, tzinfo=UTC
+    )
+    assert by_code["B4a"].next_release_datetime is None
+    assert by_code["B4a"].is_current is True
 
 def test_fixture_to_full_b8_pipeline_and_deterministic_selection(tmp_path):
     client = FakeClient()
@@ -190,7 +233,7 @@ def test_manifest_is_populated_and_public(tmp_path):
 
     assert payload["source"] == "Limitless Tournament API"
     assert payload["software"]["git_revision"] == "38d14a3"
-    assert payload["scope"]["catalog_version"] == "pocket-releases-2026-08-22-v2"
+    assert payload["scope"]["catalog_version"] == "pocket-releases-2026-09-03-v3"
     assert payload["selection"]["tournament_ids"] == ["t1", "t2"]
     assert len(payload["raw"]["snapshot_refs"]) == 9
     assert set(payload["normalized"]["hashes"]) == {"tournaments", "participants", "pairings"}
@@ -277,7 +320,7 @@ def test_current_set_freezes_acquisition_started_at_in_manifest_and_replay(tmp_p
         acquisition_started_at=started,
         execution_mode="live",
         raw_store_root=tmp_path / "store",
-        release_catalog=CATALOG_PATH,
+        release_catalog=HISTORICAL_B4_CURRENT_CATALOG,
         client=client,
         run_id="live-b4",
         software_git_revision="38d14a3",
@@ -293,7 +336,7 @@ def test_current_set_freezes_acquisition_started_at_in_manifest_and_replay(tmp_p
         acquisition_started_at=started,
         execution_mode="offline",
         raw_store_root=tmp_path / "store",
-        release_catalog=CATALOG_PATH,
+        release_catalog=HISTORICAL_B4_CURRENT_CATALOG,
         replay_run_id="live-b4",
         run_id="replay-b4",
         software_git_revision="38d14a3",
