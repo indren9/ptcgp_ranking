@@ -3,12 +3,12 @@
   "game": "POCKET",
   "format": "standard",
   "observed_current_set": {
+    "code": "B4a",
+    "name": "Team Rocket's Ambition"
+  },
+  "published_completed_set": {
     "code": "B4",
     "name": "Ruler of the Skies"
   },
-  "published_completed_set": {
-    "code": "B3b",
-    "name": "Everyday Wonders"
-  },
-  "updated_at": "2026-08-21T08:22:09+00:00"
+  "updated_at": "2026-09-03T10:38:04+00:00"
 }

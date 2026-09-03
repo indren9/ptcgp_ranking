@@ -1,17 +1,17 @@
 {
   "analysis": {
-    "candidate_pool_decks": 47,
-    "core_decks": 39,
+    "candidate_pool_decks": 57,
+    "core_decks": 41,
     "coverage_pct": {
       "max": 100.0,
-      "median": 94.7368,
-      "min": 84.2105
+      "median": 97.5,
+      "min": 80.0
     },
-    "decisive_matches": 9729,
-    "deck_archetypes_in_source": 461,
-    "dropped_by_nan_filter": 8,
-    "post_filter_matchup_rows": 1396,
-    "top_meta_decks": 47
+    "decisive_matches": 24483,
+    "deck_archetypes_in_source": 713,
+    "dropped_by_nan_filter": 16,
+    "post_filter_matchup_rows": 1550,
+    "top_meta_decks": 713
   },
   "artifact": "latest-completed-meta",
   "configuration": {
@@ -90,11 +90,11 @@
       "use_ceil": false
     },
     "profile": "config/pocket.yaml",
-    "profile_sha256": "dc05c8fe7e5a9a8681b2043f0dec56e2f40dde709171fef6f8e002641333ffb7",
+    "profile_sha256": "fe684a62451b763c6593febd48649ac84f72dc972928930dbeee8e4feb740178",
     "runtime": {
-      "K_used": 4.387482193696061
+      "K_used": 3.968626966596886
     },
-    "source_revision": "ceebfd37d8f40925d3b069d2ecca1d31caf9a527",
+    "source_revision": "981905e950f62fcb774695484df32dff01bdb1e0",
     "top_meta": {
       "ensure_at_least": 1,
       "threshold_pct": 80.0
@@ -102,31 +102,31 @@
   },
   "format": "standard",
   "game": "POCKET",
-  "generated_at": "2026-08-21T08:37:38+00:00",
+  "generated_at": "2026-09-03T10:31:54+00:00",
   "inputs": {
-    "decklist_aggregate": {
-      "file": "decklist_raw_latest.csv",
-      "rows": 461,
-      "sha256": "a6ea8abe633368ee85c1d912d47d27a729e02ac99c1266d611d082f2c6e7e13a"
+    "acquisition_manifest": {
+      "file": "manifest.json",
+      "run_id": "limitless-api-live-20260903T095913356833Z",
+      "sha256": "a16932540acaa7a33cf4c2dc5529c5c1b5fe9be451bfeb3be85b948936f830f3"
     },
     "matchup_aggregate": {
       "file": "matchup_raw_latest.csv",
-      "rows": 4955,
-      "sha256": "57b368b9373af629ccdf1343e5bfe2b79c9f73c42367aa6d6ef1605367bd39f2"
+      "rows": 13470,
+      "sha256": "a2fdb97a9f1342703ee7e090fdd5b3271cca124152da240be630266662e2ca63"
     },
     "source_ranking": {
       "file": "mars_ranking_latest.csv",
-      "rows": 39,
-      "sha256": "89b3bb01fffc163d0a5033404bf167116078ddbd57793200c83ed6e5b10f2a52"
+      "rows": 41,
+      "sha256": "74e83ef1313e15e76589f651305bc4e358acb4d8a57c2d962fd92c16658935eb"
     },
     "top_meta_aggregate": {
       "file": "top_meta_decklist_latest.csv",
-      "rows": 47,
-      "sha256": "760cb625849a1d11c7d7a9a939b8202b3a8ca96c617767f99b7d186663bad62d"
+      "rows": 713,
+      "sha256": "52be55897a2e38a67692b0c05d5442622d273878136e2b487425f01637bbdd47"
     }
   },
   "limitations": [
-    "The source inputs do not encode an exact tournament start/end window.",
+    "Tournament selection is bounded by the frozen completed release window recorded in the acquisition manifest.",
     "Coverage and match volume vary by deck; low-volume cells can be volatile.",
     "The ranking describes the observed completed meta and is not a tournament forecast."
   ],
@@ -140,7 +140,7 @@
     "heatmap": {
       "file": "heatmap.png",
       "orientation": "row deck versus column opponent",
-      "sha256": "1750b2972b17b50d8d058c39877b7d28af2f2896a581bdc5ebf009d3c5ec2160",
+      "sha256": "72c6eb07475da8ce986e73b7e780da270334a422c0641eb0d2281a66968a1ffd",
       "top_n": 10
     },
     "ranking": {
@@ -159,43 +159,58 @@
       ],
       "file": "ranking.csv",
       "percent_precision_decimals": 4,
-      "rows": 39,
-      "sha256": "9afa9ff13abba17dc44723b61e5af41ee13c004bf3fdf36a0471b702510ad407"
+      "rows": 41,
+      "sha256": "6369565e589e5e35ab007045f5e80e79cc50b55ff74b13bc7a8a8c7ed47291b3"
     }
   },
   "provenance": {
+    "public_deck_labels": "production_run_manifest.deck_identity_map",
     "ranking_heatmap_same_recomputed_core": true,
     "reproduced_with_current_code": true,
     "source_ranking_max_abs_difference": 1.4210854715202004e-14
   },
   "schema_version": 1,
   "set": {
-    "code": "B3b",
-    "name": "Everyday Wonders"
+    "code": "B4",
+    "name": "Ruler of the Skies"
   },
   "snapshot": {
-    "acquired_on": "2026-07-15",
-    "collection_scope": "Set-level aggregate deck and matchup statistics available on the Limitless deck pages at acquisition time; the cached inputs do not encode an exact tournament date window.",
-    "collection_window": null,
+    "acquired_on": "2026-09-03",
+    "collection_scope": "Canonical completed release-window tournament evidence acquired from the Limitless Tournament API.",
+    "collection_window": {
+      "end": "2026-08-27T01:00:00Z",
+      "start": "2026-07-30T01:00:00Z"
+    },
     "format": "standard",
     "game": {
       "code": "POCKET",
       "name": "Pokémon TCG Pocket"
     },
     "set": {
-      "code": "B3b",
-      "name": "Everyday Wonders"
+      "code": "B4",
+      "name": "Ruler of the Skies"
     }
   },
   "source": {
+    "acquisition": "Tournament API",
     "affiliation": "This project is independent and is not affiliated with or endorsed by Limitless TCG.",
     "aggregation": "Only aggregate deck-archetype statistics are published.",
     "attribution": "Built from public tournament data provided by Limitless TCG.",
+    "browse_url": "https://play.limitlesstcg.com/decks?game=POCKET&format=standard&set=B4",
     "contains_personal_data": false,
     "data_license": "No data license is asserted by this repository.",
-    "decks_url": "https://play.limitlesstcg.com/decks?game=POCKET&format=standard&set=B3b",
     "developer_documentation": "https://docs.limitlesstcg.com/developer",
     "provider": "Limitless TCG",
-    "terms_of_service": "https://play.limitlesstcg.com/tos"
+    "terms_of_service": "https://play.limitlesstcg.com/tos",
+    "tournament_api": {
+      "acquisition_started_at": "2026-09-03T09:59:13.356833Z",
+      "catalog_version": "pocket-releases-2026-09-03-v3",
+      "comparable_matches": 24483,
+      "pairings": 28352,
+      "participants": 9828,
+      "run_id": "limitless-api-live-20260903T095913356833Z",
+      "selected_tournaments": 105,
+      "selection_failures": 0
+    }
   }
 }

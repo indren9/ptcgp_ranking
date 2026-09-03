@@ -52,27 +52,35 @@ metadata.
 
 <!-- latest-completed-meta:start -->
 
-## Latest completed meta
+## See MARS in action
 
-### B3b — Everyday Wonders
+### Latest completed Pocket meta: B4 — Ruler of the Skies
 
-`Pokémon TCG Pocket` · `Standard` · `39 decks` · `9,729 decisive matches` · `84.21–100.00% coverage`
+`Pokémon TCG Pocket` `Standard` `41 decks` `24,483 decisive matches` `80.00–100.00% coverage`
 
 ![Observed win-rate heatmap for the top 10 MARS decks](public/latest-meta/heatmap.png)
 
 | Rank | Deck | Score % | MAS % | LB % | BT % | Coverage % |
 | ---: | --- | ---: | ---: | ---: | ---: | ---: |
-| 1 | Suicune ex Baxcalibur | 94.00 | 53.88 | 51.59 | 73.54 | 100.00 |
-| 2 | Miraidon ex Magnezone | 93.98 | 53.58 | 51.70 | 71.90 | 100.00 |
-| 3 | Mega Blaziken ex Greninja | 92.91 | 53.93 | 51.07 | 74.22 | 100.00 |
-| 4 | Indeedee ex Giratina ex | 91.23 | 54.25 | 50.85 | 68.55 | 97.37 |
-| 5 | Mega Altaria ex Espeon | 90.67 | 53.79 | 49.98 | 77.68 | 100.00 |
+| 1 | Hoopa ex Mega Absol ex | 97.00 | 54.42 | 52.45 | 78.13 | 100.00 |
+| 2 | Mega Sceptile ex Greninja | 90.72 | 52.67 | 49.94 | 72.58 | 100.00 |
+| 3 | Mega Altaria ex Espeon | 90.36 | 52.10 | 49.58 | 76.11 | 100.00 |
+| 4 | Mega Lucario ex Lucario | 89.66 | 51.62 | 49.97 | 67.50 | 100.00 |
+| 5 | Vespiquen ex Shuckle ex | 88.73 | 51.57 | 49.78 | 66.55 | 100.00 |
+| 6 | Mega Altaria ex Greninja | 88.47 | 53.15 | 48.02 | 90.70 | 92.50 |
+| 7 | Hoopa ex Mega Sableye ex | 85.06 | 53.19 | 49.23 | 61.38 | 100.00 |
+| 8 | Magnezone ex Magnezone | 81.10 | 51.48 | 48.03 | 66.87 | 100.00 |
+| 9 | Hoopa ex Greninja | 79.18 | 50.76 | 47.92 | 63.28 | 100.00 |
+| 10 | Suicune ex Baxcalibur | 79.13 | 50.35 | 47.84 | 64.20 | 100.00 |
 
-[Full ranking CSV](public/latest-meta/ranking.csv) · [Heatmap](public/latest-meta/heatmap.png) · [Provenance manifest](public/latest-meta/manifest.json) · [Publication details](https://github.com/indren9/ptcgp_ranking/wiki/Latest-Completed-Meta)
+[Download the full ranking CSV](public/latest-meta/ranking.csv) · [Inspect the provenance manifest](public/latest-meta/manifest.json) · [Read the MARS methodology](MARS_explained.md)
 
-This publication snapshot is the **Latest Completed Meta**; it is not the same
-thing as the current Tournament API production/release window. B4 remains
-production validation evidence and is not promoted here as completed meta.
+`MAS_%` is posterior-smoothed performance against the observed meta; `LB_%` subtracts the configured uncertainty penalty. `BT_%` is regularized Bradley–Terry strength across the matchup graph. `Score_%` maps the standardized LB/BT composite through the normal CDF and is not a match win probability. `Coverage_%` is the share of core opponents with observed decisive matchup evidence.
+
+> [!IMPORTANT]
+> MARS is an analytical ranking of this observed, completed meta—not a tournament forecast. Sparse matchups, player skill, and later metagame shifts remain outside the score.
+
+Built from public tournament data provided by [Limitless TCG](https://limitlesstcg.com/). See the official [Limitless developer guide](https://docs.limitlesstcg.com/developer). This independent project is not affiliated with or endorsed by Limitless TCG.
 
 <!-- latest-completed-meta:end -->
 
