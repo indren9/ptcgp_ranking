@@ -9,6 +9,8 @@ from scripts.latest_completed_meta_producer import (
     PUBLIC_RANKING_COLUMNS,
     _find_casefold_file,
     _fragment,
+    _load_public_deck_labels,
+    _load_tournament_api_manifest,
     _normalize_ranking,
     _reconcile_ranking,
 )
@@ -99,3 +101,137 @@ def test_fragment_is_compact_and_scientifically_cautious():
     assert "not a match win probability" in fragment
     assert "not affiliated with or endorsed by Limitless TCG" in fragment
     assert "public/latest-meta/heatmap.png" in fragment
+
+
+def test_tournament_api_manifest_accepts_exact_completed_scope(
+    tmp_path: Path,
+):
+    import json
+
+    path = tmp_path / "manifest.json"
+
+    payload = {
+        "run_id": "limitless-api-live-example",
+        "source": "Limitless Tournament API",
+        "software": {"git_revision": "abc123"},
+        "scope": {
+            "game": "POCKET",
+            "format": "STANDARD",
+            "set_code": "B4",
+            "set_name": "Ruler of the Skies",
+            "start": "2026-07-30T01:00:00Z",
+            "end": "2026-08-27T01:00:00Z",
+            "catalog_version": "test-catalog",
+        },
+        "selection": {
+            "tournament_ids": ["one", "two"],
+            "included_count": 2,
+            "failures": [],
+        },
+        "normalized": {
+            "row_counts": {
+                "participants": 100,
+                "pairings": 200,
+            }
+        },
+        "aggregation": {
+            "comparable_matches": 150,
+        },
+    }
+
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    loaded = _load_tournament_api_manifest(
+        path,
+        set_code="B4",
+        set_name="Ruler of the Skies",
+    )
+
+    assert loaded["scope"]["end"] == "2026-08-27T01:00:00Z"
+    assert loaded["aggregation"]["comparable_matches"] == 150
+
+
+def test_tournament_api_manifest_rejects_wrong_completed_set(
+    tmp_path: Path,
+):
+    import json
+
+    path = tmp_path / "manifest.json"
+
+    payload = {
+        "run_id": "limitless-api-live-example",
+        "source": "Limitless Tournament API",
+        "scope": {
+            "game": "POCKET",
+            "format": "STANDARD",
+            "set_code": "B3b",
+            "set_name": "Everyday Wonders",
+            "start": "2026-06-30T01:00:00Z",
+            "end": "2026-07-30T01:00:00Z",
+        },
+        "selection": {
+            "tournament_ids": [],
+            "included_count": 0,
+            "failures": [],
+        },
+        "normalized": {
+            "row_counts": {
+                "participants": 0,
+                "pairings": 0,
+            }
+        },
+        "aggregation": {
+            "comparable_matches": 0,
+        },
+    }
+
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="set does not match"):
+        _load_tournament_api_manifest(
+            path,
+            set_code="B4",
+            set_name="Ruler of the Skies",
+        )
+
+
+def test_public_deck_labels_are_human_readable_and_collision_safe(
+    tmp_path: Path,
+):
+    import json
+
+    manifest = tmp_path / "run" / "run_manifest_latest.json"
+    manifest.parent.mkdir(parents=True)
+
+    manifest.write_text(
+        json.dumps(
+            {
+                "diagnostics": {
+                    "deck_identity_map": [
+                        {
+                            "deck_id": "alpha-id",
+                            "deck_name": "Alpha Deck",
+                        },
+                        {
+                            "deck_id": "beta-id",
+                            "deck_name": "Shared Deck",
+                        },
+                        {
+                            "deck_id": "gamma-id",
+                            "deck_name": "Shared Deck",
+                        },
+                    ]
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    labels = _load_public_deck_labels(
+        tmp_path,
+        ["alpha-id", "beta-id", "gamma-id"],
+    )
+
+    assert labels["alpha-id"] == "Alpha Deck"
+    assert labels["beta-id"] == "Shared Deck [beta-id]"
+    assert labels["gamma-id"] == "Shared Deck [gamma-id]"

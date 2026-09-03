@@ -5,6 +5,7 @@ import hashlib
 import json
 import subprocess
 import tempfile
+from textwrap import wrap
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -85,6 +86,153 @@ def _load_plan(path: Path) -> tuple[str, str]:
     if plan.get("action") != "publish":
         raise ValueError(f"Publication plan action must be 'publish', got {plan.get('action')!r}")
     return code, name
+
+
+def _load_tournament_api_manifest(
+    path: Path,
+    *,
+    set_code: str,
+    set_name: str,
+) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+
+    if payload.get("source") != "Limitless Tournament API":
+        raise ValueError(
+            "Acquisition manifest source must be 'Limitless Tournament API'"
+        )
+
+    scope = payload.get("scope") or {}
+
+    if str(scope.get("game") or "").upper() != "POCKET":
+        raise ValueError("Acquisition manifest game must be POCKET")
+
+    if str(scope.get("format") or "").upper() != "STANDARD":
+        raise ValueError("Acquisition manifest format must be STANDARD")
+
+    if str(scope.get("set_code") or "").casefold() != set_code.casefold():
+        raise ValueError(
+            "Acquisition manifest set does not match requested completed set"
+        )
+
+    manifest_name = str(scope.get("set_name") or "").strip()
+
+    if manifest_name and manifest_name.casefold() != set_name.casefold():
+        raise ValueError(
+            "Acquisition manifest set name does not match requested completed set"
+        )
+
+    start = str(scope.get("start") or "").strip()
+    end = str(scope.get("end") or "").strip()
+
+    if not start or not end:
+        raise ValueError(
+            "Acquisition manifest must contain an exact completed release window"
+        )
+
+    selection = payload.get("selection") or {}
+    tournament_ids = list(selection.get("tournament_ids") or [])
+
+    if int(selection.get("included_count", -1)) != len(tournament_ids):
+        raise ValueError(
+            "Acquisition manifest included_count does not match tournament_ids"
+        )
+
+    failures = list(selection.get("failures") or [])
+
+    if failures:
+        raise ValueError(
+            "Completed-meta publication requires zero acquisition failures"
+        )
+
+    aggregation = payload.get("aggregation") or {}
+
+    comparable_matches = int(
+        aggregation.get("comparable_matches", -1)
+    )
+
+    if comparable_matches < 0:
+        raise ValueError(
+            "Acquisition manifest comparable_matches is missing or invalid"
+        )
+
+    normalized = payload.get("normalized") or {}
+    row_counts = normalized.get("row_counts") or {}
+
+    participants = int(row_counts.get("participants", -1))
+    pairings = int(row_counts.get("pairings", -1))
+
+    if participants < 0 or pairings < 0:
+        raise ValueError(
+            "Acquisition manifest normalized row counts are invalid"
+        )
+
+    return payload
+
+
+def _load_public_deck_labels(
+    source_run: Path,
+    deck_ids: Sequence[str],
+) -> dict[str, str]:
+    manifest_path = _find_casefold_file(
+        source_run,
+        "run/run_manifest_latest.json",
+    )
+
+    payload = json.loads(
+        manifest_path.read_text(encoding="utf-8")
+    )
+
+    diagnostics = payload.get("diagnostics") or {}
+    items = diagnostics.get("deck_identity_map") or []
+
+    mapping: dict[str, str] = {}
+
+    for item in items:
+        if not isinstance(item, Mapping):
+            continue
+
+        deck_id = str(item.get("deck_id") or "").strip()
+        deck_name = str(item.get("deck_name") or "").strip()
+
+        if deck_id and deck_name:
+            mapping[deck_id] = deck_name
+
+    requested = [str(deck_id) for deck_id in deck_ids]
+
+    missing = [
+        deck_id
+        for deck_id in requested
+        if deck_id not in mapping
+    ]
+
+    if missing:
+        preview = ", ".join(missing[:5])
+        raise ValueError(
+            "Production run manifest is missing public deck labels "
+            f"for {len(missing)} ranking decks: {preview}"
+        )
+
+    base_labels = {
+        deck_id: mapping[deck_id]
+        for deck_id in requested
+    }
+
+    counts: dict[str, int] = {}
+
+    for label in base_labels.values():
+        counts[label] = counts.get(label, 0) + 1
+
+    # Distinct canonical deck IDs may legitimately share a Limitless
+    # display name. Keep the common case clean and disambiguate only
+    # actual collisions inside the published ranking.
+    return {
+        deck_id: (
+            label
+            if counts[label] == 1
+            else f"{label} [{deck_id}]"
+        )
+        for deck_id, label in base_labels.items()
+    }
 
 
 def _source_urls_match_scope(frame, *, code: str) -> None:
@@ -231,6 +379,7 @@ def build_bundle(
     set_code: str,
     set_name: str,
     acquired_on: str,
+    acquisition_manifest: Path | None = None,
     source_revision: str | None = None,
     generated_at: str | None = None,
 ) -> dict[str, Any]:
@@ -253,16 +402,46 @@ def build_bundle(
         raise ValueError("acquired_on must use YYYY-MM-DD") from exc
 
     source_paths = {
-        "decklist": _find_casefold_file(source_run, "decklists/raw/decklist_raw_latest.csv"),
-        "top_meta": _find_casefold_file(source_run, "decklists/top_meta/top_meta_decklist_latest.csv"),
-        "matchups": _find_casefold_file(source_run, "matchups/raw/matchup_raw_latest.csv"),
-        "ranking": _find_casefold_file(source_run, "rankings/mars/mars_ranking_latest.csv"),
+        "top_meta": _find_casefold_file(
+            source_run,
+            "decklists/top_meta/top_meta_decklist_latest.csv",
+        ),
+        "matchups": _find_casefold_file(
+            source_run,
+            "matchups/raw/matchup_raw_latest.csv",
+        ),
+        "ranking": _find_casefold_file(
+            source_run,
+            "rankings/mars/mars_ranking_latest.csv",
+        ),
     }
-    decklist = pd.read_csv(source_paths["decklist"])
+
+    api_manifest = None
+
+    if acquisition_manifest is not None:
+        acquisition_manifest = acquisition_manifest.resolve()
+
+        api_manifest = _load_tournament_api_manifest(
+            acquisition_manifest,
+            set_code=set_code,
+            set_name=set_name,
+        )
+    else:
+        # Backward-compatible legacy snapshot support only.
+        source_paths["decklist"] = _find_casefold_file(
+            source_run,
+            "decklists/raw/decklist_raw_latest.csv",
+        )
+
     top_meta = pd.read_csv(source_paths["top_meta"])
     matchups = pd.read_csv(source_paths["matchups"])
     source_ranking = pd.read_csv(source_paths["ranking"])
-    _source_urls_match_scope(decklist, code=set_code)
+
+    decklist = None
+
+    if api_manifest is None:
+        decklist = pd.read_csv(source_paths["decklist"])
+        _source_urls_match_scope(decklist, code=set_code)
 
     cfg = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
     if str(((cfg.get("source") or {}).get("game") or "")).upper() != "POCKET":
@@ -297,13 +476,34 @@ def build_bundle(
         )
 
     regenerated = mars_frames["mars_ranking"]
-    max_diff = _reconcile_ranking(source_ranking, regenerated)
-    public_ranking = _normalize_ranking(regenerated)
+    max_diff = _reconcile_ranking(
+        source_ranking,
+        regenerated,
+    )
+
+    public_deck_labels = None
+    public_regenerated = regenerated.copy()
+
+    if api_manifest is not None:
+        public_deck_labels = _load_public_deck_labels(
+            source_run,
+            regenerated["Deck"].astype(str).tolist(),
+        )
+
+        public_regenerated["Deck"] = (
+            public_regenerated["Deck"]
+            .astype(str)
+            .map(public_deck_labels)
+        )
+
+    public_ranking = _normalize_ranking(
+        public_regenerated
+    )
     ranking_path = bundle_dir / "ranking.csv"
     public_ranking.to_csv(ranking_path, index=False, encoding="utf-8", lineterminator="\n")
 
     heatmap_path = bundle_dir / "heatmap.png"
-    figure, _, heatmap_frame = show_wr_heatmap(
+    figure, heatmap_ax, heatmap_frame = show_wr_heatmap(
         regenerated,
         wr=core_frames["wr_matrix"],
         top_n=10,
@@ -311,6 +511,38 @@ def build_bundle(
         fmt=".1f",
         title=f"Observed win rate — MARS Top 10 · {set_code} {set_name}",
     )
+    if public_deck_labels is not None:
+        plotted_ids = heatmap_frame.index.astype(str).tolist()
+
+        visible_labels = [
+            public_deck_labels[deck_id]
+            for deck_id in plotted_ids
+        ]
+
+        wrapped_labels = [
+            "\n".join(
+                wrap(
+                    label,
+                    width=20,
+                    break_long_words=False,
+                    break_on_hyphens=False,
+                )
+            )
+            for label in visible_labels
+        ]
+
+        heatmap_ax.set_xticklabels(
+            wrapped_labels,
+            rotation=35,
+            ha="right",
+            rotation_mode="anchor",
+        )
+
+        heatmap_ax.set_yticklabels(
+            wrapped_labels,
+            rotation=0,
+        )
+
     try:
         figure.savefig(heatmap_path, format="png", dpi=200, bbox_inches="tight", facecolor="white")
     finally:
@@ -321,11 +553,28 @@ def build_bundle(
     if not auto_k:
         auto_k = (mars_diag.get("AUTO_K") or {})
     k_used = float(auto_k.get("K_used", auto_k.get("K_star")))
-    decisive_matches = int(round(float(regenerated["N_eff"].sum()) / 2.0))
-    revision = source_revision or _git_revision(repo_root)
-    timestamp = generated_at or datetime.now(UTC).replace(microsecond=0).isoformat()
+    if api_manifest is not None:
+        decisive_matches = int(
+            api_manifest["aggregation"]["comparable_matches"]
+        )
+        api_revision = str(
+            ((api_manifest.get("software") or {}).get("git_revision") or "")
+        ).strip()
+        revision = source_revision or api_revision or _git_revision(repo_root)
+    else:
+        decisive_matches = int(
+            round(float(regenerated["N_eff"].sum()) / 2.0)
+        )
+        revision = source_revision or _git_revision(repo_root)
+
+    timestamp = (
+        generated_at
+        or datetime.now(UTC).replace(microsecond=0).isoformat()
+    )
+
     canonical_url = (
-        f"https://play.limitlesstcg.com/decks?game=POCKET&format=standard&set={set_code}"
+        f"https://play.limitlesstcg.com/decks?"
+        f"game=POCKET&format=standard&set={set_code}"
     )
 
     manifest: dict[str, Any] = {
@@ -336,26 +585,76 @@ def build_bundle(
         "format": "standard",
         "set": {"code": set_code, "name": set_name},
         "snapshot": {
-            "game": {"code": "POCKET", "name": "Pokémon TCG Pocket"},
+            "game": {
+                "code": "POCKET",
+                "name": "Pokémon TCG Pocket",
+            },
             "format": "standard",
-            "set": {"code": set_code, "name": set_name},
+            "set": {
+                "code": set_code,
+                "name": set_name,
+            },
             "acquired_on": acquired_on,
-            "collection_window": None,
+            "collection_window": (
+                {
+                    "start": api_manifest["scope"]["start"],
+                    "end": api_manifest["scope"]["end"],
+                }
+                if api_manifest is not None
+                else None
+            ),
             "collection_scope": (
-                "Set-level aggregate deck and matchup statistics available on the Limitless deck pages "
-                "at acquisition time; the cached inputs do not encode an exact tournament date window."
+                "Canonical completed release-window tournament evidence "
+                "acquired from the Limitless Tournament API."
+                if api_manifest is not None
+                else
+                "Legacy set-level aggregate deck and matchup statistics "
+                "available on the Limitless deck pages at acquisition time."
             ),
         },
         "source": {
             "provider": "Limitless TCG",
-            "decks_url": canonical_url,
-            "developer_documentation": "https://docs.limitlesstcg.com/developer",
-            "terms_of_service": "https://play.limitlesstcg.com/tos",
-            "attribution": "Built from public tournament data provided by Limitless TCG.",
-            "affiliation": "This project is independent and is not affiliated with or endorsed by Limitless TCG.",
-            "data_license": "No data license is asserted by this repository.",
-            "aggregation": "Only aggregate deck-archetype statistics are published.",
+            "acquisition": (
+                "Tournament API"
+                if api_manifest is not None
+                else "Legacy HTML aggregate pages"
+            ),
+            "browse_url": canonical_url,
+            "developer_documentation":
+                "https://docs.limitlesstcg.com/developer",
+            "terms_of_service":
+                "https://play.limitlesstcg.com/tos",
+            "attribution":
+                "Built from public tournament data provided by Limitless TCG.",
+            "affiliation":
+                "This project is independent and is not affiliated with "
+                "or endorsed by Limitless TCG.",
+            "data_license":
+                "No data license is asserted by this repository.",
+            "aggregation":
+                "Only aggregate deck-archetype statistics are published.",
             "contains_personal_data": False,
+            "tournament_api": (
+                {
+                    "run_id": api_manifest["run_id"],
+                    "acquisition_started_at":
+                        api_manifest["acquisition_started_at"],
+                    "catalog_version":
+                        api_manifest["scope"]["catalog_version"],
+                    "selected_tournaments":
+                        api_manifest["selection"]["included_count"],
+                    "selection_failures":
+                        len(api_manifest["selection"]["failures"]),
+                    "participants":
+                        api_manifest["normalized"]["row_counts"]["participants"],
+                    "pairings":
+                        api_manifest["normalized"]["row_counts"]["pairings"],
+                    "comparable_matches":
+                        api_manifest["aggregation"]["comparable_matches"],
+                }
+                if api_manifest is not None
+                else None
+            ),
         },
         "configuration": {
             "profile": _repo_relative(config_path, repo_root),
@@ -368,20 +667,52 @@ def build_bundle(
             "runtime": {"K_used": k_used},
         },
         "inputs": {
-            key: {
-                "file": path.name,
-                "rows": int(len(frame)),
-                "sha256": _sha256(path),
-            }
-            for key, path, frame in (
-                ("decklist_aggregate", source_paths["decklist"], decklist),
-                ("top_meta_aggregate", source_paths["top_meta"], top_meta),
-                ("matchup_aggregate", source_paths["matchups"], matchups),
-                ("source_ranking", source_paths["ranking"], source_ranking),
-            )
+            **{
+                key: {
+                    "file": path.name,
+                    "rows": int(len(frame)),
+                    "sha256": _sha256(path),
+                }
+                for key, path, frame in (
+                    (
+                        "top_meta_aggregate",
+                        source_paths["top_meta"],
+                        top_meta,
+                    ),
+                    (
+                        "matchup_aggregate",
+                        source_paths["matchups"],
+                        matchups,
+                    ),
+                    (
+                        "source_ranking",
+                        source_paths["ranking"],
+                        source_ranking,
+                    ),
+                )
+            },
+            **(
+                {
+                    "acquisition_manifest": {
+                        "file": acquisition_manifest.name,
+                        "sha256": _sha256(acquisition_manifest),
+                        "run_id": api_manifest["run_id"],
+                    }
+                }
+                if api_manifest is not None
+                else {
+                    "decklist_aggregate": {
+                        "file": source_paths["decklist"].name,
+                        "rows": int(len(decklist)),
+                        "sha256": _sha256(source_paths["decklist"]),
+                    }
+                }
+            ),
         },
         "analysis": {
-            "deck_archetypes_in_source": int(len(decklist)),
+            "deck_archetypes_in_source": int(
+                len(top_meta) if decklist is None else len(decklist)
+            ),
             "top_meta_decks": int(len(top_meta)),
             "core_decks": int(len(public_ranking)),
             "post_filter_matchup_rows": int(len(core_frames["score_flat"])),
@@ -404,6 +735,11 @@ def build_bundle(
             "reproduced_with_current_code": True,
             "source_ranking_max_abs_difference": max_diff,
             "ranking_heatmap_same_recomputed_core": True,
+            "public_deck_labels": (
+                "production_run_manifest.deck_identity_map"
+                if api_manifest is not None
+                else "legacy_source_labels"
+            ),
         },
         "outputs": {
             "ranking": {
@@ -421,7 +757,14 @@ def build_bundle(
             },
         },
         "limitations": [
-            "The source inputs do not encode an exact tournament start/end window.",
+            (
+                "Tournament selection is bounded by the frozen completed "
+                "release window recorded in the acquisition manifest."
+                if api_manifest is not None
+                else
+                "Legacy source inputs do not encode an exact tournament "
+                "start/end window."
+            ),
             "Coverage and match volume vary by deck; low-volume cells can be volatile.",
             "The ranking describes the observed completed meta and is not a tournament forecast.",
         ],
@@ -448,7 +791,21 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--source-run", type=Path, required=True)
     parser.add_argument("--config", type=Path, default=Path("config/pocket.yaml"))
     parser.add_argument("--bundle", type=Path, required=True)
-    parser.add_argument("--acquired-on", required=True, help="Source acquisition date in YYYY-MM-DD format")
+    parser.add_argument(
+        "--acquired-on",
+        required=True,
+        help="Source acquisition date in YYYY-MM-DD format",
+    )
+    parser.add_argument(
+        "--acquisition-manifest",
+        type=Path,
+        default=None,
+        help=(
+            "Canonical Tournament API acquisition manifest. "
+            "When supplied, exact release-window provenance replaces "
+            "the legacy deck-page URL check."
+        ),
+    )
     parser.add_argument("--source-revision", default=None)
     return parser
 
@@ -463,6 +820,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         set_code=code,
         set_name=name,
         acquired_on=args.acquired_on,
+        acquisition_manifest=args.acquisition_manifest,
         source_revision=args.source_revision,
     )
     print(json.dumps(manifest, indent=2, ensure_ascii=False, sort_keys=True))
