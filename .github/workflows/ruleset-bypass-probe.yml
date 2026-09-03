@@ -1,0 +1,42 @@
+name: Ruleset bypass probe
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    if: >-
+      github.repository == 'indren9/ptcgp_ranking' &&
+      github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Push sentinel through GITHUB_TOKEN
+        shell: bash
+        env:
+          TARGET_BRANCH: ops/ruleset-bypass-probe
+        run: |
+          set -euo pipefail
+
+          git fetch origin "$TARGET_BRANCH"
+          git checkout -B "$TARGET_BRANCH" "origin/$TARGET_BRANCH"
+
+          printf 'ruleset-bypass-probe=%s\n' "$GITHUB_RUN_ID" \
+            > .ruleset-bypass-probe
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -- .ruleset-bypass-probe
+          git commit -m "chore(probe): verify ruleset bypass"
+          git push origin "HEAD:$TARGET_BRANCH"
