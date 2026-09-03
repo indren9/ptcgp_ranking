@@ -31,7 +31,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install S3 dependency
-        run: python -m pip install boto3==1.43.87
+        run: python -m pip install -r requirements.txt
 
       - name: Verify private R2 object store
         shell: bash
@@ -80,3 +80,4 @@ jobs:
 
           print("R2_PREFLIGHT=PASS")
           PY
+
