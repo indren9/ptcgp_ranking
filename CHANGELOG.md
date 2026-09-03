@@ -1,5 +1,56 @@
 # Changelog
 
+## [1.0.1] - 2026-09-03
+
+### Added
+
+- Published `B4 — Ruler of the Skies` as the Latest Completed Pocket Meta from
+  the canonical Limitless Tournament API release window
+  `[2026-07-30T01:00:00Z, 2026-08-27T01:00:00Z)`.
+- Added automatic completed-meta rollover orchestration from expansion-catalog
+  refresh through Tournament API acquisition, immutable raw persistence, exact
+  OFFLINE replay, Core + MARS, bundle validation, and atomic publication.
+- Added vendor-neutral private S3-compatible persistence for canonical raw
+  tournament evidence.
+- Added a deterministic end-to-end rollover shadow that exercises detection,
+  replay, MARS, bundle generation, validation, and staged publication without
+  touching the real public snapshot.
+- Configured the production private object store with Cloudflare R2 and verified
+  GitHub Actions access through a temporary PUT/HEAD/GET/DELETE preflight.
+
+### Changed
+
+- Latest Completed Pocket Meta state is now:
+  current `B4a — Team Rocket's Ambition`, completed
+  `B4 — Ruler of the Skies`.
+- Completed-meta production now derives current and completed sets dynamically
+  from the canonical expansion catalog rather than hard-coding set codes.
+- The rollover workflow is triggered after a successful expansion-catalog
+  workflow on `main`, with manual shadow and production modes also available.
+- Production publication is serialized and protected by an exact public-file
+  allowlist and a stale-`main` guard.
+
+### Safety
+
+- Acquisition, object-store persistence, replay, MARS, producer, bundle
+  validation, regression, or stale-head failure causes no public replacement.
+- Canonical raw Tournament API evidence remains private and is never committed
+  or included in the public Latest Completed Meta bundle.
+- Legacy HTML remains historical validation/rollback material only and is never
+  an automatic production fallback.
+
+### Validation
+
+- Canonical B4 acquisition: 105 tournaments, 9,828 participants, 28,352
+  pairings, 24,483 comparable matches, and zero surviving selection failures.
+- Exact B4 OFFLINE replay: PASS.
+- Published B4 MARS ranking: 41 decks.
+- D2B full regression before merge: 383 tests passed.
+- Post-merge GitHub Actions regression: PASS.
+- Manual GitHub Actions rollover shadow: PASS.
+- GitHub-hosted runner to production Cloudflare R2:
+  PUT/HEAD/GET/DELETE preflight PASS.
+
 ## [1.0.0] - 2026-08-28
 
 ### Added

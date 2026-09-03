@@ -3,27 +3,100 @@
 The repository exposes at most one completed-meta snapshot. It is a living
 example of the MARS pipeline, not a public historical archive.
 
-## Selection rule
+## Current published state
 
-The Pocket Standard expansion catalog is sorted with the same natural set-code
-ordering used by the catalog exporter. The last entry is the current set and
-the penultimate entry is the latest completed meta:
+At v1.0.1:
 
 ```text
-catalog: [..., B3b, B4]
-current: B4
-completed: B3b
+current Pocket Standard set:
+B4a — Team Rocket's Ambition
+
+latest completed Pocket Standard meta:
+B4 — Ruler of the Skies
 ```
 
-`scripts.latest_completed_meta plan` compares that completed set with
-`.github/latest-completed-meta-state.json`. It returns `publish` only when the
-public snapshot is missing, a new current set has appeared, or an operator has
-requested a manual override. Historical rows inserted before the end of the
-catalog do not cause a republication.
+The repository state is recorded in:
 
-## Public contract
+```text
+.github/latest-completed-meta-state.json
+```
 
-Only the current snapshot is kept under `public/latest-meta/`:
+The state advances only after a complete successful publication.
+
+## Selection rule
+
+The canonical Pocket Standard expansion catalog is ordered by the same natural
+set-code ordering used by the catalog exporter.
+
+The automatic rule is:
+
+```text
+current set   = last catalog entry
+completed set = penultimate catalog entry
+```
+
+For example:
+
+```text
+catalog tail: [..., B4, B4a]
+current:      B4a
+completed:    B4
+```
+
+`scripts.latest_completed_meta` compares the derived completed set with
+`.github/latest-completed-meta-state.json`.
+
+A historical row inserted before the catalog tail does not cause a rollover.
+The completed/current pair must also satisfy the canonical release-window
+adjacency gate from `data/reference/pocket_releases.json`.
+
+## Canonical acquisition boundary
+
+Completed Pocket metas are produced from the Limitless Tournament API only.
+
+The production path does not silently fall back to legacy HTML.
+
+For the derived completed set, the release window is:
+
+```text
+release_datetime(completed)
+<= tournament.date
+< release_datetime(current)
+```
+
+LIVE acquisition freezes the selected tournament evidence and its manifest.
+The exact frozen evidence is then restored and replayed OFFLINE with zero
+network calls before Core + MARS runs.
+
+## Private raw persistence
+
+Canonical raw Tournament API evidence may contain player identifiers and is
+therefore private.
+
+Production uses the repository's vendor-neutral S3-compatible object-store
+backend. The current deployment is backed by a private Cloudflare R2 bucket.
+
+The workflow receives storage credentials only through GitHub repository
+secrets. Raw evidence is never committed to Git and is not included in the
+public Latest Completed Meta bundle.
+
+The private store is the persistence layer between ephemeral GitHub-hosted
+Actions runners. Canonical evidence is validated before the run manifest is
+promoted.
+
+## Public publication contract
+
+A successful rollover may modify only these tracked publication paths:
+
+```text
+README.md
+.github/latest-completed-meta-state.json
+public/latest-meta/ranking.csv
+public/latest-meta/heatmap.png
+public/latest-meta/manifest.json
+```
+
+The public snapshot itself remains:
 
 ```text
 public/latest-meta/
@@ -32,19 +105,20 @@ public/latest-meta/
 └── manifest.json
 ```
 
-Publishing overwrites these three paths and the content between the invisible
-`latest-completed-meta` markers in `README.md`. There are no per-set folders and
-no public archive navigation. Previous versions remain part of normal Git
-history, as with any committed repository file.
+There are no public per-set archive folders. Previous published snapshots remain
+available through normal Git history.
 
-## Producer/publisher boundary
+Only aggregate deck-archetype statistics are published. Raw player records,
+usernames, pairings, credentials, cookies, private object-store references, and
+local paths are not part of the public bundle.
 
-The ranking producer is intentionally separate from the publisher. This lets
-the presentation rules evolve without changing set detection or repository
-state.
+## Producer and publisher boundary
 
-`scripts.latest_completed_meta_producer` rebuilds MARS from a saved aggregate
-run, reconciles the result against that run's ranking, and creates a temporary
+The ranking producer remains separate from publication.
+
+`scripts.latest_completed_meta_producer` receives the completed-set plan, the
+reconstructed source run, and the canonical Tournament API acquisition
+manifest. It rebuilds the MARS-facing public outputs and creates a temporary
 bundle containing:
 
 | File | Contract |
@@ -52,11 +126,10 @@ bundle containing:
 | `fragment.md` | Complete Markdown shown in the README block |
 | `heatmap.png` | Non-empty heatmap referenced by the fragment |
 | `ranking.csv` | Non-empty normalized ranking used for the table |
-| `manifest.json` | Metadata whose `set.code` matches the publication plan |
+| `manifest.json` | Public provenance whose set matches the publication plan |
 
-The producer stops if the set/format scope does not match the plan or if the
-regenerated deck order or numeric ranking differs from the source run. The
-heatmap is then generated from the same recomputed core as `ranking.csv`.
+The producer stops if the source scope, release window, acquisition provenance,
+deck labels, ranking reconciliation, or public privacy contract is invalid.
 
 The public ranking preserves the native MARS columns:
 
@@ -66,87 +139,110 @@ Opp_used, Opp_total, Coverage_%
 ```
 
 Percent fields use four decimal places in the downloadable CSV and two decimal
-places in the compact README Top 10. The README table shows Score, MAS, LB, BT,
-and coverage; the manifest also records core size, decisive match volume,
-coverage min/median/max, effective MARS parameters, input hashes, config hash,
-and the code revision used for reproduction.
+places in the compact README Top 10.
 
 The heatmap shows the top 10 decks in ranking order. Rows are the deck being
-evaluated and columns are opponents. A diverging palette is centered at 50%,
-the visible scale is clipped at 20–80% to keep competitive differences legible,
-and annotations retain the actual values when a cell falls outside that range.
-Blank cells are mirror matchups or missing observations.
+evaluated and columns are opponents. Blank cells represent mirror matchups or
+missing observations.
 
-## Commands
+## Automatic GitHub Actions rollover
 
-Preview the automatic selection without changing tracked files:
+The production workflow is:
 
-```bash
-python -m scripts.latest_completed_meta plan \
-  --catalog public/expansions_pocket_standard.csv \
-  --output latest-meta-plan.json
+```text
+Update public expansion catalog
+        ↓
+successful workflow_run on main
+        ↓
+derive current + completed set
+        ↓
+derive exact release window
+        ↓
+restore useful prior private raw when available
+        ↓
+Tournament API LIVE acquisition
+        ↓
+validate + persist canonical raw privately
+        ↓
+restore current run into a fresh replay root
+        ↓
+exact OFFLINE replay
+        ↓
+Core + MARS
+        ↓
+produce bundle
+        ↓
+validate publication + privacy
+        ↓
+enforce exact tracked-file allowlist
+        ↓
+full regression
+        ↓
+abort if origin/main advanced
+        ↓
+one atomic publication commit to main
 ```
 
-Select a specific completed set for initial publication or recovery:
+The workflow also supports manual `workflow_dispatch` modes:
 
-```bash
-python -m scripts.latest_completed_meta plan \
-  --force-completed-set B3b \
-  --output latest-meta-plan.json
+```text
+shadow
+production
 ```
 
-Build a bundle from an existing aggregate run without making network requests:
+`shadow` is the safe validation mode. It exercises the rollover path without
+modifying the real `public/latest-meta`.
 
-```bash
-python -m scripts.latest_completed_meta_producer \
-  --plan latest-meta-plan.json \
-  --source-run outputs/POCKET/standard/B3b__Everyday_Wonders \
-  --config config/pocket.yaml \
-  --bundle build/latest-meta \
-  --acquired-on 2026-07-15
+Manual `production` is allowed only from `main`.
+
+The workflow uses a single concurrency group with
+`cancel-in-progress: false`, so a new rollover cannot cancel another run during
+its publication sequence.
+
+## Fail-safe behavior
+
+The rollover is fail closed.
+
+Any failure in acquisition, private persistence, OFFLINE replay, Core + MARS,
+producer execution, bundle validation, privacy validation, regression, or the
+stale-main guard means:
+
+```text
+NO PUBLICATION
+NO STATE ADVANCE
+NO README REPLACEMENT
+NO public/latest-meta REPLACEMENT
 ```
 
-The acquisition date must be taken from the verified run record. If the saved
-inputs do not encode an exact tournament date window, the manifest says so
-instead of inferring one.
+The previously published Latest Completed Meta remains intact and the same
+completed set can be retried safely.
 
-Validate the prepared bundle without publishing it:
+A missing prior raw snapshot is a valid cold-start case and permits fresh LIVE
+acquisition. An actual object-store authentication, availability, or I/O
+failure is not treated as a cache miss and fails closed.
+
+## Local planning and validation
+
+Preview the automatic set-selection decision without publishing:
 
 ```bash
-python -m scripts.latest_completed_meta publish \
-  --plan latest-meta-plan.json \
-  --bundle build/latest-meta \
-  --dry-run
+python -m scripts.latest_completed_meta plan   --catalog public/expansions_pocket_standard.csv   --output latest-meta-plan.json
 ```
 
-Removing `--dry-run` replaces the single public bundle, updates the README
-block, and records the new state only after the bundle has passed validation.
+Bundle publication logic can still be validated locally in dry-run mode:
+
+```bash
+python -m scripts.latest_completed_meta publish   --plan latest-meta-plan.json   --bundle build/latest-meta   --dry-run
+```
+
+Normal production publication is performed by the GitHub Actions rollover
+workflow rather than by manually editing the public snapshot.
 
 ## Data and attribution
 
-Only aggregate deck-archetype statistics are published. Raw player records,
-usernames, decklists, pairings, cookies, credentials, and local paths are not
-part of the bundle.
-
 The snapshot credits [Limitless TCG](https://limitlesstcg.com/) and links the
 official [developer guide](https://docs.limitlesstcg.com/developer) and
-[terms of service](https://play.limitlesstcg.com/tos). The project does not
-claim a license for Limitless data and does not imply affiliation, endorsement,
-or sponsorship.
+[terms of service](https://play.limitlesstcg.com/tos).
 
-## Automation boundary
-
-The workflow remains deliberately manual and read-only. It proves catalog
-selection and exposes the plan in the Actions summary. The producer and the
-static snapshot can be reviewed locally, but no producer or publishing job is
-connected to GitHub Actions until the ranking fields, summary metrics, and
-heatmap presentation are explicitly approved.
-
-The final automated sequence will be:
-
-```text
-refresh catalog -> plan -> produce bundle -> validate -> publish -> commit
-```
-
-If production or validation fails, the state file is not advanced, so the same
-completed set can be retried safely.
+The project does not claim a license for Limitless data and does not imply
+affiliation, endorsement, or sponsorship.
