@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   probe:
@@ -15,13 +15,21 @@ jobs:
     timeout-minutes: 5
 
     steps:
+      - name: Create publisher token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.MARS_PUBLISHER_APP_ID }}
+          private-key: ${{ secrets.MARS_PUBLISHER_PRIVATE_KEY }}
+
       - name: Check out main
         uses: actions/checkout@v6
         with:
           ref: main
           fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
 
-      - name: Push sentinel through GITHUB_TOKEN
+      - name: Push sentinel through publisher App
         shell: bash
         env:
           TARGET_BRANCH: ops/ruleset-bypass-probe
