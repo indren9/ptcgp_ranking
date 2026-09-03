@@ -4,23 +4,35 @@ This document preserves the pre-Tournament-API, pre-v1 refactor plan and its
 engineering evidence. It is not the current authoritative roadmap. Present-
 tense language below describes the project state when this record was active.
 
-## v1.0.0 current status
+## Current post-v1.0.1 status
 
 - The Limitless Tournament API is the canonical/default Pocket source.
-- `legacy_html` is an explicit rollback and historical diagnostic path only;
-  there is no silent fallback or numerical-parity requirement.
-- Every LIVE run performs fresh `/tournaments` discovery. NEW and RECENT
+- `legacy_html` is an explicit historical validation/rollback path only; there
+  is no silent production fallback.
+- LIVE acquisition performs fresh `/tournaments` discovery. NEW and RECENT
   tournaments (`<72h`) are fetched fresh; STABLE tournaments (`>=72h`) may
   reuse validated immutable raw. The 72-hour horizon is operational, not an
   official completion signal or HTTP cache TTL.
 - OFFLINE replay is deterministic and zero-network from exact frozen raw refs
-  with hash validation and progress reporting.
+  with hash validation.
 - Validated Tournament API dense input uses the canonical dense fast path.
-- `mars/composite.py` and shipped YAML are authoritative: the score mapping is
-  `100 * Phi(z_comp)`, production profiles use `Z_PENALTY: 1.96`, and the
-  profile-free dataclass fallback remains `1.2`.
-- B4 is the v1.0.0 release window and B13 validation evidence. The published
-  Latest Completed Pocket Meta remains `B3b — Everyday Wonders`.
+- MARS remains source-agnostic and frozen. Production uses
+  `Score_% = 100 * Phi(z_comp)` and shipped profiles use
+  `Z_PENALTY: 1.96`.
+- The published Latest Completed Pocket Meta is
+  `B4 — Ruler of the Skies`; the observed current Pocket set is
+  `B4a — Team Rocket's Ambition`.
+- Completed-meta rollover is automated after a successful expansion-catalog
+  refresh. Current/completed sets and exact release windows are derived
+  dynamically.
+- Canonical raw Tournament API evidence is persisted privately through the
+  S3-compatible object-store contract. The current production deployment uses
+  Cloudflare R2.
+- Production publication is fail closed, serialized, restricted to the exact
+  Latest Completed Meta allowlist, and protected by a stale-`main` guard.
+- Deterministic local shadow validation, GitHub Actions shadow validation, full
+  regression, and GitHub-runner-to-R2 PUT/HEAD/GET/DELETE validation have
+  passed.
 
 ## Historical goals
 

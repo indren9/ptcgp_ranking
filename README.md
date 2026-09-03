@@ -6,7 +6,7 @@
 
 **Reproducible, uncertainty-aware Pokémon TCG Pocket deck ranking built from the Limitless Tournament API.**
 
-[![Release: v1.0.0](https://img.shields.io/badge/release-v1.0.0-blue.svg)](https://github.com/indren9/ptcgp_ranking/releases/tag/v1.0.0)
+[![Release: v1.0.1](https://img.shields.io/badge/release-v1.0.1-blue.svg)](https://github.com/indren9/ptcgp_ranking/releases/tag/v1.0.1)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-2ea44f.svg)](LICENSE)
 [![Tests](https://github.com/indren9/ptcgp_ranking/actions/workflows/tests.yml/badge.svg)](https://github.com/indren9/ptcgp_ranking/actions/workflows/tests.yml)
@@ -110,8 +110,16 @@ LIVE acquisition → frozen evidence → exact refs/hashes → deterministic OFF
 
 HTTP response caching is an optimization, not the source of truth. Frozen,
 validated evidence is. Exact OFFLINE replay makes zero network calls and rebuilds
-the normalized acquisition contracts deterministically. See
-[Reproducibility](https://github.com/indren9/ptcgp_ranking/wiki/Reproducibility).
+the normalized acquisition contracts deterministically.
+
+For completed Pocket metas, GitHub Actions can now perform the complete rollover
+after a successful expansion-catalog refresh: derive the newly completed set,
+acquire canonical Tournament API evidence, persist immutable raw privately,
+replay it OFFLINE, run Core + MARS, validate the public bundle, and publish only
+after every gate passes. Any failure leaves the previously published snapshot
+unchanged.
+
+See [Reproducibility](https://github.com/indren9/ptcgp_ranking/wiki/Reproducibility).
 
 ## MARS in one minute
 
