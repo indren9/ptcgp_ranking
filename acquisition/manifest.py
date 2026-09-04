@@ -145,6 +145,10 @@ class AcquisitionManifest:
                 "require_decklists": self.eligibility.require_decklists,
                 "require_online": self.eligibility.require_online,
             }
+            if self.eligibility.allowed_platforms is not None:
+                eligibility_payload["eligibility"]["allowed_platforms"] = list(
+                    self.eligibility.allowed_platforms
+                )
 
         return {
             "schema_version": self.schema_version,
@@ -282,6 +286,25 @@ def validate_manifest_dict(payload: Mapping[str, Any]) -> None:
             raise ValueError(
                 "manifest eligibility require_online must be boolean or null"
             )
+
+        if "allowed_platforms" in eligibility:
+            allowed_platforms = eligibility["allowed_platforms"]
+            if not isinstance(allowed_platforms, list) or not allowed_platforms:
+                raise ValueError(
+                    "manifest eligibility allowed_platforms must be a non-empty list"
+                )
+            normalized_platforms: list[str] = []
+            for value in allowed_platforms:
+                if not isinstance(value, str) or not value.strip():
+                    raise ValueError(
+                        "manifest eligibility allowed_platforms values must be non-empty strings"
+                    )
+                normalized = value.strip().upper()
+                if normalized in normalized_platforms:
+                    raise ValueError(
+                        "manifest eligibility allowed_platforms must be unique"
+                    )
+                normalized_platforms.append(normalized)
 
         scope = payload.get("scope")
         if not isinstance(scope, Mapping):

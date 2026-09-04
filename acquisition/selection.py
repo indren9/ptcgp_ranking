@@ -14,6 +14,7 @@ EXCLUSION_REASONS = (
     "outside_window",
     "not_public",
     "wrong_channel",
+    "wrong_platform",
     "decklists_disabled",
     "invalid_record",
     "acquisition_failure",
@@ -119,6 +120,18 @@ def select_tournaments(
                 if eligibility.require_online is not None
                 else None
             )
+            raw_platform = (
+                record["platform"]
+                if eligibility.allowed_platforms is not None
+                else None
+            )
+            platform = (
+                str(raw_platform).strip().upper()
+                if raw_platform is not None
+                else None
+            )
+            if eligibility.allowed_platforms is not None and not platform:
+                raise ValueError("platform must be non-empty when required")
             decklists = _bool_field(record, "decklists")
         except (KeyError, TypeError, ValueError):
             counts["invalid_record"] += 1
@@ -137,6 +150,11 @@ def select_tournaments(
             and is_online != eligibility.require_online
         ):
             counts["wrong_channel"] += 1
+        elif (
+            eligibility.allowed_platforms is not None
+            and platform not in eligibility.allowed_platforms
+        ):
+            counts["wrong_platform"] += 1
         elif eligibility.require_decklists and not decklists:
             counts["decklists_disabled"] += 1
         else:

@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 
-from acquisition.scope import EligibilityPolicy
+from acquisition.scope import EligibilityPolicy, ScopePolicy
 from acquisition.selection import EXCLUSION_REASONS, select_tournaments
 from domain.releases import ExpansionRelease, ReleaseCatalog
 from sources.limitless.tournament_api.release_catalog import resolve_release, scope_for_release
@@ -121,7 +121,7 @@ def test_selector_reports_legacy_pocket_exclusion_reasons():
 
     assert result.tournament_ids == ("ok",)
     for reason in EXCLUSION_REASONS:
-        expected = 0 if reason == "wrong_channel" else 1
+        expected = 0 if reason in {"wrong_channel", "wrong_platform"} else 1
         assert result.exclusion_counts[reason] == expected
     assert result.failures == ("failed: details fetch failed",)
 
@@ -137,3 +137,51 @@ def test_null_format_is_eligible_under_pocket_v1():
         eligibility=EligibilityPolicy(),
     )
     assert result.tournament_ids == ("null-format",)
+
+
+def test_selector_platform_policy():
+    scope = ScopePolicy(
+        "test_window", "PTCG", "STANDARD", "TEST", "Test",
+        dt(1), dt(3), "test-v1",
+    )
+    policy = EligibilityPolicy(
+        policy_id="ptcg_live_standard_v1",
+        game="PTCG",
+        allowed_formats=("STANDARD",),
+        require_public=True,
+        require_decklists=True,
+        require_online=True,
+        allowed_platforms=("PTCGL",),
+    )
+    common = {
+        "game": "PTCG",
+        "format": "STANDARD",
+        "date": dt(2),
+        "is_public": True,
+        "is_online": True,
+        "decklists": True,
+    }
+    records = [
+        {"tournament_id": "live", **common, "platform": "PTCGL"},
+        {"tournament_id": "other", **common, "platform": "OTHER"},
+        {"tournament_id": "missing", **common},
+    ]
+
+    result = select_tournaments(records, scope=scope, eligibility=policy)
+
+    assert result.tournament_ids == ("live",)
+    assert result.exclusion_counts["wrong_platform"] == 1
+    assert result.exclusion_counts["invalid_record"] == 1
+
+
+def test_selector_pocket_ignores_platform_when_not_required():
+    scope = scope_for_release(
+        resolve_release(catalog(), mode="code", code="B3b", acquisition_started_at=dt(20)),
+        acquisition_started_at=dt(20),
+    )
+    result = select_tournaments(
+        [base_record("ok", dt(2), platform=None)],
+        scope=scope,
+        eligibility=EligibilityPolicy(),
+    )
+    assert result.tournament_ids == ("ok",)

@@ -272,6 +272,7 @@ def _selection_record(details: Mapping[str, Any]) -> dict[str, Any]:
         "is_public": details.get("isPublic"),
         "decklists": details.get("decklists"),
         "is_online": details.get("isOnline"),
+        "platform": details.get("platform"),
     }
 
 
@@ -474,6 +475,11 @@ def _eligibility_from_manifest(
         require_public=item["require_public"],
         require_decklists=item["require_decklists"],
         require_online=item["require_online"],
+        allowed_platforms=(
+            tuple(item["allowed_platforms"])
+            if item.get("allowed_platforms") is not None
+            else None
+        ),
     )
 
 

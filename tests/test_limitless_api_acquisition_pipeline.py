@@ -1027,3 +1027,99 @@ def test_classification_by_tournament_partial_coverage_replays_identically(tmp_p
     assert replay.diagnostics["network_calls"] == 0
     assert replay.diagnostics["classification_by_tournament"] == expected
     assert replay.diagnostics["classification_by_tournament"] == live.diagnostics["classification_by_tournament"]
+
+
+def test_ptcg_live_platform_policy_v2_live_offline_replay(tmp_path):
+    scope = ScopePolicy(
+        policy_id="ptcg_explicit_window_v1",
+        game="PTCG",
+        format="STANDARD",
+        set_code="EXPLICIT",
+        set_name="Explicit UTC Window",
+        start_datetime=datetime(2026, 8, 1, tzinfo=UTC),
+        end_datetime=datetime(2026, 8, 15, tzinfo=UTC),
+        catalog_version="explicit-v1",
+    )
+    policy = EligibilityPolicy(
+        policy_id="ptcg_live_standard_v1",
+        game="PTCG",
+        allowed_formats=("STANDARD",),
+        require_public=True,
+        require_decklists=True,
+        require_online=True,
+        allowed_platforms=("PTCGL",),
+    )
+
+    ptcgl = _details("ptcg-live", "2026-08-05T12:00:00Z")
+    ptcgl["game"] = "PTCG"
+    ptcgl["platform"] = "PTCGL"
+    ptcgl["isOnline"] = True
+
+    other = _details("ptcg-other", "2026-08-06T12:00:00Z")
+    other["game"] = "PTCG"
+    other["platform"] = "OTHER"
+    other["isOnline"] = True
+
+    client = FakeClient()
+    client.discovery = [
+        {
+            "id": "ptcg-live",
+            "game": "PTCG",
+            "format": "STANDARD",
+            "name": "TCG Live",
+            "date": "2026-08-05T12:00:00Z",
+            "players": 2,
+        },
+        {
+            "id": "ptcg-other",
+            "game": "PTCG",
+            "format": "STANDARD",
+            "name": "Other Online",
+            "date": "2026-08-06T12:00:00Z",
+            "players": 2,
+        },
+    ]
+    client.details = {
+        "ptcg-live": ptcgl,
+        "ptcg-other": other,
+    }
+    client.standings = {"ptcg-live": _standings()}
+    client.pairings = {"ptcg-live": _pairings(winner="p1")}
+
+    live = run_limitless_api_acquisition(
+        game="PTCG",
+        format="STANDARD",
+        resolved_scope=scope,
+        eligibility=policy,
+        acquisition_started_at=STARTED,
+        execution_mode="live",
+        raw_store_root=tmp_path / "raw",
+        client=client,
+        run_id="ptcgl-live",
+        software_git_revision="test",
+        now_fn=lambda: NOW,
+    )
+
+    payload = live.manifest.to_dict()
+    assert live.manifest.selection.tournament_ids == ("ptcg-live",)
+    assert live.manifest.selection.exclusion_counts["wrong_platform"] == 1
+    assert payload["eligibility"]["allowed_platforms"] == ["PTCGL"]
+
+    exploding = ExplodingClient()
+    replay = run_limitless_api_acquisition(
+        game="PTCG",
+        format="STANDARD",
+        resolved_scope=scope,
+        execution_mode="offline",
+        raw_store_root=tmp_path / "raw",
+        client=exploding,
+        replay_run_id="ptcgl-live",
+        run_id="ptcgl-replay",
+        software_git_revision="test",
+        now_fn=lambda: NOW,
+    )
+
+    assert exploding.calls == 0
+    assert replay.manifest.eligibility == policy
+    assert replay.manifest.selection == live.manifest.selection
+    assert replay.diagnostics["contract_hashes"] == live.diagnostics["contract_hashes"]
