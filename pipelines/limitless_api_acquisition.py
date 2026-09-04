@@ -582,6 +582,38 @@ def _normalize_selected(
     return tournaments, participants, pairings, normalization_diagnostics
 
 
+def _classification_by_tournament(
+    tournaments: pd.DataFrame,
+    participants: pd.DataFrame,
+) -> tuple[dict[str, Any], ...]:
+    for frame_name, frame in (
+        ("tournaments", tournaments),
+        ("participants", participants),
+    ):
+        if "tournament_id" not in frame.columns:
+            raise KeyError(f"{frame_name} missing column: tournament_id")
+
+    tournament_ids = sorted(
+        {str(value).strip() for value in tournaments["tournament_id"].tolist()}
+    )
+    participant_ids = participants["tournament_id"].astype(str).str.strip()
+    rows: list[dict[str, Any]] = []
+
+    for tournament_id in tournament_ids:
+        subset = participants.loc[participant_ids == tournament_id].copy()
+        result = aggregate_meta(subset)
+        rows.append(
+            {
+                "tournament_id": tournament_id,
+                "total_participants": result.total_participants,
+                "classified_participants": result.classified_participants,
+                "unclassified_participants": result.unclassified_participants,
+                "classification_coverage": float(result.classification_coverage),
+            }
+        )
+    return tuple(rows)
+
+
 def _build_derivatives(
     tournaments: pd.DataFrame,
     participants: pd.DataFrame,
@@ -598,6 +630,7 @@ def _build_derivatives(
     pd.DataFrame,
     AcquisitionContracts,
     NormalizedSummary,
+    tuple[dict[str, Any], ...],
 ]:
     normalized = NormalizedSummary(
         tournaments_rows=len(tournaments),
@@ -621,6 +654,7 @@ def _build_derivatives(
         )
 
     meta_result = aggregate_meta(participants)
+    classification_by_tournament = _classification_by_tournament(tournaments, participants)
 
     if progress_label and progress_started_at is not None:
         log.info(
@@ -683,6 +717,7 @@ def _build_derivatives(
         dense_score,
         contracts,
         normalized,
+        classification_by_tournament,
     )
 
 
@@ -1025,6 +1060,7 @@ def _live_run(
         dense_score,
         contracts,
         normalized,
+        classification_by_tournament,
     ) = _build_derivatives(
         tournaments,
         participants,
@@ -1101,6 +1137,9 @@ def _live_run(
         "normalization_diagnostics": dict(normalized.diagnostics),
         "meta_rows": len(top_meta),
         "classified_participants": meta_result.classified_participants,
+        "classification_by_tournament": [
+            dict(item) for item in classification_by_tournament
+        ],
         "known_deck_matches": match_result.comparable_matches,
         "pairing_diagnostics": _pairing_diagnostics(match_result),
         "deck_identity_diagnostics": {
@@ -1263,6 +1302,7 @@ def _offline_run(
         dense_score,
         contracts,
         normalized,
+        classification_by_tournament,
     ) = _build_derivatives(
         tournaments,
         participants,
@@ -1323,6 +1363,9 @@ def _offline_run(
         "normalization_diagnostics": dict(normalized.diagnostics),
         "meta_rows": len(top_meta),
         "classified_participants": meta_result.classified_participants,
+        "classification_by_tournament": [
+            dict(item) for item in classification_by_tournament
+        ],
         "known_deck_matches": match_result.comparable_matches,
         "pairing_diagnostics": _pairing_diagnostics(match_result),
         "deck_identity_diagnostics": {

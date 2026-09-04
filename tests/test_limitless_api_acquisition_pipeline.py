@@ -979,3 +979,51 @@ def test_ptcg_in_person_v2_live_offline_replay(tmp_path):
     assert replay.manifest.selection == live.manifest.selection
     assert replay.diagnostics["contract_hashes"] == live.diagnostics["contract_hashes"]
     assert dict(replay.manifest.normalized.hashes) == dict(live.manifest.normalized.hashes)
+
+
+def test_classification_by_tournament_partial_coverage_replays_identically(tmp_path):
+    client = FakeClient()
+    partial = _standings(("deck-a", "Deck A"), ("deck-c", "Deck C"))
+    partial[1]["deck"] = {}
+    client.standings["t2"] = partial
+
+    live = _run_live(tmp_path, run_id="partial-live", client=client)
+    expected = [
+        {
+            "tournament_id": "t1",
+            "total_participants": 2,
+            "classified_participants": 2,
+            "unclassified_participants": 0,
+            "classification_coverage": 1.0,
+        },
+        {
+            "tournament_id": "t2",
+            "total_participants": 2,
+            "classified_participants": 1,
+            "unclassified_participants": 1,
+            "classification_coverage": 0.5,
+        },
+    ]
+
+    assert live.diagnostics["classification_by_tournament"] == expected
+    assert "classification_by_tournament" not in live.manifest.to_dict()["aggregation"]
+
+    exploding = ExplodingClient()
+    replay = run_limitless_api_acquisition(
+        game="POCKET",
+        set_code="B3b",
+        acquisition_started_at=STARTED,
+        execution_mode="offline",
+        raw_store_root=tmp_path / "store",
+        release_catalog=CATALOG_PATH,
+        client=exploding,
+        replay_run_id="partial-live",
+        run_id="partial-replay",
+        software_git_revision="38d14a3",
+        now_fn=lambda: datetime(2026, 8, 22, 13, 0, tzinfo=UTC),
+    )
+
+    assert exploding.calls == 0
+    assert replay.diagnostics["network_calls"] == 0
+    assert replay.diagnostics["classification_by_tournament"] == expected
+    assert replay.diagnostics["classification_by_tournament"] == live.diagnostics["classification_by_tournament"]
