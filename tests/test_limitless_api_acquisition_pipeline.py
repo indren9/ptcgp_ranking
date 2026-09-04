@@ -6,8 +6,15 @@ from pathlib import Path
 
 import pytest
 
+from acquisition.scope import EligibilityPolicy, ScopePolicy
 from domain.releases import ExpansionRelease, ReleaseCatalog
-from pipelines.limitless_api_acquisition import run_limitless_api_acquisition
+from pipelines.limitless_api_acquisition import (
+    _eligibility_from_manifest,
+    _manifest_provenance_for_live,
+    _resolve_live_scope,
+    _selection_record,
+    run_limitless_api_acquisition,
+)
 from sources.limitless.tournament_api.release_catalog import load_release_catalog_snapshot
 
 
@@ -597,3 +604,378 @@ def test_hierarchical_pairing_occurrence_preserves_legitimate_rematch_and_replay
     assert replay.diagnostics["normalization_diagnostics"] == norm_diag
     assert replay.diagnostics["normalized_hashes"] == live.diagnostics["normalized_hashes"]
     assert replay.diagnostics["contract_hashes"] == live.diagnostics["contract_hashes"]
+
+
+def test_selection_record_carries_is_online():
+    online = _details("t-online", "2026-07-05T12:00:00Z")
+    physical = dict(online)
+    physical["isOnline"] = False
+    missing = dict(online)
+    missing.pop("isOnline")
+
+    assert _selection_record(online)["is_online"] is True
+    assert _selection_record(physical)["is_online"] is False
+    assert _selection_record(missing)["is_online"] is None
+
+
+def test_resolved_scope_seam_preserves_explicit_scope_and_legacy_path():
+    explicit = ScopePolicy(
+        policy_id="ptcg_explicit_window_v1",
+        game="PTCG",
+        format="STANDARD",
+        set_code="EXPLICIT",
+        set_name="Explicit UTC Window",
+        start_datetime=datetime(2026, 8, 1, tzinfo=UTC),
+        end_datetime=datetime(2026, 8, 15, tzinfo=UTC),
+        catalog_version="explicit-v1",
+    )
+
+    resolved = _resolve_live_scope(
+        catalog=HISTORICAL_B4_CURRENT_CATALOG,
+        resolved_scope=explicit,
+        set_mode="auto",
+        set_code=None,
+        acquisition_started_at=STARTED,
+        game="PTCG",
+        format="STANDARD",
+    )
+    assert resolved is explicit
+
+    without_catalog = _resolve_live_scope(
+        catalog=None,
+        resolved_scope=explicit,
+        set_mode="auto",
+        set_code=None,
+        acquisition_started_at=STARTED,
+        game="PTCG",
+        format="STANDARD",
+    )
+    assert without_catalog is explicit
+
+    with pytest.raises(ValueError, match="release catalog is required"):
+        _resolve_live_scope(
+            catalog=None,
+            resolved_scope=None,
+            set_mode="auto",
+            set_code=None,
+            acquisition_started_at=STARTED,
+            game="POCKET",
+            format="STANDARD",
+        )
+
+    with pytest.raises(ValueError, match="resolved_scope.game"):
+        _resolve_live_scope(
+            catalog=HISTORICAL_B4_CURRENT_CATALOG,
+            resolved_scope=explicit,
+            set_mode="auto",
+            set_code=None,
+            acquisition_started_at=STARTED,
+            game="POCKET",
+            format="STANDARD",
+        )
+
+    legacy = _resolve_live_scope(
+        catalog=HISTORICAL_B4_CURRENT_CATALOG,
+        resolved_scope=None,
+        set_mode="auto",
+        set_code=None,
+        acquisition_started_at=STARTED,
+        game="POCKET",
+        format="STANDARD",
+    )
+    assert legacy.game == "POCKET"
+    assert legacy.format == "STANDARD"
+    assert legacy.set_code == "B4"
+
+
+def test_explicit_live_scope_does_not_read_or_freeze_release_catalog(tmp_path):
+    scope = ScopePolicy(
+        policy_id="explicit_window_v1",
+        game="POCKET",
+        format="STANDARD",
+        set_code="EXPLICIT",
+        set_name="Explicit UTC Window",
+        start_datetime=datetime(2026, 7, 1, tzinfo=UTC),
+        end_datetime=datetime(2026, 7, 30, 1, tzinfo=UTC),
+        catalog_version="explicit-v1",
+    )
+    result = run_limitless_api_acquisition(
+        game="POCKET",
+        format="STANDARD",
+        resolved_scope=scope,
+        acquisition_started_at=STARTED,
+        raw_store_root=tmp_path / "raw",
+        release_catalog=tmp_path / "must-not-be-read.json",
+        client=FakeClient(),
+        run_id="explicit-no-catalog",
+        software_git_revision="test",
+        now_fn=lambda: NOW,
+    )
+
+    assert result.manifest.scope == scope
+    assert result.diagnostics["catalog_version"] == "explicit-v1"
+    assert all(
+        ref.payload_type != "catalog:release-catalog"
+        for ref in result.manifest.raw.snapshot_refs
+    )
+
+
+def test_explicit_scope_offline_replay_needs_no_release_catalog(tmp_path):
+    scope = ScopePolicy(
+        policy_id="explicit_window_v1",
+        game="POCKET",
+        format="STANDARD",
+        set_code="EXPLICIT",
+        set_name="Explicit UTC Window",
+        start_datetime=datetime(2026, 7, 1, tzinfo=UTC),
+        end_datetime=datetime(2026, 7, 30, 1, tzinfo=UTC),
+        catalog_version="explicit-v1",
+    )
+    live = run_limitless_api_acquisition(
+        game="POCKET",
+        format="STANDARD",
+        resolved_scope=scope,
+        acquisition_started_at=STARTED,
+        raw_store_root=tmp_path / "raw",
+        release_catalog=tmp_path / "must-not-be-read-live.json",
+        client=FakeClient(),
+        run_id="explicit-live",
+        software_git_revision="test",
+        now_fn=lambda: NOW,
+    )
+
+    exploding = ExplodingClient()
+    replay = run_limitless_api_acquisition(
+        game="POCKET",
+        format="STANDARD",
+        resolved_scope=scope,
+        acquisition_started_at=STARTED,
+        execution_mode="offline",
+        raw_store_root=tmp_path / "raw",
+        release_catalog=tmp_path / "must-not-be-read-offline.json",
+        client=exploding,
+        replay_run_id="explicit-live",
+        run_id="explicit-replay",
+        software_git_revision="test",
+        now_fn=lambda: NOW,
+    )
+
+    assert exploding.calls == 0
+    assert replay.diagnostics["network_calls"] == 0
+    assert replay.manifest.scope == scope
+    assert replay.diagnostics["contract_hashes"] == live.diagnostics["contract_hashes"]
+    assert dict(replay.manifest.normalized.hashes) == dict(live.manifest.normalized.hashes)
+
+    mismatched = ScopePolicy(
+        policy_id="explicit_window_v1",
+        game="POCKET",
+        format="STANDARD",
+        set_code="EXPLICIT",
+        set_name="Explicit UTC Window",
+        start_datetime=datetime(2026, 7, 1, tzinfo=UTC),
+        end_datetime=datetime(2026, 7, 29, 1, tzinfo=UTC),
+        catalog_version="explicit-v1",
+    )
+    with pytest.raises(ValueError, match="resolved_scope does not match"):
+        run_limitless_api_acquisition(
+            game="POCKET",
+            format="STANDARD",
+            resolved_scope=mismatched,
+            execution_mode="offline",
+            raw_store_root=tmp_path / "raw",
+            release_catalog=tmp_path / "must-not-be-read-mismatch.json",
+            replay_run_id="explicit-live",
+            run_id="explicit-replay-mismatch",
+            software_git_revision="test",
+            now_fn=lambda: NOW,
+        )
+
+
+def test_manifest_provenance_routing_preserves_pocket_v1_and_generalizes_v2():
+    pocket_scope = ScopePolicy(
+        policy_id="pocket_release_window_v1",
+        game="POCKET",
+        format="STANDARD",
+        set_code="B4",
+        set_name="Pocket",
+        start_datetime=datetime(2026, 7, 1, tzinfo=UTC),
+        end_datetime=datetime(2026, 7, 2, tzinfo=UTC),
+        catalog_version="catalog-v1",
+    )
+    pocket_policy = EligibilityPolicy()
+    schema, frozen_policy = _manifest_provenance_for_live(
+        scope=pocket_scope,
+        eligibility=pocket_policy,
+    )
+    assert schema == "1"
+    assert frozen_policy is None
+
+    drifted_pocket_policy = EligibilityPolicy(
+        policy_id="pocket_minimal_v1",
+        game="POCKET",
+        allowed_formats=(None, "STANDARD"),
+        require_public=True,
+        require_decklists=True,
+        require_online=False,
+    )
+    schema, frozen_policy = _manifest_provenance_for_live(
+        scope=pocket_scope,
+        eligibility=drifted_pocket_policy,
+    )
+    assert schema == "2"
+    assert frozen_policy is drifted_pocket_policy
+
+    ptcg_scope = ScopePolicy(
+        policy_id="ptcg_explicit_window_v1",
+        game="PTCG",
+        format="STANDARD",
+        set_code="EXPLICIT",
+        set_name="Explicit UTC Window",
+        start_datetime=datetime(2026, 7, 1, tzinfo=UTC),
+        end_datetime=datetime(2026, 7, 2, tzinfo=UTC),
+        catalog_version="explicit-v1",
+    )
+    ptcg_policy = EligibilityPolicy(
+        policy_id="ptcg_in_person_standard_v1",
+        game="PTCG",
+        allowed_formats=("STANDARD",),
+        require_public=True,
+        require_decklists=True,
+        require_online=False,
+    )
+    schema, frozen_policy = _manifest_provenance_for_live(
+        scope=ptcg_scope,
+        eligibility=ptcg_policy,
+    )
+    assert schema == "2"
+    assert frozen_policy is ptcg_policy
+
+    v1_payload = {"schema_version": "1"}
+    assert _eligibility_from_manifest(v1_payload) is None
+
+    v2_payload = {
+        "schema_version": "2",
+        "eligibility": {
+            "policy_id": "ptcg_in_person_standard_v1",
+            "game": "PTCG",
+            "allowed_formats": ["STANDARD"],
+            "require_public": True,
+            "require_decklists": True,
+            "require_online": False,
+        },
+    }
+    restored = _eligibility_from_manifest(v2_payload)
+    assert restored == ptcg_policy
+
+
+def test_ptcg_in_person_v2_live_offline_replay(tmp_path):
+    scope = ScopePolicy(
+        policy_id="ptcg_explicit_window_v1",
+        game="PTCG",
+        format="STANDARD",
+        set_code="EXPLICIT",
+        set_name="Explicit UTC Window",
+        start_datetime=datetime(2026, 8, 1, tzinfo=UTC),
+        end_datetime=datetime(2026, 8, 15, tzinfo=UTC),
+        catalog_version="explicit-v1",
+    )
+    policy = EligibilityPolicy(
+        policy_id="ptcg_in_person_standard_v1",
+        game="PTCG",
+        allowed_formats=("STANDARD",),
+        require_public=True,
+        require_decklists=True,
+        require_online=False,
+    )
+
+    physical = _details("ptcg-physical", "2026-08-05T12:00:00Z")
+    physical["game"] = "PTCG"
+    physical["platform"] = "TABLETOP"
+    physical["isOnline"] = False
+
+    online = _details("ptcg-online", "2026-08-06T12:00:00Z")
+    online["game"] = "PTCG"
+    online["platform"] = "TABLETOP"
+    online["isOnline"] = True
+
+    client = FakeClient()
+    client.discovery = [
+        {
+            "id": "ptcg-physical",
+            "game": "PTCG",
+            "format": "STANDARD",
+            "name": "Physical",
+            "date": "2026-08-05T12:00:00Z",
+            "players": 2,
+        },
+        {
+            "id": "ptcg-online",
+            "game": "PTCG",
+            "format": "STANDARD",
+            "name": "Online",
+            "date": "2026-08-06T12:00:00Z",
+            "players": 2,
+        },
+    ]
+    client.details = {
+        "ptcg-physical": physical,
+        "ptcg-online": online,
+    }
+    client.standings = {
+        "ptcg-physical": _standings(),
+    }
+    client.pairings = {
+        "ptcg-physical": _pairings(winner="p1"),
+    }
+
+    live = run_limitless_api_acquisition(
+        game="PTCG",
+        format="STANDARD",
+        resolved_scope=scope,
+        eligibility=policy,
+        acquisition_started_at=STARTED,
+        execution_mode="live",
+        raw_store_root=tmp_path / "raw",
+        release_catalog=tmp_path / "must-not-be-read-live.json",
+        client=client,
+        run_id="ptcg-v2-live",
+        software_git_revision="test",
+        now_fn=lambda: NOW,
+    )
+
+    live_payload = live.manifest.to_dict()
+    assert live.manifest.schema_version == "2"
+    assert live.manifest.eligibility == policy
+    assert live_payload["eligibility"]["policy_id"] == "ptcg_in_person_standard_v1"
+    assert live_payload["eligibility"]["require_online"] is False
+    assert live.manifest.selection.tournament_ids == ("ptcg-physical",)
+    assert live.manifest.selection.exclusion_counts["wrong_channel"] == 1
+    assert all(
+        ref.payload_type != "catalog:release-catalog"
+        for ref in live.manifest.raw.snapshot_refs
+    )
+
+    exploding = ExplodingClient()
+    replay = run_limitless_api_acquisition(
+        game="PTCG",
+        format="STANDARD",
+        resolved_scope=scope,
+        acquisition_started_at=STARTED,
+        execution_mode="offline",
+        raw_store_root=tmp_path / "raw",
+        release_catalog=tmp_path / "must-not-be-read-offline.json",
+        client=exploding,
+        replay_run_id="ptcg-v2-live",
+        run_id="ptcg-v2-replay",
+        software_git_revision="test",
+        now_fn=lambda: NOW,
+    )
+
+    assert exploding.calls == 0
+    assert replay.diagnostics["network_calls"] == 0
+    assert replay.manifest.schema_version == "2"
+    assert replay.manifest.eligibility == policy
+    assert replay.manifest.scope == scope
+    assert replay.manifest.selection == live.manifest.selection
+    assert replay.diagnostics["contract_hashes"] == live.diagnostics["contract_hashes"]
+    assert dict(replay.manifest.normalized.hashes) == dict(live.manifest.normalized.hashes)

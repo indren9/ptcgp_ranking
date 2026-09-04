@@ -7,7 +7,7 @@ from types import MappingProxyType
 from typing import Any, Mapping
 
 from acquisition.contracts import AcquisitionContracts, RawPayloadRef
-from acquisition.scope import ScopePolicy
+from acquisition.scope import EligibilityPolicy, ScopePolicy
 from acquisition.selection import TournamentSelection
 from domain.releases import require_utc
 
@@ -88,6 +88,7 @@ class AcquisitionManifest:
     aggregation: AggregationSummary
     rate_limit_observations: tuple[Mapping[str, Any], ...]
     contracts: AcquisitionContracts
+    eligibility: EligibilityPolicy | None = None
 
     def __post_init__(self) -> None:
         for field_name in ("schema_version", "run_id", "source", "software_git_revision"):
@@ -95,6 +96,11 @@ class AcquisitionManifest:
             if not value:
                 raise ValueError(f"{field_name} must be non-empty")
             object.__setattr__(self, field_name, value)
+        if self.schema_version == "2" and self.eligibility is None:
+            raise ValueError("schema v2 requires eligibility")
+        if self.schema_version != "2" and self.eligibility is not None:
+            raise ValueError("eligibility requires schema v2")
+
         created_at = require_utc(self.created_at, field_name="created_at")
         started_at = require_utc(self.acquisition_started_at, field_name="acquisition_started_at")
         if created_at < started_at:
@@ -128,6 +134,18 @@ class AcquisitionManifest:
                 "sha256": artifact.sha256,
             }
 
+        eligibility_payload: dict[str, Any] = {}
+        if self.schema_version == "2":
+            assert self.eligibility is not None
+            eligibility_payload["eligibility"] = {
+                "policy_id": self.eligibility.policy_id,
+                "game": self.eligibility.game,
+                "allowed_formats": list(self.eligibility.allowed_formats),
+                "require_public": self.eligibility.require_public,
+                "require_decklists": self.eligibility.require_decklists,
+                "require_online": self.eligibility.require_online,
+            }
+
         return {
             "schema_version": self.schema_version,
             "run_id": self.run_id,
@@ -145,6 +163,7 @@ class AcquisitionManifest:
                 "end": iso(self.scope.end_datetime),
                 "catalog_version": self.scope.catalog_version,
             },
+            **eligibility_payload,
             "selection": {
                 "tournament_ids": list(self.selection.tournament_ids),
                 "included_count": self.selection.included_count,
@@ -198,6 +217,93 @@ def validate_manifest_dict(payload: Mapping[str, Any]) -> None:
     missing = required - set(payload)
     if missing:
         raise ValueError(f"manifest missing keys: {sorted(missing)}")
+    schema_version = str(payload.get("schema_version") or "").strip()
+    if schema_version not in {"1", "1.0", "2"}:
+        raise ValueError(f"unsupported manifest schema_version: {schema_version}")
+
+    has_eligibility = "eligibility" in payload
+    if schema_version == "2":
+        if not has_eligibility:
+            raise ValueError("schema v2 manifest requires eligibility")
+        eligibility = payload["eligibility"]
+        if not isinstance(eligibility, Mapping):
+            raise ValueError("manifest eligibility must be an object")
+
+        required_eligibility = {
+            "policy_id",
+            "game",
+            "allowed_formats",
+            "require_public",
+            "require_decklists",
+            "require_online",
+        }
+        missing_eligibility = required_eligibility - set(eligibility)
+        if missing_eligibility:
+            raise ValueError(
+                "manifest eligibility missing keys: "
+                f"{sorted(missing_eligibility)}"
+            )
+
+        policy_id = str(eligibility.get("policy_id") or "").strip()
+        game = str(eligibility.get("game") or "").strip().upper()
+        if not policy_id:
+            raise ValueError("manifest eligibility policy_id must be non-empty")
+        if not game:
+            raise ValueError("manifest eligibility game must be non-empty")
+
+        allowed_formats = eligibility.get("allowed_formats")
+        if not isinstance(allowed_formats, list) or not allowed_formats:
+            raise ValueError(
+                "manifest eligibility allowed_formats must be a non-empty list"
+            )
+        normalized_formats: list[str | None] = []
+        for value in allowed_formats:
+            if value is None:
+                normalized = None
+            elif isinstance(value, str) and value.strip():
+                normalized = value.strip().upper()
+            else:
+                raise ValueError(
+                    "manifest eligibility allowed_formats values must be non-empty strings or null"
+                )
+            if normalized in normalized_formats:
+                raise ValueError(
+                    "manifest eligibility allowed_formats must be unique"
+                )
+            normalized_formats.append(normalized)
+
+        for field_name in ("require_public", "require_decklists"):
+            if not isinstance(eligibility.get(field_name), bool):
+                raise ValueError(
+                    f"manifest eligibility {field_name} must be boolean"
+                )
+        require_online = eligibility.get("require_online")
+        if require_online is not None and not isinstance(require_online, bool):
+            raise ValueError(
+                "manifest eligibility require_online must be boolean or null"
+            )
+
+        scope = payload.get("scope")
+        if not isinstance(scope, Mapping):
+            raise ValueError("manifest scope must be an object")
+        scope_game = str(scope.get("game") or "").strip().upper()
+        raw_scope_format = scope.get("format")
+        scope_format = (
+            None
+            if raw_scope_format is None
+            else str(raw_scope_format).strip().upper() or None
+        )
+        if game != scope_game:
+            raise ValueError(
+                "manifest eligibility game does not match scope game"
+            )
+        if scope_format not in normalized_formats:
+            raise ValueError(
+                "manifest scope format is not allowed by eligibility"
+            )
+    elif has_eligibility:
+        raise ValueError("legacy manifest must not contain eligibility")
+
     selection = payload["selection"]
     ids = list(selection.get("tournament_ids") or [])
     if ids != sorted(set(ids)):

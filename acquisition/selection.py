@@ -13,6 +13,7 @@ EXCLUSION_REASONS = (
     "wrong_format",
     "outside_window",
     "not_public",
+    "wrong_channel",
     "decklists_disabled",
     "invalid_record",
     "acquisition_failure",
@@ -113,6 +114,11 @@ def select_tournaments(
             fmt = None if raw_format is None else str(raw_format).strip().upper() or None
             date = _parse_date(record["date"])
             is_public = _bool_field(record, "is_public")
+            is_online = (
+                _bool_field(record, "is_online")
+                if eligibility.require_online is not None
+                else None
+            )
             decklists = _bool_field(record, "decklists")
         except (KeyError, TypeError, ValueError):
             counts["invalid_record"] += 1
@@ -126,6 +132,11 @@ def select_tournaments(
             counts["outside_window"] += 1
         elif eligibility.require_public and not is_public:
             counts["not_public"] += 1
+        elif (
+            eligibility.require_online is not None
+            and is_online != eligibility.require_online
+        ):
+            counts["wrong_channel"] += 1
         elif eligibility.require_decklists and not decklists:
             counts["decklists_disabled"] += 1
         else:

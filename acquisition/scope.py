@@ -61,6 +61,7 @@ class EligibilityPolicy:
     allowed_formats: tuple[str | None, ...] = (None, "STANDARD")
     require_public: bool = True
     require_decklists: bool = True
+    require_online: bool | None = None
 
     def __post_init__(self) -> None:
         policy_id = str(self.policy_id).strip()
@@ -77,6 +78,11 @@ class EligibilityPolicy:
                 normalized_formats.append(normalized)
         if not normalized_formats:
             raise ValueError("allowed_formats must contain at least one value")
+
+        if self.require_online is not None and not isinstance(
+            self.require_online, bool
+        ):
+            raise ValueError("require_online must be boolean or null")
 
         object.__setattr__(self, "policy_id", policy_id)
         object.__setattr__(self, "game", game)

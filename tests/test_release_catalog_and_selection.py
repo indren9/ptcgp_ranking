@@ -96,7 +96,7 @@ def test_selector_applies_half_open_boundary_and_is_deterministic():
     assert first.exclusion_counts["outside_window"] == 1
 
 
-def test_selector_reports_all_frozen_exclusion_reasons():
+def test_selector_reports_legacy_pocket_exclusion_reasons():
     scope = scope_for_release(
         resolve_release(catalog(), mode="code", code="B3b", acquisition_started_at=dt(20)),
         acquisition_started_at=dt(20),
@@ -121,7 +121,8 @@ def test_selector_reports_all_frozen_exclusion_reasons():
 
     assert result.tournament_ids == ("ok",)
     for reason in EXCLUSION_REASONS:
-        assert result.exclusion_counts[reason] == 1
+        expected = 0 if reason == "wrong_channel" else 1
+        assert result.exclusion_counts[reason] == expected
     assert result.failures == ("failed: details fetch failed",)
 
 
