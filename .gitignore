@@ -94,3 +94,6 @@ plots/
 ~$*
 *.tmp
 *.temp
+
+notebooks/*_dev.ipynb
+notebooks/deck_ranking_run_all.ipynb
