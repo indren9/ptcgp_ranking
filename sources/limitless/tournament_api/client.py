@@ -169,11 +169,24 @@ class LimitlessTournamentApiClient:
             for attempt in range(self.max_retries + 1):
                 self._wait_for_slot()
                 self._last_request_started = self._monotonic()
-                response = self.session.get(
-                    self._url(path),
-                    params={k: v for k, v in (params or {}).items() if v is not None},
-                    timeout=self.timeout,
-                )
+                try:
+                    response = self.session.get(
+                        self._url(path),
+                        params={
+                            k: v
+                            for k, v in (params or {}).items()
+                            if v is not None
+                        },
+                        timeout=self.timeout,
+                    )
+                except (requests.ConnectionError, requests.Timeout):
+                    if attempt >= self.max_retries:
+                        raise
+                    delay = self.backoff_factor * (2**attempt)
+                    if delay > 0:
+                        self._sleep(delay)
+                    continue
+
                 last_response = response
                 self._record_rate_limit(response)
 
