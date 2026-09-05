@@ -15,6 +15,7 @@ import pandas as pd
 import yaml
 
 from acquisition.production_bridge import bridge_tournament_api_frames, identity_mapping_diagnostics
+from acquisition.scope import EligibilityPolicy, ScopePolicy
 from core.consolidate import apply_alias_and_aggregate, build_score_table_filtered, maxN_flat
 from core.matrices import build_matrices, n_dir_from_WL, topmeta_post_alias
 from core.nan_diagnostics import build_nan_diagnostics
@@ -45,6 +46,7 @@ from sources.limitless.pages.sets import (
 from sources.limitless.tournament_api.release_catalog import (
     load_release_catalog_snapshot,
     resolve_release,
+    scope_for_release,
 )
 from storage.paths import ProjectPaths, init_paths
 from storage.routing import dest_for_key, find_latest, write_csv_versioned_setaware
@@ -372,10 +374,66 @@ def _api_format_from_config(cfg: dict[str, Any]) -> str | None:
 
 
 def _api_set_params(cfg: dict[str, Any]) -> tuple[str, str | None]:
-    set_cfg = ((cfg.get("scraping") or {}).get("set") or {})
-    mode = str(set_cfg.get("mode") or "auto").strip().lower()
-    code = str(set_cfg.get("code") or "").strip() or None
+    source_cfg = cfg.get("source") or {}
+    api_cfg = source_cfg.get("tournament_api") or {}
+
+    # Tournament API may define its own canonical window selection.
+    # Fall back to the historical scraping.set block for Pocket/backward
+    # compatibility.
+    window_cfg = api_cfg.get("window")
+    if not isinstance(window_cfg, dict):
+        window_cfg = ((cfg.get("scraping") or {}).get("set") or {})
+
+    mode = str(window_cfg.get("mode") or "auto").strip().lower()
+    code = str(window_cfg.get("code") or "").strip() or None
     return mode, code
+
+
+def _api_eligibility_from_config(
+    cfg: dict[str, Any],
+) -> EligibilityPolicy | None:
+    source_cfg = cfg.get("source") or {}
+    api_cfg = source_cfg.get("tournament_api") or {}
+    eligibility_cfg = api_cfg.get("eligibility")
+
+    if not isinstance(eligibility_cfg, dict):
+        return None
+
+    game = str(source_cfg.get("game") or "POCKET").strip().upper()
+    fmt = _api_format_from_config(cfg)
+
+    raw_formats = eligibility_cfg.get("allowed_formats")
+    if raw_formats is None:
+        allowed_formats = (fmt,) if fmt is not None else (None,)
+    elif isinstance(raw_formats, (list, tuple)):
+        allowed_formats = tuple(raw_formats)
+    else:
+        allowed_formats = (raw_formats,)
+
+    raw_platforms = eligibility_cfg.get("allowed_platforms")
+    if raw_platforms is None:
+        allowed_platforms = None
+    elif isinstance(raw_platforms, (list, tuple)):
+        allowed_platforms = tuple(raw_platforms)
+    else:
+        allowed_platforms = (raw_platforms,)
+
+    return EligibilityPolicy(
+        policy_id=str(
+            eligibility_cfg.get("policy_id")
+            or f"{game.lower()}_tournament_api_v1"
+        ),
+        game=game,
+        allowed_formats=allowed_formats,
+        require_public=bool(
+            eligibility_cfg.get("require_public", True)
+        ),
+        require_decklists=bool(
+            eligibility_cfg.get("require_decklists", True)
+        ),
+        require_online=eligibility_cfg.get("require_online"),
+        allowed_platforms=allowed_platforms,
+    )
 
 
 def _resolve_base_path(base: Path, value: Any, default: str) -> Path:
@@ -425,6 +483,52 @@ def _api_catalog_context(
     return exp, scope_url, catalog, catalog_path
 
 
+def _api_resolved_scope_from_config(
+    *,
+    base: Path,
+    cfg: dict[str, Any],
+    acquisition_started_at: datetime,
+) -> ScopePolicy:
+    source_cfg = cfg.get("source") or {}
+    api_cfg = source_cfg.get("tournament_api") or {}
+
+    catalog_path = _resolve_base_path(
+        base,
+        api_cfg.get("release_catalog"),
+        "data/reference/pocket_releases.json",
+    )
+    catalog = load_release_catalog_snapshot(catalog_path)
+
+    set_mode, set_code = _api_set_params(cfg)
+    release = resolve_release(
+        catalog,
+        mode=set_mode,
+        code=set_code,
+        acquisition_started_at=acquisition_started_at,
+    )
+
+    game = str(source_cfg.get("game") or "POCKET").strip().upper()
+    fmt = _api_format_from_config(cfg)
+
+    default_policy_id = (
+        "pocket_release_window_v1"
+        if game == "POCKET"
+        else f"{game.lower()}_scope_window_v1"
+    )
+    policy_id = str(
+        api_cfg.get("scope_policy_id")
+        or default_policy_id
+    ).strip()
+
+    return scope_for_release(
+        release,
+        acquisition_started_at=acquisition_started_at,
+        game=game,
+        format=fmt,
+        policy_id=policy_id,
+    )
+
+
 def _run_tournament_api_acquisition_for_production(
     *,
     base: Path,
@@ -437,6 +541,12 @@ def _run_tournament_api_acquisition_for_production(
     game = str(source_cfg.get("game") or "POCKET").strip().upper()
     fmt = _api_format_from_config(cfg)
     set_mode, set_code = _api_set_params(cfg)
+    eligibility = _api_eligibility_from_config(cfg)
+    resolved_scope = _api_resolved_scope_from_config(
+        base=base,
+        cfg=cfg,
+        acquisition_started_at=acquisition_started_at,
+    )
     execution_mode = str(api_cfg.get("execution_mode") or "live").strip().lower()
     replay_run_id = str(api_cfg.get("replay_run_id") or "").strip() or None
     raw_store_root = _resolve_base_path(base, api_cfg.get("raw_store_root"), "data/raw/limitless_api")
@@ -453,13 +563,24 @@ def _run_tournament_api_acquisition_for_production(
         format=fmt,
         set_mode=set_mode,
         set_code=set_code,
+        resolved_scope=resolved_scope,
         acquisition_started_at=None if execution_mode == "offline" else acquisition_started_at,
         execution_mode=execution_mode,
         raw_store_root=raw_store_root,
         release_catalog=catalog_path,
         cache_root=cache_root,
         cache_ttl_min=cache_ttl_min,
+        min_request_interval_seconds=float(
+            api_cfg.get("min_request_interval_seconds", 0.0)
+        ),
+        eligibility=eligibility,
         replay_run_id=replay_run_id,
+        discovery_page_size=int(
+            api_cfg.get("discovery_page_size", 50)
+        ),
+        discovery_max_pages=int(
+            api_cfg.get("discovery_max_pages", 20)
+        ),
         reuse_latest_raw=bool(api_cfg.get("reuse_latest_raw", True)),
     )
 

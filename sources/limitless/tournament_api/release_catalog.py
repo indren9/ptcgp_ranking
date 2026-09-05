@@ -137,7 +137,26 @@ def resolve_release(
         if not eligible:
             raise ValueError("no released expansion exists at acquisition_started_at")
         return max(eligible, key=lambda release: release.release_datetime)
-    raise ValueError("mode must be one of: auto, code, choose")
+
+    if normalized_mode == "latest_completed":
+        eligible = [
+            release
+            for release in catalog.releases
+            if (
+                release.release_datetime <= started
+                and release.next_release_datetime is not None
+                and release.next_release_datetime <= started
+            )
+        ]
+        if not eligible:
+            raise ValueError(
+                "no completed release window exists at acquisition_started_at"
+            )
+        return max(eligible, key=lambda release: release.release_datetime)
+
+    raise ValueError(
+        "mode must be one of: auto, code, choose, latest_completed"
+    )
 
 
 def scope_for_release(

@@ -1418,6 +1418,7 @@ def run_limitless_api_acquisition(
     client: LimitlessTournamentApiClient | None = None,
     cache_root: str | Path = "cache/limitless_api",
     cache_ttl_min: float = 0.0,
+    min_request_interval_seconds: float = 0.0,
     eligibility: EligibilityPolicy | None = None,
     run_id: str | None = None,
     replay_run_id: str | None = None,
@@ -1437,6 +1438,10 @@ def run_limitless_api_acquisition(
         raise ValueError("discovery_max_pages must be positive")
     if float(cache_ttl_min) < 0:
         raise ValueError("cache_ttl_min must be non-negative")
+    if float(min_request_interval_seconds) < 0:
+        raise ValueError(
+            "min_request_interval_seconds must be non-negative"
+        )
 
     now = now_fn or (lambda: datetime.now(UTC))
     catalog = (
@@ -1476,11 +1481,14 @@ def run_limitless_api_acquisition(
     policy = eligibility or EligibilityPolicy(game=game)
     own_client = client is None
     api_client = client or LimitlessTournamentApiClient(
+        min_request_interval_seconds=float(
+            min_request_interval_seconds
+        ),
         cache=FileJsonCache(
             cache_root,
             ttl_min=float(cache_ttl_min),
             now_fn=now,
-        )
+        ),
     )
     effective_cache_ttl_min = float(
         getattr(

@@ -1,0 +1,32 @@
+{
+  "catalog_version": "tcgl-expansion-boundaries-2026-09-04-v1",
+  "source": "Official Pokemon TCG Live availability and Standard rotation evidence frozen 2026-09-04",
+  "boundary_policy": {
+    "version": "ptcg-live-v1",
+    "full_expansion_availability": true,
+    "standard_rotation": true,
+    "early_individual_card_availability": false
+  },
+  "releases": [
+    {
+      "code": "CRI",
+      "name": "Chaos Rising Live window",
+      "release_datetime": "2026-05-21T00:00:00Z",
+      "next_release_datetime": "2026-07-16T00:00:00Z",
+      "is_current": false,
+      "boundary_kind": "full_expansion_availability",
+      "source": "Official Pokemon TCG Live availability and Standard rotation evidence frozen 2026-09-04",
+      "catalog_version": "tcgl-expansion-boundaries-2026-09-04-v1"
+    },
+    {
+      "code": "PBL",
+      "name": "Pitch Black Live window",
+      "release_datetime": "2026-07-16T00:00:00Z",
+      "next_release_datetime": null,
+      "is_current": true,
+      "boundary_kind": "full_expansion_availability",
+      "source": "Official Pokemon TCG Live availability and Standard rotation evidence frozen 2026-09-04",
+      "catalog_version": "tcgl-expansion-boundaries-2026-09-04-v1"
+    }
+  ]
+}
