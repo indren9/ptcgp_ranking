@@ -160,6 +160,65 @@ Frozen MARS lower-bound penalty:
 
 No TCG-specific MARS retuning is introduced by this integration.
 
+## First Core + MARS production validation
+
+The first full production-path validation used the frozen T4 raw dataset via
+OFFLINE replay:
+
+`ptcgl-shadow-cri-20260905T150853Z`
+
+The run exercised:
+
+`Tournament API replay -> production bridge -> Core -> NaN filter -> contracts -> MARS`
+
+Network access was explicitly forbidden during the replay.
+
+Observed acquisition result:
+
+- acquisition source: `tournament_api`
+- execution mode: `offline`
+- network calls: `0`
+- T4 contract hashes: identical to the frozen LIVE run
+
+Core result:
+
+- retained axis: 27 decks
+- score rows: 702
+- expected cardinality: `27 * 26 = 702`
+- WR matrix: `27 x 27`
+- n_dir matrix: `27 x 27`
+- WR diagonal: NaN
+- n_dir diagonal: NaN
+- WR directional symmetry maximum error: `0.0`
+- no mirror rows: PASS
+- `N = W + L + T`: PASS
+- unique directional pairs: PASS
+- `n_dir = W + L`: PASS
+- W/L/T directional symmetry: PASS
+
+`WR_dir` is contractually rounded to two decimal places. Validation against
+the unrounded mathematical value can therefore differ by at most 0.005
+percentage points. The observed maximum difference was
+`0.005000000000002558`; validation against the two-decimal contractual value
+had maximum error `0.0`.
+
+MARS result:
+
+- ranking rows: 27
+- `K_used = 28.91366458960192`
+- all 27 ranked decks used all 26 opponents
+- coverage: 100% for every ranked deck
+
+Top three by `Score_%` in this validation run:
+
+1. `dragapult-ex` — 92.640398
+2. `crustle-dri` — 92.425948
+3. `dragapult-blaziken` — 90.564790
+
+Validation status:
+
+`PASS`
+
 ## Update rule
 
 When a new official TCG Live expansion or Standard rotation becomes a
