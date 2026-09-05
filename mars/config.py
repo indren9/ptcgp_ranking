@@ -6,7 +6,7 @@ from typing import Optional, Tuple
 class MARSConfig:
     # --- Posterior / LB / Composite
     MU: float = 0.5
-    Z_PENALTY: float = 1.2
+    Z_PENALTY: float = 1.96
     ALPHA_COMPOSITE: float = 0.72
 
     # --- META blend
