@@ -287,6 +287,34 @@ Validation status:
 
 `PASS`
 
+## Automatic latest-completed operation
+
+TCG Live uses a dedicated automation channel. The existing Pocket
+latest-completed automation remains unchanged.
+
+The TCG Live controller uses:
+
+- catalog: `data/reference/ptcg_live_windows.json`
+- state: `.github/tcg-live-latest-completed-meta-state.json`
+- future public target: `public/tcg-live/latest-meta/`
+
+The controller resolves `latest_completed` from the official TCG Live
+boundary catalog.
+
+Decision contract:
+
+- if the resolved completed window matches the published state: `noop`
+- if the resolved completed window changes: `publish_required`
+
+The initial state is frozen to CRI
+`[2026-05-21, 2026-07-16)`, because this window has already passed the
+LIVE, OFFLINE, Core and MARS production validation gates.
+
+The scheduled GitHub Actions publication is intentionally introduced only
+after the complete TCG Live LIVE -> raw persistence -> OFFLINE replay ->
+Core -> MARS -> publication path has been validated. This prevents a
+partially implemented automation from becoming active.
+
 ## Update rule
 
 When a new official TCG Live expansion or Standard rotation becomes a
