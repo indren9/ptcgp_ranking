@@ -315,6 +315,23 @@ after the complete TCG Live LIVE -> raw persistence -> OFFLINE replay ->
 Core -> MARS -> publication path has been validated. This prevents a
 partially implemented automation from becoming active.
 
+## TCG Live candidate transaction
+
+The dedicated TCG Live rollover transaction is split into two safety stages.
+
+Stage T6B1 prepares a publication candidate only:
+
+`LIVE acquisition -> canonical raw persistence -> raw restore -> exact OFFLINE replay -> Core -> MARS`
+
+The OFFLINE replay must use zero network calls and must reproduce the
+canonical LIVE acquisition evidence exactly.
+
+No public files and no TCG Live publication state are modified by T6B1.
+
+Public bundle generation and atomic publication are introduced separately
+in T6B2. The scheduled workflow remains disabled until both stages have
+passed validation.
+
 ## Update rule
 
 When a new official TCG Live expansion or Standard rotation becomes a
