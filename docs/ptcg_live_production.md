@@ -360,6 +360,32 @@ T6B1 validation status:
 
 `PASS`
 
+## TCG Live public bundle and atomic publication
+
+T6B2 generalizes the existing latest-completed bundle producer without
+changing its Pocket defaults.
+
+The same producer can now explicitly package TCG Live with:
+
+- game code: `PTCG`
+- display game: `Pokémon TCG Live`
+- public prefix: `public/tcg-live/latest-meta`
+
+TCG Live publication is isolated from Pocket and writes only:
+
+- `public/tcg-live/latest-meta/ranking.csv`
+- `public/tcg-live/latest-meta/heatmap.png`
+- `public/tcg-live/latest-meta/manifest.json`
+- `.github/tcg-live-latest-completed-meta-state.json`
+
+Publication is rollback-safe across the three public files and the dedicated
+TCG Live state.
+
+The production job remains non-publishing by default. CLI publication
+requires both `--publish` and `--allow-public-write`.
+
+The scheduled workflow remains disabled pending T6B2 validation.
+
 ## Update rule
 
 When a new official TCG Live expansion or Standard rotation becomes a

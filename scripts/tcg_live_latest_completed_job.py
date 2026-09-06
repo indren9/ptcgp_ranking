@@ -24,6 +24,10 @@ from scripts.tcg_live_latest_completed import (
     build_plan,
     read_json,
 )
+from scripts.tcg_live_publication import (
+    build_tcg_live_bundle,
+    publish_tcg_live_bundle,
+)
 from sources.limitless.tournament_api.object_store import (
     S3ObjectStoreBackend,
     persist_canonical_raw_run,
@@ -191,6 +195,8 @@ def run_job(
     backend_factory: Callable[[], Any] = (
         S3ObjectStoreBackend.from_env
     ),
+    publish: bool = False,
+    public_target: Path | None = None,
 ) -> dict[str, Any]:
     repo_root = repo_root.resolve()
     work_root = work_root.resolve()
@@ -383,8 +389,46 @@ def run_job(
             "TCG Live OFFLINE replay used network"
         )
 
+    bundle_dir = None
+    publication_result = None
+
+    if publish:
+        bundle_dir = work_root / "bundle"
+
+        if bundle_dir.exists():
+            shutil.rmtree(bundle_dir)
+
+        build_tcg_live_bundle(
+            source_run=replay.source_run,
+            config_path=offline_config,
+            acquisition_manifest=live_manifest,
+            bundle_dir=bundle_dir,
+            plan=plan,
+            source_revision=revision,
+        )
+
+        target = (
+            public_target
+            or repo_root
+            / "public"
+            / "tcg-live"
+            / "latest-meta"
+        )
+
+        publication_result = publish_tcg_live_bundle(
+            bundle_dir=bundle_dir,
+            plan=plan,
+            state_path=state_path,
+            target_dir=target,
+            dry_run=False,
+        )
+
     return {
-        "action": "candidate_ready",
+        "action": (
+            "published"
+            if publish
+            else "candidate_ready"
+        ),
         "reason": plan["reason"],
         "latest_completed_window":
             plan["latest_completed_window"],
@@ -400,7 +444,13 @@ def run_job(
         "candidate_source_run":
             str(replay.source_run),
         "candidate_ready": True,
-        "published": False,
+        "bundle_dir": (
+            None
+            if bundle_dir is None
+            else str(bundle_dir)
+        ),
+        "publication": publication_result,
+        "published": bool(publish),
     }
 
 
@@ -436,16 +486,41 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
     )
 
+    parser.add_argument(
+        "--publish",
+        action="store_true",
+        help=(
+            "Publish the validated TCG Live bundle "
+            "and update its dedicated state."
+        ),
+    )
+
+    parser.add_argument(
+        "--allow-public-write",
+        action="store_true",
+        help=(
+            "Required safety acknowledgement "
+            "when --publish is used."
+        ),
+    )
+
     return parser
 
 
 def main() -> int:
     args = build_parser().parse_args()
 
+    if args.publish and not args.allow_public_write:
+        raise SystemExit(
+            "--allow-public-write is required "
+            "when --publish is used"
+        )
+
     report = run_job(
         repo_root=args.repo_root,
         work_root=args.work_root,
         state_path=args.state,
+        publish=args.publish,
     )
 
     if args.report is not None:
