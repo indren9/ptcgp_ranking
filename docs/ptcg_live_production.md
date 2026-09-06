@@ -219,6 +219,74 @@ Validation status:
 
 `PASS`
 
+## Current LIVE operational validation
+
+A subsequent production LIVE run was executed with the canonical TCG Live
+configuration.
+
+Run:
+
+`limitless-api-live-20260905T213244704558Z`
+
+Result:
+
+- acquisition source: `tournament_api`
+- execution mode: `live`
+- selected tournaments: 469
+- classified participants: 31,256
+- unclassified participants: 6
+- comparable matches: 66,975
+- acquisition failures: 0
+- Core retained axis: 27 decks
+- score rows: 702 = `27 * 26`
+- MARS ranking rows: 27
+- minimum coverage: 100%
+- `K_used = 28.91366458960192`
+
+The ranking remained materially stable relative to the frozen T4 validation.
+
+### Mutable LIVE source rule
+
+Limitless Tournament API data may change retroactively.
+
+A LIVE run is therefore authoritative for the data exposed by Limitless at
+that acquisition timestamp. A later LIVE run is not required to reproduce the
+contract hashes of an earlier LIVE run.
+
+Exact reproducibility of a historical run is guaranteed by its frozen raw
+snapshots, manifest and OFFLINE replay.
+
+During this validation, T4 selected 470 tournaments and T5 selected 469.
+One previously selected tournament disappeared from the fresh Limitless
+discovery:
+
+`6a0f640adfbdf089cbbdea7f`
+
+The removed tournament accounted exactly for:
+
+- 24 fewer participants
+- 24 fewer classified participants
+- 55 fewer pairings
+- 53 fewer comparable matches
+
+The fresh discovery catalogs also showed broader retroactive mutation:
+6 tournament IDs disappeared and 5 appeared between T4 and T5, including
+records with historical dates.
+
+This behavior is treated as upstream source mutability, not as a production
+pipeline failure.
+
+### Runtime note
+
+The observed wall-clock duration of approximately 11.5 hours is not treated
+as a production runtime benchmark. The run spanned an overnight system
+suspension interval. Raw fetch timestamps and rate-limit observations show
+that the process resumed and completed successfully after wake.
+
+Validation status:
+
+`PASS`
+
 ## Update rule
 
 When a new official TCG Live expansion or Standard rotation becomes a
