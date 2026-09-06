@@ -332,6 +332,34 @@ Public bundle generation and atomic publication are introduced separately
 in T6B2. The scheduled workflow remains disabled until both stages have
 passed validation.
 
+### T6B1 real candidate validation
+
+The complete TCG Live candidate transaction was validated with a real LIVE
+acquisition while publication remained disabled.
+
+Canonical LIVE run:
+
+`limitless-api-live-20260906T141630666726Z`
+
+Validated path:
+
+`LIVE -> canonical raw persistence -> raw restore -> exact OFFLINE replay -> Core -> MARS`
+
+Observed result:
+
+- candidate status: `candidate_ready`
+- latest completed window: CRI `[2026-05-21, 2026-07-16)`
+- OFFLINE network calls: `0`
+- MARS ranking rows: `27`
+- public publication performed: `false`
+
+The restored OFFLINE replay passed the exact acquisition-evidence
+reconciliation against the canonical LIVE run.
+
+T6B1 validation status:
+
+`PASS`
+
 ## Update rule
 
 When a new official TCG Live expansion or Standard rotation becomes a
