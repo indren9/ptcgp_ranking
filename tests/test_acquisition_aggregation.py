@@ -224,3 +224,51 @@ def test_conflicting_duplicate_pairing_raises():
     row2["winner"] = "p2"
     with pytest.raises(AggregationConflictError, match="conflicting duplicate pairing"):
         aggregate_matchups(p, pd.DataFrame([row1, row2]))
+
+
+def test_deck_id_without_name_is_still_classified():
+    p = participants([
+        ("t1", "p1", "a", None),
+        ("t1", "p2", "b", "Deck B"),
+    ])
+    result = aggregate_meta(p)
+
+    assert result.classified_participants == 2
+    assert result.unclassified_participants == 0
+    assert result.classification_coverage == pytest.approx(1.0)
+    rows = result.meta.set_index("Deck ID")
+    assert rows.loc["a", "Deck"] == "a"
+    assert rows.loc["b", "Deck"] == "Deck B"
+
+
+def test_missing_name_reuses_unique_observed_name_for_same_deck_id():
+    p = participants([
+        ("t1", "p1", "a", None),
+        ("t2", "p2", "a", "Deck A"),
+    ])
+    result = aggregate_meta(p)
+
+    assert result.classified_participants == 2
+    assert len(result.meta) == 1
+    row = result.meta.iloc[0]
+    assert row["Deck ID"] == "a"
+    assert row["Deck"] == "Deck A"
+    assert int(row["Count"]) == 2
+
+
+def test_matchup_requires_deck_id_not_display_name():
+    p = participants([
+        ("t1", "p1", "a", None),
+        ("t1", "p2", "b", "Deck B"),
+    ])
+    result = aggregate_matchups(
+        p,
+        pd.DataFrame([pairing("t1", "r1", "p1", "p2", "p1")]),
+    )
+
+    assert result.comparable_matches == 1
+    assert result.pairing_exclusion_counts["missing_deck"] == 0
+    forward = result.matchups.set_index(["Deck A ID", "Deck B ID"]).loc[("a", "b")]
+    assert forward["Deck A"] == "a"
+    assert forward["Deck B"] == "Deck B"
+    assert int(forward["W"]) == 1

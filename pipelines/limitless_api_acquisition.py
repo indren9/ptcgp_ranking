@@ -271,6 +271,8 @@ def _selection_record(details: Mapping[str, Any]) -> dict[str, Any]:
         "date": details.get("date"),
         "is_public": details.get("isPublic"),
         "decklists": details.get("decklists"),
+        "is_online": details.get("isOnline"),
+        "platform": details.get("platform"),
     }
 
 
@@ -445,6 +447,42 @@ def _scope_from_manifest(payload: Mapping[str, Any]) -> ScopePolicy:
     )
 
 
+def _manifest_provenance_for_live(
+    *,
+    scope: ScopePolicy,
+    eligibility: EligibilityPolicy,
+) -> tuple[str, EligibilityPolicy | None]:
+    if (
+        scope.game == "POCKET"
+        and eligibility == EligibilityPolicy()
+    ):
+        return "1", None
+    return "2", eligibility
+
+
+def _eligibility_from_manifest(
+    payload: Mapping[str, Any],
+) -> EligibilityPolicy | None:
+    schema_version = str(payload.get("schema_version") or "").strip()
+    if schema_version != "2":
+        return None
+
+    item = payload["eligibility"]
+    return EligibilityPolicy(
+        policy_id=item["policy_id"],
+        game=item["game"],
+        allowed_formats=tuple(item["allowed_formats"]),
+        require_public=item["require_public"],
+        require_decklists=item["require_decklists"],
+        require_online=item["require_online"],
+        allowed_platforms=(
+            tuple(item["allowed_platforms"])
+            if item.get("allowed_platforms") is not None
+            else None
+        ),
+    )
+
+
 def _selection_from_manifest(payload: Mapping[str, Any]) -> TournamentSelection:
     item = payload["selection"]
     return TournamentSelection(
@@ -550,6 +588,38 @@ def _normalize_selected(
     return tournaments, participants, pairings, normalization_diagnostics
 
 
+def _classification_by_tournament(
+    tournaments: pd.DataFrame,
+    participants: pd.DataFrame,
+) -> tuple[dict[str, Any], ...]:
+    for frame_name, frame in (
+        ("tournaments", tournaments),
+        ("participants", participants),
+    ):
+        if "tournament_id" not in frame.columns:
+            raise KeyError(f"{frame_name} missing column: tournament_id")
+
+    tournament_ids = sorted(
+        {str(value).strip() for value in tournaments["tournament_id"].tolist()}
+    )
+    participant_ids = participants["tournament_id"].astype(str).str.strip()
+    rows: list[dict[str, Any]] = []
+
+    for tournament_id in tournament_ids:
+        subset = participants.loc[participant_ids == tournament_id].copy()
+        result = aggregate_meta(subset)
+        rows.append(
+            {
+                "tournament_id": tournament_id,
+                "total_participants": result.total_participants,
+                "classified_participants": result.classified_participants,
+                "unclassified_participants": result.unclassified_participants,
+                "classification_coverage": float(result.classification_coverage),
+            }
+        )
+    return tuple(rows)
+
+
 def _build_derivatives(
     tournaments: pd.DataFrame,
     participants: pd.DataFrame,
@@ -566,6 +636,7 @@ def _build_derivatives(
     pd.DataFrame,
     AcquisitionContracts,
     NormalizedSummary,
+    tuple[dict[str, Any], ...],
 ]:
     normalized = NormalizedSummary(
         tournaments_rows=len(tournaments),
@@ -589,6 +660,7 @@ def _build_derivatives(
         )
 
     meta_result = aggregate_meta(participants)
+    classification_by_tournament = _classification_by_tournament(tournaments, participants)
 
     if progress_label and progress_started_at is not None:
         log.info(
@@ -651,6 +723,7 @@ def _build_derivatives(
         dense_score,
         contracts,
         normalized,
+        classification_by_tournament,
     )
 
 
@@ -716,15 +789,63 @@ def _persist_run(
     _atomic_write_json(run_root / "diagnostics.json", dict(diagnostics))
 
 
+def _resolve_live_scope(
+    *,
+    catalog: ReleaseCatalog | None,
+    resolved_scope: ScopePolicy | None,
+    set_mode: str,
+    set_code: str | None,
+    acquisition_started_at: datetime,
+    game: str,
+    format: str | None,
+) -> ScopePolicy:
+    requested_game = str(game).strip().upper()
+    requested_format = (
+        None
+        if format is None
+        else str(format).strip().upper() or None
+    )
+
+    if resolved_scope is not None:
+        if resolved_scope.game != requested_game:
+            raise ValueError(
+                "resolved_scope.game does not match requested game"
+            )
+        if resolved_scope.format != requested_format:
+            raise ValueError(
+                "resolved_scope.format does not match requested format"
+            )
+        return resolved_scope
+
+    if catalog is None:
+        raise ValueError(
+            "release catalog is required when resolved_scope is absent"
+        )
+
+    release = resolve_release(
+        catalog,
+        mode=set_mode,
+        code=set_code,
+        acquisition_started_at=acquisition_started_at,
+    )
+    return scope_for_release(
+        release,
+        acquisition_started_at=acquisition_started_at,
+        game=requested_game,
+        format=requested_format,
+    )
+
+
 def _live_run(
     *,
     game: str,
     format: str | None,
     set_mode: str,
     set_code: str | None,
+    resolved_scope: ScopePolicy | None,
     acquisition_started_at: datetime,
     raw_store: ImmutableRawStore,
-    catalog: ReleaseCatalog,
+    catalog: ReleaseCatalog | None,
     eligibility: EligibilityPolicy,
     client: LimitlessTournamentApiClient,
     run_id: str,
@@ -735,24 +856,23 @@ def _live_run(
     cache_ttl_min: float,
     now_fn: Callable[[], datetime],
 ) -> AcquisitionRunResult:
-    release = resolve_release(
-        catalog,
-        mode=set_mode,
-        code=set_code,
-        acquisition_started_at=acquisition_started_at,
-    )
-    scope = scope_for_release(
-        release,
+    scope = _resolve_live_scope(
+        catalog=catalog,
+        resolved_scope=resolved_scope,
+        set_mode=set_mode,
+        set_code=set_code,
         acquisition_started_at=acquisition_started_at,
         game=game,
         format=format,
     )
 
-    catalog_ref = raw_store.save_catalog_snapshot(
-        "release-catalog",
-        _catalog_payload(catalog),
-        fetched_at=acquisition_started_at,
-    )
+    catalog_ref: RawPayloadRef | None = None
+    if catalog is not None:
+        catalog_ref = raw_store.save_catalog_snapshot(
+            "release-catalog",
+            _catalog_payload(catalog),
+            fetched_at=acquisition_started_at,
+        )
 
     discovery_raw = client.list_tournaments(
         game=scope.game,
@@ -873,10 +993,11 @@ def _live_run(
     )
 
     raw_refs: list[RawPayloadRef] = [
-        catalog_ref,
         discovery_ref,
         selection_details_ref,
     ]
+    if catalog_ref is not None:
+        raw_refs.insert(0, catalog_ref)
     snapshot_ids: dict[str, str] = {}
     reused_snapshot_count = 0
 
@@ -945,6 +1066,7 @@ def _live_run(
         dense_score,
         contracts,
         normalized,
+        classification_by_tournament,
     ) = _build_derivatives(
         tournaments,
         participants,
@@ -966,8 +1088,14 @@ def _live_run(
             }
         },
     )
+    manifest_schema_version, manifest_eligibility = (
+        _manifest_provenance_for_live(
+            scope=scope,
+            eligibility=eligibility,
+        )
+    )
     manifest = AcquisitionManifest(
-        schema_version=SCHEMA_VERSION,
+        schema_version=manifest_schema_version,
         run_id=run_id,
         created_at=now_fn(),
         acquisition_started_at=acquisition_started_at,
@@ -980,13 +1108,14 @@ def _live_run(
         aggregation=aggregation,
         rate_limit_observations=_rate_limit_rows(client),
         contracts=contracts,
+        eligibility=manifest_eligibility,
     )
     manifest.to_json()
 
     diagnostics = {
         "execution_mode": "live",
         "run_id": run_id,
-        "catalog_version": catalog.catalog_version,
+        "catalog_version": scope.catalog_version,
         "scope_start": scope.start_datetime.isoformat().replace("+00:00", "Z"),
         "scope_end": scope.end_datetime.isoformat().replace("+00:00", "Z"),
         "selected_tournament_count": selection.included_count,
@@ -1014,6 +1143,9 @@ def _live_run(
         "normalization_diagnostics": dict(normalized.diagnostics),
         "meta_rows": len(top_meta),
         "classified_participants": meta_result.classified_participants,
+        "classification_by_tournament": [
+            dict(item) for item in classification_by_tournament
+        ],
         "known_deck_matches": match_result.comparable_matches,
         "pairing_diagnostics": _pairing_diagnostics(match_result),
         "deck_identity_diagnostics": {
@@ -1053,9 +1185,10 @@ def _offline_run(
     game: str,
     format: str | None,
     set_code: str | None,
+    resolved_scope: ScopePolicy | None,
     acquisition_started_at: datetime | None,
     raw_store: ImmutableRawStore,
-    catalog: ReleaseCatalog,
+    catalog: ReleaseCatalog | None,
     run_id: str,
     replay_run_id: str,
     software_git_revision: str,
@@ -1068,6 +1201,8 @@ def _offline_run(
         raise FileNotFoundError(f"offline replay manifest not found: {source_manifest_path}")
     source_payload = json.loads(source_manifest_path.read_text(encoding="utf-8"))
     validate_manifest_dict(source_payload)
+    source_schema_version = str(source_payload["schema_version"]).strip()
+    source_eligibility = _eligibility_from_manifest(source_payload)
     scope = _scope_from_manifest(source_payload)
     selection = _selection_from_manifest(source_payload)
     source_started = parse_utc_datetime(
@@ -1086,8 +1221,19 @@ def _offline_run(
         requested_started = require_utc(acquisition_started_at, field_name="acquisition_started_at")
         if requested_started != source_started:
             raise ValueError("offline replay acquisition_started_at must match the frozen source manifest")
-    if catalog.catalog_version != scope.catalog_version:
-        raise ValueError("offline replay release catalog version does not match source manifest scope")
+    if resolved_scope is not None:
+        if resolved_scope != scope:
+            raise ValueError(
+                "offline replay resolved_scope does not match source manifest scope"
+            )
+    elif catalog is None:
+        raise ValueError(
+            "release catalog is required for legacy offline replay"
+        )
+    elif catalog.catalog_version != scope.catalog_version:
+        raise ValueError(
+            "offline replay release catalog version does not match source manifest scope"
+        )
 
     refs = tuple(
         _raw_ref_from_manifest(item)
@@ -1162,6 +1308,7 @@ def _offline_run(
         dense_score,
         contracts,
         normalized,
+        classification_by_tournament,
     ) = _build_derivatives(
         tournaments,
         participants,
@@ -1185,7 +1332,7 @@ def _offline_run(
         },
     )
     manifest = AcquisitionManifest(
-        schema_version=SCHEMA_VERSION,
+        schema_version=source_schema_version,
         run_id=run_id,
         created_at=now_fn(),
         acquisition_started_at=source_started,
@@ -1198,6 +1345,7 @@ def _offline_run(
         aggregation=aggregation,
         rate_limit_observations=(),
         contracts=contracts,
+        eligibility=source_eligibility,
     )
     manifest.to_json()
 
@@ -1205,7 +1353,7 @@ def _offline_run(
         "execution_mode": "offline",
         "run_id": run_id,
         "replay_run_id": replay_run_id,
-        "catalog_version": catalog.catalog_version,
+        "catalog_version": scope.catalog_version,
         "scope_start": scope.start_datetime.isoformat().replace("+00:00", "Z"),
         "scope_end": scope.end_datetime.isoformat().replace("+00:00", "Z"),
         "selected_tournament_count": selection.included_count,
@@ -1221,6 +1369,9 @@ def _offline_run(
         "normalization_diagnostics": dict(normalized.diagnostics),
         "meta_rows": len(top_meta),
         "classified_participants": meta_result.classified_participants,
+        "classification_by_tournament": [
+            dict(item) for item in classification_by_tournament
+        ],
         "known_deck_matches": match_result.comparable_matches,
         "pairing_diagnostics": _pairing_diagnostics(match_result),
         "deck_identity_diagnostics": {
@@ -1259,6 +1410,7 @@ def run_limitless_api_acquisition(
     format: str | None = "STANDARD",
     set_mode: str = "auto",
     set_code: str | None = None,
+    resolved_scope: ScopePolicy | None = None,
     acquisition_started_at: datetime | None = None,
     execution_mode: str = "live",
     raw_store_root: str | Path = "data/raw/limitless_api",
@@ -1266,6 +1418,7 @@ def run_limitless_api_acquisition(
     client: LimitlessTournamentApiClient | None = None,
     cache_root: str | Path = "cache/limitless_api",
     cache_ttl_min: float = 0.0,
+    min_request_interval_seconds: float = 0.0,
     eligibility: EligibilityPolicy | None = None,
     run_id: str | None = None,
     replay_run_id: str | None = None,
@@ -1285,9 +1438,17 @@ def run_limitless_api_acquisition(
         raise ValueError("discovery_max_pages must be positive")
     if float(cache_ttl_min) < 0:
         raise ValueError("cache_ttl_min must be non-negative")
+    if float(min_request_interval_seconds) < 0:
+        raise ValueError(
+            "min_request_interval_seconds must be non-negative"
+        )
 
     now = now_fn or (lambda: datetime.now(UTC))
-    catalog = _coerce_catalog(release_catalog)
+    catalog = (
+        None
+        if resolved_scope is not None
+        else _coerce_catalog(release_catalog)
+    )
     raw_store = ImmutableRawStore(raw_store_root)
     revision = str(software_git_revision or _git_revision()).strip() or "UNKNOWN"
     rid = str(run_id or "").strip()
@@ -1303,6 +1464,7 @@ def run_limitless_api_acquisition(
             game=game,
             format=format,
             set_code=set_code,
+            resolved_scope=resolved_scope,
             acquisition_started_at=acquisition_started_at,
             raw_store=raw_store,
             catalog=catalog,
@@ -1319,11 +1481,14 @@ def run_limitless_api_acquisition(
     policy = eligibility or EligibilityPolicy(game=game)
     own_client = client is None
     api_client = client or LimitlessTournamentApiClient(
+        min_request_interval_seconds=float(
+            min_request_interval_seconds
+        ),
         cache=FileJsonCache(
             cache_root,
             ttl_min=float(cache_ttl_min),
             now_fn=now,
-        )
+        ),
     )
     effective_cache_ttl_min = float(
         getattr(
@@ -1338,6 +1503,7 @@ def run_limitless_api_acquisition(
             format=format,
             set_mode=set_mode,
             set_code=set_code,
+            resolved_scope=resolved_scope,
             acquisition_started_at=started,
             raw_store=raw_store,
             catalog=catalog,

@@ -93,6 +93,7 @@ def _load_tournament_api_manifest(
     *,
     set_code: str,
     set_name: str,
+    game_code: str = "POCKET",
 ) -> dict[str, Any]:
     payload = json.loads(path.read_text(encoding="utf-8"))
 
@@ -103,8 +104,15 @@ def _load_tournament_api_manifest(
 
     scope = payload.get("scope") or {}
 
-    if str(scope.get("game") or "").upper() != "POCKET":
-        raise ValueError("Acquisition manifest game must be POCKET")
+    expected_game = str(game_code).strip().upper()
+    if not expected_game:
+        raise ValueError("game_code must be non-empty")
+
+    if str(scope.get("game") or "").upper() != expected_game:
+        raise ValueError(
+            "Acquisition manifest game must be "
+            f"{expected_game}"
+        )
 
     if str(scope.get("format") or "").upper() != "STANDARD":
         raise ValueError("Acquisition manifest format must be STANDARD")
@@ -235,7 +243,12 @@ def _load_public_deck_labels(
     }
 
 
-def _source_urls_match_scope(frame, *, code: str) -> None:
+def _source_urls_match_scope(
+    frame,
+    *,
+    code: str,
+    game_code: str = "POCKET",
+) -> None:
     from urllib.parse import parse_qs, urlparse
 
     if "URL" not in frame.columns or frame.empty:
@@ -251,7 +264,13 @@ def _source_urls_match_scope(frame, *, code: str) -> None:
                 str((query.get("set") or [""])[0]).casefold(),
             )
         )
-    expected = {("POCKET", "standard", code.casefold())}
+    expected = {
+        (
+            str(game_code).strip().upper(),
+            "standard",
+            code.casefold(),
+        )
+    }
     if scopes != expected:
         raise ValueError(f"Source decklist scope {sorted(scopes)!r} does not match {sorted(expected)!r}")
 
@@ -320,21 +339,33 @@ def _markdown_escape(value: object) -> str:
     return str(value).replace("|", "\\|").replace("\n", " ").strip()
 
 
-def _fragment(*, ranking, manifest: Mapping[str, Any]) -> str:
+def _fragment(
+    *,
+    ranking,
+    manifest: Mapping[str, Any],
+    meta_label: str = "Pocket",
+    public_prefix: str = "public/latest-meta",
+) -> str:
     snapshot = manifest["snapshot"]
     metrics = manifest["analysis"]
+    public_prefix = str(public_prefix).strip().rstrip("/")
+    snapshot_game_name = str(
+        ((snapshot.get("game") or {}).get("name"))
+        or "Pokémon TCG Pocket"
+    ).strip()
+
     rows = [
         "## See MARS in action",
         "",
-        f"### Latest completed Pocket meta: {snapshot['set']['code']} — {snapshot['set']['name']}",
+        f"### Latest completed {meta_label} meta: {snapshot['set']['code']} — {snapshot['set']['name']}",
         "",
-        "`Pokémon TCG Pocket` "
+        f"`{snapshot_game_name}` "
         f"`{snapshot['format'].title()}` "
         f"`{metrics['core_decks']} decks` "
         f"`{metrics['decisive_matches']:,} decisive matches` "
         f"`{metrics['coverage_pct']['min']:.2f}–{metrics['coverage_pct']['max']:.2f}% coverage`",
         "",
-        "![Observed win-rate heatmap for the top 10 MARS decks](public/latest-meta/heatmap.png)",
+        f"![Observed win-rate heatmap for the top 10 MARS decks]({public_prefix}/heatmap.png)",
         "",
         "| Rank | Deck | Score % | MAS % | LB % | BT % | Coverage % |",
         "| ---: | --- | ---: | ---: | ---: | ---: | ---: |",
@@ -349,8 +380,8 @@ def _fragment(*, ranking, manifest: Mapping[str, Any]) -> str:
     rows.extend(
         [
             "",
-            "[Download the full ranking CSV](public/latest-meta/ranking.csv) · "
-            "[Inspect the provenance manifest](public/latest-meta/manifest.json) · "
+            f"[Download the full ranking CSV]({public_prefix}/ranking.csv) · "
+            f"[Inspect the provenance manifest]({public_prefix}/manifest.json) · "
             "[Read the MARS methodology](MARS_explained.md)",
             "",
             "`MAS_%` is posterior-smoothed performance against the observed meta; `LB_%` subtracts the "
@@ -382,6 +413,10 @@ def build_bundle(
     acquisition_manifest: Path | None = None,
     source_revision: str | None = None,
     generated_at: str | None = None,
+    game_code: str = "POCKET",
+    game_name: str = "Pokémon TCG Pocket",
+    meta_label: str = "Pocket",
+    public_prefix: str = "public/latest-meta",
 ) -> dict[str, Any]:
     import matplotlib.pyplot as plt
     import pandas as pd
@@ -425,6 +460,7 @@ def build_bundle(
             acquisition_manifest,
             set_code=set_code,
             set_name=set_name,
+            game_code=game_code,
         )
     else:
         # Backward-compatible legacy snapshot support only.
@@ -441,11 +477,39 @@ def build_bundle(
 
     if api_manifest is None:
         decklist = pd.read_csv(source_paths["decklist"])
-        _source_urls_match_scope(decklist, code=set_code)
+        _source_urls_match_scope(
+            decklist,
+            code=set_code,
+            game_code=game_code,
+        )
 
     cfg = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
-    if str(((cfg.get("source") or {}).get("game") or "")).upper() != "POCKET":
-        raise ValueError("Latest completed meta producer requires a Pocket configuration")
+    normalized_game = str(game_code).strip().upper()
+    normalized_game_name = str(game_name).strip()
+    normalized_meta_label = str(meta_label).strip()
+    normalized_public_prefix = (
+        str(public_prefix).strip().rstrip("/")
+    )
+
+    if not normalized_game:
+        raise ValueError("game_code must be non-empty")
+    if not normalized_game_name:
+        raise ValueError("game_name must be non-empty")
+    if not normalized_meta_label:
+        raise ValueError("meta_label must be non-empty")
+    if not normalized_public_prefix:
+        raise ValueError("public_prefix must be non-empty")
+
+    if (
+        str(
+            ((cfg.get("source") or {}).get("game") or "")
+        ).upper()
+        != normalized_game
+    ):
+        raise ValueError(
+            "Latest completed meta producer requires "
+            f"a {normalized_game} configuration"
+        )
     cfg.setdefault("saving", {})["output_profile"] = "user"
 
     with tempfile.TemporaryDirectory(prefix="ptcgp-latest-meta-") as temp_name:
@@ -453,7 +517,7 @@ def build_bundle(
         paths = ProjectPaths(
             base=repo_root,
             output_root=temp_root,
-            outputs=temp_root / "POCKET" / "standard",
+            outputs=temp_root / normalized_game / "standard",
             cache=repo_root / "cache" / "requests",
             logs=repo_root / "logs",
         )
@@ -574,20 +638,20 @@ def build_bundle(
 
     canonical_url = (
         f"https://play.limitlesstcg.com/decks?"
-        f"game=POCKET&format=standard&set={set_code}"
+        f"game={normalized_game}&format=standard&set={set_code}"
     )
 
     manifest: dict[str, Any] = {
         "schema_version": 1,
         "artifact": "latest-completed-meta",
         "generated_at": timestamp,
-        "game": "POCKET",
+        "game": normalized_game,
         "format": "standard",
         "set": {"code": set_code, "name": set_name},
         "snapshot": {
             "game": {
-                "code": "POCKET",
-                "name": "Pokémon TCG Pocket",
+                "code": normalized_game,
+                "name": normalized_game_name,
             },
             "format": "standard",
             "set": {
@@ -776,7 +840,12 @@ def build_bundle(
         newline="\n",
     )
     (bundle_dir / "fragment.md").write_text(
-        _fragment(ranking=public_ranking, manifest=manifest),
+        _fragment(
+            ranking=public_ranking,
+            manifest=manifest,
+            meta_label=normalized_meta_label,
+            public_prefix=normalized_public_prefix,
+        ),
         encoding="utf-8",
         newline="\n",
     )

@@ -178,3 +178,8 @@ Released under the [MIT License](LICENSE). Pokémon and related names are
 trademarks of their respective owners; see [NOTICE](NOTICE). The MIT License
 covers this repository's code, and no license is asserted for third-party
 tournament data.
+
+## Pokémon TCG Live production
+
+The frozen acquisition/window/eligibility contract for Pokémon TCG Live
+Standard is documented in `docs/ptcg_live_production.md`.

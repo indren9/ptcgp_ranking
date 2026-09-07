@@ -35,7 +35,10 @@ class FakeSession:
         self.calls.append((url, dict(params or {}), timeout))
         if not self.responses:
             raise AssertionError("unexpected request")
-        return self.responses.popleft()
+        response = self.responses.popleft()
+        if isinstance(response, BaseException):
+            raise response
+        return response
 
     def close(self):
         self.closed = True
@@ -129,6 +132,46 @@ def test_5xx_uses_exponential_backoff_then_succeeds():
 
     assert client.get_games(use_cache=False) == []
     assert sleeps == [0.5, 1.0]
+
+
+def test_connection_error_uses_exponential_backoff_then_succeeds():
+    sleeps = []
+    session = FakeSession(
+        [
+            requests.ConnectionError("remote disconnected"),
+            FakeResponse(200, []),
+        ]
+    )
+    client = LimitlessTournamentApiClient(
+        session=session,
+        max_retries=1,
+        backoff_factor=0.5,
+        sleep_fn=sleeps.append,
+    )
+
+    assert client.get_tournament_standings("abc", use_cache=False) == []
+    assert sleeps == [0.5]
+    assert len(session.calls) == 2
+
+
+def test_timeout_uses_exponential_backoff_then_succeeds():
+    sleeps = []
+    session = FakeSession(
+        [
+            requests.Timeout("timed out"),
+            FakeResponse(200, []),
+        ]
+    )
+    client = LimitlessTournamentApiClient(
+        session=session,
+        max_retries=1,
+        backoff_factor=0.25,
+        sleep_fn=sleeps.append,
+    )
+
+    assert client.get_tournament_pairings("abc", use_cache=False) == []
+    assert sleeps == [0.25]
+    assert len(session.calls) == 2
 
 
 def test_endpoint_helpers_use_documented_tournament_paths():

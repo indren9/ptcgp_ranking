@@ -48,28 +48,47 @@ def _clean_text(value: Any) -> str | None:
     return text or None
 
 
-def _validate_deck_identity(participants: pd.DataFrame) -> dict[str, tuple[str, ...]]:
-    """Validate canonical deck_id -> label mapping and diagnose duplicate labels."""
+def _deck_label_map(participants: pd.DataFrame) -> dict[str, str]:
     required = {"deck_id", "deck_name"}
     if not required.issubset(participants.columns):
-        raise KeyError(f"participants missing columns: {sorted(required - set(participants.columns))}")
-    classified = participants.copy()
-    classified["_deck_id"] = classified["deck_id"].map(_clean_text)
-    classified["_deck_name"] = classified["deck_name"].map(_clean_text)
-    classified = classified[classified["_deck_id"].notna() & classified["_deck_name"].notna()]
-    if classified.empty:
+        raise KeyError(
+            f"participants missing columns: {sorted(required - set(participants.columns))}"
+        )
+
+    identified = participants.copy()
+    identified["_deck_id"] = identified["deck_id"].map(_clean_text)
+    identified["_deck_name"] = identified["deck_name"].map(_clean_text)
+    identified = identified[identified["_deck_id"].notna()].copy()
+    if identified.empty:
         return {}
 
-    by_id = classified.groupby("_deck_id")["_deck_name"].nunique(dropna=True)
-    bad_ids = by_id[by_id > 1]
-    if not bad_ids.empty:
-        raise AggregationConflictError(f"deck_id maps to multiple deck names: {bad_ids.index[0]}")
+    named = identified[identified["_deck_name"].notna()]
+    if not named.empty:
+        by_id = named.groupby("_deck_id")["_deck_name"].nunique(dropna=True)
+        bad_ids = by_id[by_id > 1]
+        if not bad_ids.empty:
+            raise AggregationConflictError(
+                f"deck_id maps to multiple deck names: {bad_ids.index[0]}"
+            )
+
+    labels: dict[str, str] = {}
+    for deck_id, group in identified.groupby("_deck_id", sort=True):
+        names = tuple(sorted(set(group["_deck_name"].dropna().astype(str))))
+        labels[str(deck_id)] = names[0] if names else str(deck_id)
+    return labels
+
+
+def _validate_deck_identity(participants: pd.DataFrame) -> dict[str, tuple[str, ...]]:
+    """Validate canonical deck_id identity and diagnose duplicate display labels."""
+    labels = _deck_label_map(participants)
+    by_label: dict[str, list[str]] = {}
+    for deck_id, deck_name in labels.items():
+        by_label.setdefault(deck_name, []).append(deck_id)
 
     duplicate_display_names: dict[str, tuple[str, ...]] = {}
-    for deck_name, group in classified.groupby("_deck_name", sort=True):
-        ids = tuple(sorted(set(group["_deck_id"].astype(str))))
-        if len(ids) > 1:
-            duplicate_display_names[str(deck_name)] = ids
+    for deck_name, deck_ids in sorted(by_label.items()):
+        if len(deck_ids) > 1:
+            duplicate_display_names[deck_name] = tuple(sorted(deck_ids))
     return duplicate_display_names
 
 
@@ -82,11 +101,13 @@ def aggregate_meta(participants: pd.DataFrame) -> MetaAggregationResult:
     if participants.duplicated(["tournament_id", "player_id"]).any():
         raise AggregationConflictError("duplicate participant join key")
     duplicate_display_names = _validate_deck_identity(participants)
+    deck_labels = _deck_label_map(participants)
 
     df = participants.copy()
     df["_deck_id"] = df["deck_id"].map(_clean_text)
     df["_deck_name"] = df["deck_name"].map(_clean_text)
-    classified = df[df["_deck_id"].notna() & df["_deck_name"].notna()].copy()
+    classified = df[df["_deck_id"].notna()].copy()
+    classified["_deck_name"] = classified["_deck_id"].map(deck_labels)
 
     total = int(len(df))
     classified_count = int(len(classified))
@@ -129,15 +150,16 @@ def _participant_lookup(participants: pd.DataFrame) -> dict[tuple[str, str], tup
         raise KeyError(f"participants missing columns: {sorted(missing)}")
     if participants.duplicated(["tournament_id", "player_id"]).any():
         raise AggregationConflictError("duplicate participant join key")
-    _validate_deck_identity(participants)
+    deck_labels = _deck_label_map(participants)
 
     out: dict[tuple[str, str], tuple[str | None, str | None]] = {}
     for row in participants.itertuples(index=False):
         tid = str(getattr(row, "tournament_id")).strip()
         player_id = str(getattr(row, "player_id")).strip()
+        deck_id = _clean_text(getattr(row, "deck_id"))
         out[(tid, player_id)] = (
-            _clean_text(getattr(row, "deck_id")),
-            _clean_text(getattr(row, "deck_name")),
+            deck_id,
+            None if deck_id is None else deck_labels[deck_id],
         )
     return out
 
@@ -226,7 +248,7 @@ def aggregate_matchups(participants: pd.DataFrame, pairings: pd.DataFrame) -> Ma
             continue
         deck1_id, deck1_name = lookup[key1]
         deck2_id, deck2_name = lookup[key2]
-        if not all((deck1_id, deck1_name, deck2_id, deck2_name)):
+        if deck1_id is None or deck2_id is None:
             diagnostics["missing_deck"] += 1
             continue
         if deck1_id == deck2_id:

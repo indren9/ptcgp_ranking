@@ -1,9 +1,45 @@
 source:
   provider: limitless
+  acquisition: tournament_api
   game: PTCG
+
+  tournament_api:
+    # Canonical PTCG source: Limitless Tournament API, restricted to
+    # Pokémon TCG Live Standard.
+    release_catalog: "data/reference/ptcg_live_windows.json"
+    scope_policy_id: "ptcg_tcgl_expansion_window_v1"
+
+    execution_mode: live
+    replay_run_id: ""
+
+    raw_store_root: "data/raw/limitless_api/PTCG"
+    cache_root: "cache/limitless_api/PTCG"
+    cache_ttl_min: 0
+
+    # Operational pacing validated by T4: >1400 consecutive HTTP 200
+    # responses without a 429.
+    min_request_interval_seconds: 4.0
+    discovery_page_size: 50
+    discovery_max_pages: 100
+    reuse_latest_raw: true
+
+    window:
+      mode: latest_completed
+      code: ""
+
+    eligibility:
+      policy_id: "ptcg_live_standard_v1"
+      allowed_formats:
+        - STANDARD
+      require_public: true
+      require_decklists: true
+      require_online: true
+      allowed_platforms:
+        - PTCGL
+
   format:
-    mode: auto
-    code: ""
+    mode: code
+    code: "STANDARD"
 
 scraping:
   base_url: "https://play.limitlesstcg.com"

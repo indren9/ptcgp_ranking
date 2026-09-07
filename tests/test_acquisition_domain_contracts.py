@@ -11,9 +11,9 @@ from acquisition.contracts import (
     RawPayloadRef,
     TOP_META_COLUMNS,
 )
-from acquisition.manifest import AcquisitionManifest, AggregationSummary, NormalizedSummary, RawSummary
+from acquisition.manifest import AcquisitionManifest, AggregationSummary, NormalizedSummary, RawSummary, validate_manifest_dict
 from acquisition.scope import EligibilityPolicy, ScopePolicy
-from acquisition.selection import TournamentSelection
+from acquisition.selection import TournamentSelection, select_tournaments
 from domain.releases import ExpansionRelease
 
 
@@ -178,8 +178,123 @@ def test_manifest_serialization_is_json_compatible_and_has_no_player_ids():
     assert data["created_at"].endswith("Z")
     assert data["selection"]["tournament_ids"] == ["t1", "t2"]
     assert "player_id" not in str(data)
+    assert "eligibility" not in data
 
+    from dataclasses import replace
+
+    ptcg_scope = ScopePolicy(
+        "ptcg_explicit_window_v1",
+        "PTCG",
+        "STANDARD",
+        "EXPLICIT",
+        "Explicit UTC Window",
+        utc_dt(1),
+        utc_dt(2),
+        "explicit-v1",
+    )
+    ptcg_policy = EligibilityPolicy(
+        policy_id="ptcg_in_person_standard_v1",
+        game="PTCG",
+        allowed_formats=("STANDARD",),
+        require_public=True,
+        require_decklists=True,
+        require_online=False,
+    )
+    v2 = replace(
+        manifest,
+        schema_version="2",
+        scope=ptcg_scope,
+        eligibility=ptcg_policy,
+    )
+    v2_data = v2.to_dict()
+    assert v2_data["eligibility"] == {
+        "policy_id": "ptcg_in_person_standard_v1",
+        "game": "PTCG",
+        "allowed_formats": ["STANDARD"],
+        "require_public": True,
+        "require_decklists": True,
+        "require_online": False,
+    }
+
+    with pytest.raises(ValueError, match="schema v2 requires eligibility"):
+        replace(manifest, schema_version="2")
+
+    import copy
+
+    validate_manifest_dict(data)
+    validate_manifest_dict(v2_data)
+
+    bad = copy.deepcopy(v2_data)
+    bad.pop("eligibility")
+    with pytest.raises(ValueError, match="requires eligibility"):
+        validate_manifest_dict(bad)
+
+    bad = copy.deepcopy(v2_data)
+    bad["eligibility"]["require_online"] = "false"
+    with pytest.raises(ValueError, match="require_online must be boolean or null"):
+        validate_manifest_dict(bad)
+
+    bad = copy.deepcopy(v2_data)
+    bad["eligibility"]["game"] = "POCKET"
+    with pytest.raises(ValueError, match="game does not match scope game"):
+        validate_manifest_dict(bad)
+
+    bad = copy.deepcopy(v2_data)
+    bad["eligibility"]["allowed_formats"] = ["EXPANDED"]
+    with pytest.raises(ValueError, match="scope format is not allowed"):
+        validate_manifest_dict(bad)
+
+    bad = copy.deepcopy(data)
+    bad["eligibility"] = copy.deepcopy(v2_data["eligibility"])
+    with pytest.raises(ValueError, match="legacy manifest must not contain eligibility"):
+        validate_manifest_dict(bad)
+
+    bad = copy.deepcopy(data)
+    bad["schema_version"] = "3"
+    with pytest.raises(ValueError, match="unsupported manifest schema_version"):
+        validate_manifest_dict(bad)
 
 def test_aggregation_summary_reconciles_classification_counts():
     with pytest.raises(ValueError, match=r"classified \+ unclassified"):
         AggregationSummary(10, 8, 1, 4, {})
+
+
+@pytest.mark.parametrize(
+    "require_online,is_online,expected_ids,reason",
+    [
+        (False, False, ("t1",), None),
+        (False, True, (), "wrong_channel"),
+        (False, None, (), "invalid_record"),
+        (None, None, ("t1",), None),
+    ],
+)
+def test_selector_channel_policy(
+    require_online, is_online, expected_ids, reason
+):
+    scope = ScopePolicy(
+        "test_window", "PTCG", "STANDARD", "TEST", "Test",
+        utc_dt(1), utc_dt(2), "test-v1",
+    )
+    policy = EligibilityPolicy(
+        policy_id="ptcg_test",
+        game="PTCG",
+        allowed_formats=("STANDARD",),
+        require_public=True,
+        require_decklists=True,
+        require_online=require_online,
+    )
+    record = {
+        "id": "t1",
+        "game": "PTCG",
+        "format": "STANDARD",
+        "date": utc_dt(1, 1),
+        "is_public": True,
+        "decklists": True,
+    }
+    if is_online is not None:
+        record["is_online"] = is_online
+
+    result = select_tournaments([record], scope=scope, eligibility=policy)
+    assert result.tournament_ids == expected_ids
+    if reason is not None:
+        assert result.exclusion_counts[reason] == 1

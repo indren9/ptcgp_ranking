@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "game": "PTCG",
+  "format": "STANDARD",
+  "platform": "PTCGL",
+  "published_completed_window": {
+    "code": "CRI",
+    "name": "Chaos Rising Live window",
+    "start": "2026-05-21T00:00:00Z",
+    "end": "2026-07-16T00:00:00Z",
+    "catalog_version": "tcgl-expansion-boundaries-2026-09-04-v1"
+  },
+  "updated_at": "2026-09-06T00:00:00Z"
+}
