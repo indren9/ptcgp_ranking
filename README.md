@@ -7,7 +7,7 @@
 **Reproducible, uncertainty-aware Pokémon TCG Pocket and Pokémon TCG Live deck ranking built from the Limitless Tournament API.**
 
 [![Release: v1.0.1](https://img.shields.io/badge/release-v1.0.1-blue.svg)](https://github.com/indren9/ptcgp_ranking/releases/tag/v1.0.1)
-[![Python 3.12 | 3.14](https://img.shields.io/badge/Python-3.12%20%7C%203.14-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Python 3.14](https://img.shields.io/badge/Python-3.14-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-2ea44f.svg)](LICENSE)
 [![Tests](https://github.com/indren9/ptcgp_ranking/actions/workflows/tests.yml/badge.svg)](https://github.com/indren9/ptcgp_ranking/actions/workflows/tests.yml)
 [![Pocket source: Limitless Tournament API](https://img.shields.io/badge/Pocket%20source-Limitless%20Tournament%20API-6f42c1)](https://docs.limitlesstcg.com/developer)
@@ -108,16 +108,18 @@ public meta service and carries no freshness SLA.
 
 ## Python support
 
-Python support follows an **explicitly validated minor-version policy** rather
-than a continuous `>=` range.
+**Requires Python 3.14.**
 
-- Supported Python minors: **3.12** and **3.14**.
-- Recommended Python for local use: **3.14**.
+The project uses a **single active Python baseline** rather than a continuous
+`>=` version range.
+
+- Active and recommended project runtime: **Python 3.14**.
+- Python **3.12 was historically validated but is not currently supported**.
 - Python **3.13 is not validated and is not supported**.
-- GitHub production remains on **Python 3.12**; this support update does not
-  migrate the production runtime.
+- GitHub CI and Pocket GitHub shadow/production run on **Python 3.14**.
 - The Windows scheduler remains on its **current deployed runtime and virtual
   environment, unchanged**.
+
 ## Quick start
 
 ```bash

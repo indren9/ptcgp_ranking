@@ -13,18 +13,20 @@ Andrea Visentin under the MIT License.
 
 ## Python Runtime Contract
 
-The project supports only Python minors that have been explicitly validated:
+**Requires Python 3.14.**
 
-- **Python 3.12** — supported.
-- **Python 3.14** — supported and recommended for local development.
+The project uses one active, explicitly validated Python minor:
+
+- **Python 3.14** — supported and recommended.
+- **Python 3.12** — historically validated; not currently supported.
 - **Python 3.13** — not validated and not supported.
 
-Do not interpret the support contract as a continuous minimum-version range;
-support is limited to the explicitly validated minors above.
+Do not interpret the support contract as a continuous minimum-version range.
 
-GitHub production continues to run on **Python 3.12**. The Windows scheduler
-continues to use its **current deployed runtime and virtual environment,
-unchanged**. Neither runtime is migrated by this documentation update.
+GitHub CI and Pocket GitHub shadow/production use **Python 3.14**. The Windows
+scheduler continues to use its **current deployed runtime and virtual
+environment, unchanged**.
+
 ## Development Setup
 
 ```bash
