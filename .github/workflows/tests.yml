@@ -15,6 +15,13 @@ concurrency:
 
 jobs:
   pytest:
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version:
+          - "3.12"
+          - "3.14"
+
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -25,7 +32,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
           cache: pip
 
       - name: Install dependencies
