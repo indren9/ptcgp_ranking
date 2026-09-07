@@ -1,7 +1,15 @@
 # Latest completed meta
 
-The repository exposes at most one completed-meta snapshot. It is a living
-example of the MARS pipeline, not a public historical archive.
+The repository exposes two public latest-completed examples with different
+product semantics:
+
+- **Pokémon TCG Pocket**: a living public preview refreshed through the validated
+  automatic rollover path;
+- **Pokémon TCG Live**: a public demonstration snapshot that proves the supported
+  end-to-end TCG Live path and may be intentionally refreshed when useful.
+
+Neither surface is a public historical archive. The TCG Live snapshot does not
+imply continuous freshness, a rolling-publication service, or a freshness SLA.
 
 ## Current published state
 
@@ -23,7 +31,29 @@ The repository state is recorded in:
 
 The state advances only after a complete successful publication.
 
-## Selection rule
+The public Pocket bundle is:
+
+```text
+public/latest-meta/
+```
+
+The repository also contains a Pokémon TCG Live demonstration snapshot at:
+
+```text
+public/tcg-live/latest-meta/
+```
+
+Its dedicated publication state is recorded in:
+
+```text
+.github/tcg-live-latest-completed-meta-state.json
+```
+
+For TCG Live, the `latest-meta` path names the latest-completed selection
+semantics used when the snapshot is produced; it is not a promise that GitHub
+is continuously refreshed to the newest available window.
+
+## Pocket selection rule
 
 The canonical Pocket Standard expansion catalog is ordered by the same natural
 set-code ordering used by the catalog exporter.
@@ -68,6 +98,10 @@ LIVE acquisition freezes the selected tournament evidence and its manifest.
 The exact frozen evidence is then restored and replayed OFFLINE with zero
 network calls before Core + MARS runs.
 
+Pokémon TCG Live uses the same canonical Tournament API acquisition architecture
+but a separate TCG Live Standard eligibility and window contract. Its frozen
+production semantics are documented in `docs/ptcg_live_production.md`.
+
 ## Private raw persistence
 
 Canonical raw Tournament API evidence may contain player identifiers and is
@@ -77,16 +111,17 @@ Production uses the repository's vendor-neutral S3-compatible object-store
 backend. The current deployment is backed by a private Cloudflare R2 bucket.
 
 The workflow receives storage credentials only through GitHub repository
-secrets. Raw evidence is never committed to Git and is not included in the
-public Latest Completed Meta bundle.
+secrets. Raw evidence is never committed to Git and is not included in either public
+latest-completed bundle.
 
 The private store is the persistence layer between ephemeral GitHub-hosted
 Actions runners. Canonical evidence is validated before the run manifest is
 promoted.
 
-## Public publication contract
+## Pocket public publication contract
 
-A successful rollover may modify only these tracked publication paths:
+A successful automatic Pocket rollover may modify only these tracked
+publication paths:
 
 ```text
 README.md
@@ -111,6 +146,37 @@ available through normal Git history.
 Only aggregate deck-archetype statistics are published. Raw player records,
 usernames, pairings, credentials, cookies, private object-store references, and
 local paths are not part of the public bundle.
+
+## TCG Live public demonstration contract
+
+The TCG Live public surface is intentionally different from Pocket's living
+preview.
+
+The repository keeps one demonstrative latest-completed TCG Live bundle:
+
+```text
+public/tcg-live/latest-meta/
+├── heatmap.png
+├── ranking.csv
+└── manifest.json
+```
+
+The snapshot is a supported public demonstration of the complete TCG Live path:
+Tournament API acquisition, TCG Live Standard scope selection, Core contracts,
+MARS, heatmap/reporting outputs, canonical raw persistence, and exact OFFLINE
+replay.
+
+It may be regenerated and republished intentionally when a new demonstration is
+useful. The product contract does **not** require:
+
+- a scheduled TCG Live GitHub Actions workflow;
+- continuous rolling publication;
+- automatic refresh at every TCG Live boundary;
+- a freshness SLA.
+
+The dedicated TCG Live planner, production job, publisher, state file, and tests
+remain supported infrastructure. Their existence does not turn the repository
+into a continuously updated public TCG Live meta service.
 
 ## Producer and publisher boundary
 
@@ -145,9 +211,9 @@ The heatmap shows the top 10 decks in ranking order. Rows are the deck being
 evaluated and columns are opponents. Blank cells represent mirror matchups or
 missing observations.
 
-## Automatic GitHub Actions rollover
+## Automatic Pocket GitHub Actions rollover
 
-The production workflow is:
+The Pocket production workflow is:
 
 ```text
 Update public expansion catalog
@@ -199,9 +265,12 @@ The workflow uses a single concurrency group with
 `cancel-in-progress: false`, so a new rollover cannot cancel another run during
 its publication sequence.
 
+No equivalent scheduled TCG Live publication workflow is part of the frozen
+product contract.
+
 ## Fail-safe behavior
 
-The rollover is fail closed.
+The automatic Pocket rollover is fail closed.
 
 Any failure in acquisition, private persistence, OFFLINE replay, Core + MARS,
 producer execution, bundle validation, privacy validation, regression, or the
@@ -221,7 +290,13 @@ A missing prior raw snapshot is a valid cold-start case and permits fresh LIVE
 acquisition. An actual object-store authentication, availability, or I/O
 failure is not treated as a cache miss and fails closed.
 
+TCG Live publication is likewise guarded by its dedicated validation and
+rollback-safe publication tooling, but it is invoked intentionally rather than
+required on a continuous schedule.
+
 ## Local planning and validation
+
+The commands in this section are Pocket planning/publication helpers.
 
 Preview the automatic set-selection decision without publishing:
 
@@ -235,13 +310,16 @@ Bundle publication logic can still be validated locally in dry-run mode:
 python -m scripts.latest_completed_meta publish   --plan latest-meta-plan.json   --bundle build/latest-meta   --dry-run
 ```
 
-Normal production publication is performed by the GitHub Actions rollover
-workflow rather than by manually editing the public snapshot.
+Normal Pocket production publication is performed by the GitHub Actions
+rollover workflow rather than by manually editing the public snapshot.
+
+For TCG Live planning, replay, candidate generation, and intentional publication,
+see `docs/ptcg_live_production.md`.
 
 ## Data and attribution
 
-The snapshot credits [Limitless TCG](https://limitlesstcg.com/) and links the
-official [developer guide](https://docs.limitlesstcg.com/developer) and
+The public snapshots credit [Limitless TCG](https://limitlesstcg.com/) and link
+the official [developer guide](https://docs.limitlesstcg.com/developer) and
 [terms of service](https://play.limitlesstcg.com/tos).
 
 The project does not claim a license for Limitless data and does not imply
