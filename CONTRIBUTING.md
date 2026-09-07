@@ -11,6 +11,20 @@ Andrea Visentin under the MIT License.
 4. Make focused changes and keep generated outputs out of the commit.
 5. Open a pull request against `main` and explain what changed and why.
 
+## Python Runtime Contract
+
+The project supports only Python minors that have been explicitly validated:
+
+- **Python 3.12** — supported.
+- **Python 3.14** — supported and recommended for local development.
+- **Python 3.13** — not validated and not supported.
+
+Do not interpret the support contract as a continuous minimum-version range;
+support is limited to the explicitly validated minors above.
+
+GitHub production continues to run on **Python 3.12**. The Windows scheduler
+continues to use its **current deployed runtime and virtual environment,
+unchanged**. Neither runtime is migrated by this documentation update.
 ## Development Setup
 
 ```bash
