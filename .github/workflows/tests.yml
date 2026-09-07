@@ -15,6 +15,13 @@ concurrency:
 
 jobs:
   pytest:
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version:
+          - "3.12"
+          - "3.14"
+
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -25,7 +32,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
           cache: pip
 
       - name: Install dependencies
@@ -35,3 +42,20 @@ jobs:
         env:
           MPLBACKEND: Agg
         run: pytest -q
+
+  pytest_required:
+    name: pytest
+    needs: pytest
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Require successful dual-Python test matrix
+        shell: bash
+        run: |
+          echo "Matrix result: ${{ needs.pytest.result }}"
+          if [ "${{ needs.pytest.result }}" != "success" ]; then
+            echo "Required dual-Python test matrix did not pass."
+            exit 1
+          fi
+          echo "Required dual-Python test matrix passed."
