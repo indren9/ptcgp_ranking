@@ -42,3 +42,20 @@ jobs:
         env:
           MPLBACKEND: Agg
         run: pytest -q
+
+  pytest_required:
+    name: pytest
+    needs: pytest
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Require successful dual-Python test matrix
+        shell: bash
+        run: |
+          echo "Matrix result: ${{ needs.pytest.result }}"
+          if [ "${{ needs.pytest.result }}" != "success" ]; then
+            echo "Required dual-Python test matrix did not pass."
+            exit 1
+          fi
+          echo "Required dual-Python test matrix passed."
