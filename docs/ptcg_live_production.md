@@ -7,6 +7,15 @@ branch of PTCGP Ranking / MARS.
 
 The canonical target is **Pokémon TCG Live Standard**, not physical Standard.
 
+Pokémon TCG Live is a fully supported production target: Tournament API
+acquisition, TCG Live Standard eligibility, latest-completed window selection,
+Core, MARS, reporting, canonical raw persistence, and exact OFFLINE replay are
+all part of the supported software contract.
+
+The repository also keeps a public TCG Live demonstration snapshot. That public
+example is intentionally refreshable but is not a continuously updated service
+and carries no freshness SLA.
+
 ## Canonical acquisition source
 
 - Provider: Limitless
@@ -287,50 +296,48 @@ Validation status:
 
 `PASS`
 
-## Automatic latest-completed operation
+## Latest-completed planning and public demonstration
 
-TCG Live uses a dedicated automation channel. The existing Pocket
-latest-completed automation remains unchanged.
+TCG Live uses dedicated latest-completed planning and publication tooling. The
+existing Pocket automatic latest-completed workflow remains unchanged.
 
-The TCG Live controller uses:
+The TCG Live tooling uses:
 
 - catalog: `data/reference/ptcg_live_windows.json`
 - state: `.github/tcg-live-latest-completed-meta-state.json`
-- future public target: `public/tcg-live/latest-meta/`
+- public demonstration target: `public/tcg-live/latest-meta/`
 
-The controller resolves `latest_completed` from the official TCG Live
-boundary catalog.
+The controller resolves `latest_completed` from the official TCG Live boundary
+catalog.
 
 Decision contract:
 
 - if the resolved completed window matches the published state: `noop`
 - if the resolved completed window changes: `publish_required`
 
-The initial state is frozen to CRI
-`[2026-05-21, 2026-07-16)`, because this window has already passed the
-LIVE, OFFLINE, Core and MARS production validation gates.
+The current frozen publication state is CRI
+`[2026-05-21, 2026-07-16)`, the window that passed LIVE, OFFLINE, Core and MARS
+production validation.
 
-The scheduled GitHub Actions publication is intentionally introduced only
-after the complete TCG Live LIVE -> raw persistence -> OFFLINE replay ->
-Core -> MARS -> publication path has been validated. This prevents a
-partially implemented automation from becoming active.
+This planner/job/publisher infrastructure is supported and retained. The frozen
+product contract does **not** require a scheduled TCG Live GitHub Actions
+workflow, automatic refresh at every boundary, continuous public freshness, or
+a freshness SLA. Publication is an intentional operation performed when a new
+public demonstration snapshot is wanted.
 
 ## TCG Live candidate transaction
 
-The dedicated TCG Live rollover transaction is split into two safety stages.
-
-Stage T6B1 prepares a publication candidate only:
+The dedicated TCG Live publication transaction preserves two safety stages:
 
 `LIVE acquisition -> canonical raw persistence -> raw restore -> exact OFFLINE replay -> Core -> MARS`
 
-The OFFLINE replay must use zero network calls and must reproduce the
-canonical LIVE acquisition evidence exactly.
+must complete successfully before public packaging is allowed. The OFFLINE
+replay must use zero network calls and reproduce the canonical LIVE acquisition
+evidence exactly.
 
-No public files and no TCG Live publication state are modified by T6B1.
-
-Public bundle generation and atomic publication are introduced separately
-in T6B2. The scheduled workflow remains disabled until both stages have
-passed validation.
+Public bundle generation and atomic publication remain a separate guarded step.
+A candidate run can therefore complete without modifying public files or TCG
+Live publication state.
 
 ### T6B1 real candidate validation
 
@@ -384,7 +391,9 @@ TCG Live state.
 The production job remains non-publishing by default. CLI publication
 requires both `--publish` and `--allow-public-write`.
 
-The scheduled workflow remains disabled pending T6B2 validation.
+No scheduled TCG Live publication workflow is required by the frozen product
+contract. The planner, job and publisher remain supported tools for intentional
+snapshot refreshes.
 
 ## Update rule
 
@@ -399,3 +408,6 @@ production boundary:
 6. only then allow production rollover.
 
 Do not derive a TCG Live date from a physical release-date offset.
+
+After validation, refreshing `public/tcg-live/latest-meta/` is an intentional
+product decision, not an automatic service obligation.

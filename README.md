@@ -4,7 +4,7 @@
 
 <img src="docs/assets/github-social-preview-final.jpg" alt="PTCGP Ranking MARS — Meta-Adjusted Regularized Score" width="100%">
 
-**Reproducible, uncertainty-aware Pokémon TCG Pocket deck ranking built from the Limitless Tournament API.**
+**Reproducible, uncertainty-aware Pokémon TCG Pocket and Pokémon TCG Live deck ranking built from the Limitless Tournament API.**
 
 [![Release: v1.0.1](https://img.shields.io/badge/release-v1.0.1-blue.svg)](https://github.com/indren9/ptcgp_ranking/releases/tag/v1.0.1)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
@@ -16,19 +16,27 @@
 
 </div>
 
-PTCGP Ranking turns atomic Pokémon TCG Pocket tournament evidence into local
-metagame and matchup aggregates, then ranks decks with **MARS**
-(Meta-Adjusted Regularized Score). It produces a ranking, heatmap, Excel report,
-and reproducibility manifest while keeping uncertainty visible.
+PTCGP Ranking turns atomic Pokémon TCG Pocket and Pokémon TCG Live tournament
+evidence into local metagame and matchup aggregates, then ranks decks with
+**MARS** (Meta-Adjusted Regularized Score). It produces a ranking, heatmap,
+Excel report, and reproducibility manifest while keeping uncertainty visible.
 
 ## Data source
 
-For **Pokémon TCG Pocket**, the canonical/default source is the
+For both supported games, the canonical production source is the
 [officially documented Limitless Tournament API](https://docs.limitlesstcg.com/developer).
 The pipeline reads event-level tournament discovery, details, standings, and
-pairings; selects the versioned release window; and aggregates the evidence
+pairings; selects a versioned release/window scope; and aggregates the evidence
 locally. Exact tournament IDs and immutable, hash-validated raw evidence support
 replay. API failure never silently falls back to legacy HTML acquisition.
+
+For **Pokémon TCG Pocket**, `game = POCKET` uses the Pocket release catalog and
+latest-completed Standard-set semantics.
+
+For **Pokémon TCG Live**, `game = PTCG` targets **Pokémon TCG Live Standard**:
+`format = STANDARD`, online public tournaments, platform `PTCGL`, and decklists
+required. Expansion and Standard-rotation boundaries come from the dedicated
+TCG Live window catalog. See [`docs/ptcg_live_production.md`](docs/ptcg_live_production.md).
 
 Legacy HTML acquisition remains available only for explicit rollback and
 historical diagnostics. See [Limitless Tournament API Acquisition](https://github.com/indren9/ptcgp_ranking/wiki/Limitless-Tournament-API)
@@ -84,6 +92,20 @@ Built from public tournament data provided by [Limitless TCG](https://limitlesst
 
 <!-- latest-completed-meta:end -->
 
+## Pokémon TCG Live demonstration snapshot
+
+The repository also includes a real public **Pokémon TCG Live Standard**
+demonstration snapshot produced by the same Tournament API -> Core -> MARS
+architecture:
+
+- [ranking CSV](public/tcg-live/latest-meta/ranking.csv)
+- [heatmap](public/tcg-live/latest-meta/heatmap.png)
+- [provenance manifest](public/tcg-live/latest-meta/manifest.json)
+
+This snapshot demonstrates the supported TCG Live path end to end. It may be
+intentionally regenerated when useful, but it is **not** a continuously updated
+public meta service and carries no freshness SLA.
+
 ## Quick start
 
 ```bash
@@ -92,6 +114,12 @@ cd ptcgp_ranking
 python -m venv .venv
 python -m pip install -r requirements.txt
 python -m cli.deck_ranking run --config config/pocket.yaml --progress
+```
+
+Run the same production architecture for Pokémon TCG Live Standard with:
+
+```bash
+python -m cli.deck_ranking run --config config/tcg.yaml --progress
 ```
 
 Activate the virtual environment before installing and running. The command
@@ -118,6 +146,10 @@ acquire canonical Tournament API evidence, persist immutable raw privately,
 replay it OFFLINE, run Core + MARS, validate the public bundle, and publish only
 after every gate passes. Any failure leaves the previously published snapshot
 unchanged.
+
+Pokémon TCG Live uses the same frozen-evidence and exact OFFLINE replay model.
+Its public demonstration snapshot is refreshed intentionally rather than through
+a required continuous GitHub Actions schedule.
 
 See [Reproducibility](https://github.com/indren9/ptcgp_ranking/wiki/Reproducibility).
 
@@ -146,13 +178,14 @@ matchup report, machine-readable run manifest, and coverage diagnostics. The
 
 ## Game scope
 
-| Game | Current acquisition architecture |
-| --- | --- |
-| Pokémon TCG Pocket | Limitless Tournament API is canonical/default |
-| Physical Pokémon TCG | Supported through the existing Limitless page-based workflow; Tournament API acquisition has not yet been generalized |
+| Game | Production acquisition | Public example contract |
+| --- | --- | --- |
+| Pokémon TCG Pocket | Limitless Tournament API is canonical/default | Living public preview with validated periodic rollover |
+| Pokémon TCG Live Standard | Limitless Tournament API, `game = PTCG`, `STANDARD`, online `PTCGL`, public tournaments with decklists | Public demonstration snapshot; intentionally refreshable, no continuous-publication requirement |
 
-The principal architecture above describes Pocket. Physical-TCG Tournament API
-generalization remains post-v1 work.
+Both games use the same downstream Core contracts and source-agnostic MARS
+pipeline. TCG Live window and eligibility semantics are frozen separately in
+[`docs/ptcg_live_production.md`](docs/ptcg_live_production.md).
 
 ## Documentation
 
@@ -181,5 +214,7 @@ tournament data.
 
 ## Pokémon TCG Live production
 
-The frozen acquisition/window/eligibility contract for Pokémon TCG Live
-Standard is documented in `docs/ptcg_live_production.md`.
+Pokémon TCG Live Standard is a fully supported production target. The frozen
+Tournament API acquisition, eligibility, window-selection, Core/MARS, replay,
+and publication contract is documented in
+[`docs/ptcg_live_production.md`](docs/ptcg_live_production.md).
