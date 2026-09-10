@@ -122,6 +122,10 @@ paths:
 logging:
   level: INFO
 
+publication:
+  onedrive:
+    enabled: true
+
 mars:
   MU: 0.5
   Z_PENALTY: 1.96

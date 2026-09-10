@@ -7,6 +7,10 @@ import sys
 from typing import Sequence
 
 from pipelines.deck_ranking import run_deck_ranking
+from storage.onedrive_publisher import (
+    onedrive_publication_enabled,
+    publish_pocket_result,
+)
 
 
 log = logging.getLogger("ptcgp")
@@ -54,6 +58,19 @@ def _run_command(args: argparse.Namespace) -> int:
         show_progress=args.progress,
     )
     log.info("[DONE] outputs=%d | frames=%d", len(result.outputs), len(result.frames))
+    log.info("LOCAL_PRODUCTION = PASS")
+    if onedrive_publication_enabled(getattr(result, "cfg", {})):
+        try:
+            publication = publish_pocket_result(result)
+        except Exception:
+            log.exception("ONEDRIVE_PUBLICATION = FAIL")
+            raise
+        log.info(
+            "ONEDRIVE_PUBLICATION = %s | published=%d | skipped_identical=%d",
+            publication.status,
+            len(publication.published),
+            len(publication.skipped_identical),
+        )
     return 0
 
 
