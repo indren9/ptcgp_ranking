@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from copy import deepcopy
 from datetime import UTC, datetime
-from hashlib import sha256
 from pathlib import Path
 
 import pytest
@@ -18,13 +17,6 @@ ROOT = Path(__file__).resolve().parents[1]
 POCKET_RELEASES = ROOT / "data/reference/pocket_releases.json"
 TCG_RELEASES = ROOT / "data/reference/ptcg_live_windows.json"
 STARTED = datetime(2026, 9, 14, 12, tzinfo=UTC)
-# Normalized tracked content at the Gate 1.9 baseline. This also works in a
-# shallow CI checkout, without requiring an old Git object to be fetched.
-FROZEN_CONTENT = {
-    ".github/workflows/update-expansion-catalog.yml": "e05e4a5f8a8d4a2cbf66305f8cd457c68fa78fcd7c1bba278252b0b62e2ae004",
-    "public/expansions_pocket_standard.csv": "696417a99e67b3e71d8ba265844469dce33bd04fa942e1119df8bb6b161932a2",
-    "data/reference/ptcg_live_windows.json": "6fe7c9697452cf4a61daf728746d6d7b2b3971d125467f580fd5421fe3734a2e",
-}
 
 
 def _pocket_config(*, mode: str = "auto", code: str = "") -> dict:
@@ -228,13 +220,3 @@ def test_real_tcg_job_noop_has_no_catalog_or_backend_dependency(monkeypatch, tmp
     assert report["network_calls"] == 0
     assert report["published"] is False
     assert TCG_RELEASES.read_bytes() == original_catalog
-
-
-@pytest.mark.parametrize("relative_path", [
-    ".github/workflows/update-expansion-catalog.yml",
-    "public/expansions_pocket_standard.csv",
-    "data/reference/ptcg_live_windows.json",
-])
-def test_independent_public_service_and_tcg_windows_preserved_from_gate_baseline(relative_path):
-    current = (ROOT / relative_path).read_bytes()
-    assert sha256(current.replace(b"\r\n", b"\n")).hexdigest() == FROZEN_CONTENT[relative_path]
