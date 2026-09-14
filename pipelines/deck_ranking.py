@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -29,6 +30,7 @@ from reporting.logs import configure_logging
 from reporting.plots import show_wr_heatmap
 from pipelines.limitless_api_acquisition import run_limitless_api_acquisition
 from sources.limitless.client import make_session
+from sources.limitless.catalog_refresh import ensure_catalog_fresh
 from sources.limitless.constants import LIMITLESS_DECKS_URL
 from sources.limitless.pages.decks import (
     filter_top_meta,
@@ -481,6 +483,71 @@ def _api_catalog_context(
         for item in release_catalog.releases
     ]
     return exp, scope_url, catalog, catalog_path
+
+
+def _prepare_live_catalog_context(
+    *,
+    base: Path,
+    cfg: dict[str, Any],
+    paths: ProjectPaths,
+    acquisition_started_at: datetime,
+    live: bool = True,
+) -> dict[str, Any]:
+    """Pin Pocket live AUTO discovery to an existing canonical release window.
+
+    Metadata supplies the selected code, never the tournament time boundaries.
+    Explicit CODE and canonical latest-completed selection need no generic
+    discovery. Frozen/offline and analysis-only runs keep their original context.
+    """
+    source_cfg = cfg.get("source") or {}
+    api_cfg = source_cfg.get("tournament_api") or {}
+    mode, _ = _api_set_params(cfg)
+    if (
+        not live
+        or str(source_cfg.get("game") or "POCKET").strip().upper() != "POCKET"
+        or str(api_cfg.get("execution_mode") or "live").strip().lower() != "live"
+        or mode != "auto"
+    ):
+        return cfg
+
+    catalog = ensure_catalog_fresh(cfg, paths, now=acquisition_started_at)
+    current = next(item for item in catalog if item.is_current)
+    catalog_path = _resolve_base_path(
+        base, api_cfg.get("release_catalog"), "data/reference/pocket_releases.json"
+    )
+    try:
+        canonical = load_release_catalog_snapshot(catalog_path)
+        release = resolve_release(
+            canonical,
+            mode="code",
+            code=current.code,
+            acquisition_started_at=acquisition_started_at,
+        )
+        # Validate the exact existing window before allowing acquisition. A new
+        # metadata code cannot create or extend an authoritative release window.
+        scope_for_release(
+            release,
+            acquisition_started_at=acquisition_started_at,
+            game="POCKET",
+            format=_api_format_from_config(cfg),
+        )
+    except (KeyError, ValueError, OSError) as exc:
+        log.error(
+            "CATALOG_CONTEXT = FAIL_CLOSED game=POCKET code=%s "
+            "error_class=%s canonical_catalog=%s",
+            current.code, type(exc).__name__, catalog_path,
+        )
+        raise ValueError(
+            f"Pocket catalog selected {current.code!r}, but a valid canonical "
+            f"release window is unavailable in {catalog_path}. Automatic metadata "
+            "refresh does not create release windows."
+        ) from exc
+
+    prepared = deepcopy(cfg)
+    prepared_api = prepared.setdefault("source", {}).setdefault("tournament_api", {})
+    prepared_api["window"] = {**(api_cfg.get("window") or {}), "mode": "code", "code": release.code}
+    log.info("Pocket AUTO resolved from runtime catalog: code=%s canonical_catalog=%s", release.code, catalog_path)
+    return prepared
 
 
 def _api_resolved_scope_from_config(
@@ -2030,6 +2097,7 @@ def run_deck_ranking(
             cfg,
             paths,
             decks_url=decks_url_cfg,
+            execution_mode=None if run_scrape else "offline",
         )
         paths = init_paths(base, cfg, source_url=decks_url)
         result = DeckRankingResult(
@@ -2053,6 +2121,13 @@ def run_deck_ranking(
         core_input = result.frames.get("matchup_raw")
     else:
         acquisition_started_at = datetime.now(UTC)
+        cfg = _prepare_live_catalog_context(
+            base=base,
+            cfg=cfg,
+            paths=paths,
+            acquisition_started_at=acquisition_started_at,
+            live=run_scrape,
+        )
         exp, decks_url, catalog, _ = _api_catalog_context(
             base=base,
             cfg=cfg,
