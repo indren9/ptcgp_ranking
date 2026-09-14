@@ -4,6 +4,7 @@ import argparse
 import copy
 from datetime import UTC, datetime
 import json
+import logging
 from pathlib import Path
 import shutil
 import subprocess
@@ -37,6 +38,13 @@ from sources.limitless.tournament_api.release_catalog import (
     parse_utc_datetime,
 )
 from storage.routing import base_for_expansion
+from storage.onedrive_publisher import (
+    onedrive_publication_enabled,
+    publish_tcg_bundle,
+)
+
+
+log = logging.getLogger("ptcgp")
 
 
 def _git_revision(repo_root: Path) -> str:
@@ -391,6 +399,7 @@ def run_job(
 
     bundle_dir = None
     publication_result = None
+    onedrive_publication_result = None
 
     if publish:
         bundle_dir = work_root / "bundle"
@@ -406,6 +415,23 @@ def run_job(
             plan=plan,
             source_revision=revision,
         )
+        log.info("LOCAL_PRODUCTION = PASS")
+
+        if onedrive_publication_enabled(cfg):
+            try:
+                onedrive_publication_result = publish_tcg_bundle(
+                    bundle_dir=bundle_dir,
+                    plan=plan,
+                ).to_dict()
+            except Exception:
+                log.exception("ONEDRIVE_PUBLICATION = FAIL")
+                raise
+            log.info(
+                "ONEDRIVE_PUBLICATION = %s | published=%d | skipped_identical=%d",
+                onedrive_publication_result["status"],
+                len(onedrive_publication_result["published"]),
+                len(onedrive_publication_result["skipped_identical"]),
+            )
 
         target = (
             public_target
@@ -450,6 +476,7 @@ def run_job(
             else str(bundle_dir)
         ),
         "publication": publication_result,
+        "onedrive_publication": onedrive_publication_result,
         "published": bool(publish),
     }
 

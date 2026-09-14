@@ -1,5 +1,6 @@
 from pathlib import Path
 import sys
+from types import SimpleNamespace
 
 from cli.deck_ranking import main
 
@@ -111,3 +112,33 @@ def test_cli_returns_error_code_on_failure(monkeypatch):
     monkeypatch.setattr("cli.deck_ranking.run_deck_ranking", fake_run_deck_ranking)
 
     assert main(["run"]) == 1
+
+
+def test_cli_publishes_after_enabled_local_success(monkeypatch, tmp_path):
+    result = DummyResult()
+    result.cfg = {"publication": {"onedrive": {"enabled": True}}}
+    published = []
+
+    monkeypatch.setattr("cli.deck_ranking.run_deck_ranking", lambda **kwargs: result)
+    monkeypatch.setattr(
+        "cli.deck_ranking.publish_pocket_result",
+        lambda actual: published.append(actual)
+        or SimpleNamespace(status="PASS", published=("ranking.csv",), skipped_identical=()),
+    )
+
+    assert main(["run", "--base-dir", str(tmp_path)]) == 0
+    assert published == [result]
+
+
+def test_cli_publisher_failure_fails_the_production_run(monkeypatch, tmp_path):
+    result = DummyResult()
+    result.cfg = {"publication": {"onedrive": {"enabled": True}}}
+
+    monkeypatch.setattr("cli.deck_ranking.run_deck_ranking", lambda **kwargs: result)
+
+    def fail_publish(actual):
+        raise RuntimeError("OneDrive unavailable")
+
+    monkeypatch.setattr("cli.deck_ranking.publish_pocket_result", fail_publish)
+
+    assert main(["run", "--base-dir", str(tmp_path)]) == 1
