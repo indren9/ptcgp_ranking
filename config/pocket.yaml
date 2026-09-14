@@ -20,7 +20,8 @@ scraping:
     mode: auto   # auto | code
     code: ""     # when mode=code, put the set code here, e.g. "A4a"
 
-  # Expansion catalog cache (HTTP).
+  # Legacy low-level cache compatibility. Runtime expansion discovery always
+  # uses the shared automatic 60-minute policy; these fields cannot extend it.
   expansions_cache:
     ttl_days_fixed: null
     burst_enabled: true

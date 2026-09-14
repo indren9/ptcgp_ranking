@@ -196,11 +196,11 @@ def test_limitless_sets_fetch_catalog_policy_normalizes_format_url(monkeypatch, 
     paths = type("Paths", (), {"cache": tmp_path / "cache"})()
     seen = {}
 
-    def fake_get_expansions_catalog(**kwargs):
+    def fake_fetch_expansions_http(session, **kwargs):
         seen["decks_url"] = kwargs["decks_url"]
-        return []
+        return [Expansion(code="CRI", name="Chaos Rising", is_current=True)]
 
-    monkeypatch.setattr("sources.limitless.pages.sets.get_expansions_catalog", fake_get_expansions_catalog)
+    monkeypatch.setattr("sources.limitless.catalog_refresh.fetch_expansions_http", fake_fetch_expansions_http)
 
     fetch_catalog_with_policy(
         {"source": {"game": "PTCG", "format": {"mode": "code", "code": "expanded"}}},
@@ -211,6 +211,33 @@ def test_limitless_sets_fetch_catalog_policy_normalizes_format_url(monkeypatch, 
 
     assert "format=expanded" in seen["decks_url"]
     assert "rotation=" not in seen["decks_url"]
+
+
+def test_limitless_sets_policy_delegates_without_legacy_ttl_or_browser(monkeypatch, tmp_path):
+    paths = type("Paths", (), {"cache": tmp_path / "cache"})()
+    seen = {}
+    config = {"scraping": {"expansions_cache": {"ttl_days_fixed": 7}}}
+    session = object()
+    catalog = [Expansion(code="B3a", name="Paradox Drive", is_current=True)]
+
+    def central_policy(cfg, supplied_paths, **kwargs):
+        assert cfg is config
+        assert supplied_paths is paths
+        seen.update(kwargs)
+        return catalog
+
+    monkeypatch.setattr("sources.limitless.catalog_refresh.ensure_catalog_fresh", central_policy)
+    result = fetch_catalog_with_policy(
+        config, paths, session=session, browser=object(), ttl_override=7,
+        execution_mode="offline",
+    )
+
+    assert result is catalog
+    assert seen == {
+        "session": session,
+        "decks_url": DEFAULT_DECKS_URL,
+        "execution_mode": "offline",
+    }
 
 
 def test_limitless_sets_parses_expansions_from_select_and_legacy_wrapper():

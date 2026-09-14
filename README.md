@@ -140,6 +140,14 @@ Activate the virtual environment before installing and running. The command
 performs Tournament API acquisition, local reconstruction, MARS, and reporting.
 Results are written below `outputs/`, scoped by game, format, and release.
 
+For a notebook, open [`notebooks/live_ranking.ipynb`](notebooks/live_ranking.ipynb),
+select Pocket or TCG Live, and choose **Run All**. Live runs automatically ensure
+catalog freshness. CLI and notebook share the production ranking pipeline. The
+notebook uses the selected profile's acquisition, analysis, and local-output
+settings. Canonical OneDrive publication remains in the production CLI/job
+wrappers. See the
+[runtime contract](docs/automatic_catalog_refresh.md) for operational details.
+
 The retained `--skip-scrape` name is a compatibility flag for a no-network
 downstream rebuild from saved/frozen inputs. It is distinct from exact Tournament
 API OFFLINE replay. See [Getting Started](https://github.com/indren9/ptcgp_ranking/wiki/Getting-Started).

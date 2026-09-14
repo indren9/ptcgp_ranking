@@ -50,7 +50,7 @@ def test_run_deck_ranking_initializes_without_scrape(tmp_path, monkeypatch):
 
     monkeypatch.setattr(
         "pipelines.deck_ranking.resolve_expansion_and_url_from_config",
-        lambda cfg, paths, decks_url: (
+        lambda cfg, paths, decks_url, execution_mode=None: (
             Expansion(code="B3a", name="Paradox Drive"),
             f"{decks_url}&format=standard&set=B3a",
             [],
@@ -80,7 +80,7 @@ def test_run_deck_ranking_uses_manual_source_format_scope(tmp_path, monkeypatch)
 
     monkeypatch.setattr(
         "pipelines.deck_ranking.resolve_expansion_and_url_from_config",
-        lambda cfg, paths, decks_url: (
+        lambda cfg, paths, decks_url, execution_mode=None: (
             Expansion(code="B3a", name="Paradox Drive"),
             f"{decks_url}&format=expanded&set=B3a",
             [],
@@ -104,7 +104,7 @@ def test_run_deck_ranking_uses_configured_output_dir(tmp_path, monkeypatch):
 
     monkeypatch.setattr(
         "pipelines.deck_ranking.resolve_expansion_and_url_from_config",
-        lambda cfg, paths, decks_url: (
+        lambda cfg, paths, decks_url, execution_mode=None: (
             Expansion(code="B3a", name="Paradox Drive"),
             f"{decks_url}&format=standard&set=B3a",
             [],
@@ -128,7 +128,7 @@ def test_run_deck_ranking_output_dir_argument_overrides_config(tmp_path, monkeyp
 
     monkeypatch.setattr(
         "pipelines.deck_ranking.resolve_expansion_and_url_from_config",
-        lambda cfg, paths, decks_url: (
+        lambda cfg, paths, decks_url, execution_mode=None: (
             Expansion(code="B3a", name="Paradox Drive"),
             f"{decks_url}&format=standard&set=B3a",
             [],
@@ -176,7 +176,7 @@ def test_run_deck_ranking_scrape_stage_writes_contract_outputs(tmp_path, monkeyp
 
     monkeypatch.setattr(
         "pipelines.deck_ranking.resolve_expansion_and_url_from_config",
-        lambda cfg, paths, decks_url: (
+        lambda cfg, paths, decks_url, execution_mode=None: (
             Expansion(code="B3a", name="Paradox Drive"),
             f"{decks_url}&format=standard&set=B3a",
             [],
@@ -274,7 +274,7 @@ def test_run_deck_ranking_infers_auto_set_from_tcg_decklist_html(tmp_path, monke
 
     monkeypatch.setattr(
         "pipelines.deck_ranking.resolve_expansion_and_url_from_config",
-        lambda cfg, paths, decks_url: (
+        lambda cfg, paths, decks_url, execution_mode=None: (
             Expansion(code=None, name=None, is_current=True),
             f"{decks_url}&format=standard",
             [],
@@ -345,7 +345,7 @@ def test_run_deck_ranking_falls_back_when_tcg_standard_rotation_has_empty_deckli
 
     monkeypatch.setattr(
         "pipelines.deck_ranking.resolve_expansion_and_url_from_config",
-        lambda cfg, paths, decks_url: (
+        lambda cfg, paths, decks_url, execution_mode=None: (
             Expansion(code="MEG", name="Mega Evolution", rotation="2025"),
             f"{decks_url}&format=standard&set=MEG&rotation=2025",
             [],
@@ -413,7 +413,7 @@ def test_run_deck_ranking_raises_empty_decklist_error_when_all_fallbacks_are_emp
 
     monkeypatch.setattr(
         "pipelines.deck_ranking.resolve_expansion_and_url_from_config",
-        lambda cfg, paths, decks_url: (
+        lambda cfg, paths, decks_url, execution_mode=None: (
             Expansion(code="MEG", name="Mega Evolution", rotation="2025"),
             f"{decks_url}&format=expanded&set=MEG&rotation=2025",
             [],
@@ -448,7 +448,7 @@ def test_run_deck_ranking_dev_fast_scrape_env_disables_matchup_delay(tmp_path, m
 
     monkeypatch.setattr(
         "pipelines.deck_ranking.resolve_expansion_and_url_from_config",
-        lambda cfg, paths, decks_url: (
+        lambda cfg, paths, decks_url, execution_mode=None: (
             Expansion(code="B3a", name="Paradox Drive"),
             f"{decks_url}&format=standard&set=B3a",
             [],
@@ -521,7 +521,7 @@ nan_filter:
 
     monkeypatch.setattr(
         "pipelines.deck_ranking.resolve_expansion_and_url_from_config",
-        lambda cfg, paths, decks_url: (
+        lambda cfg, paths, decks_url, execution_mode=None: (
             Expansion(code="B3a", name="Paradox Drive"),
             f"{decks_url}&format=standard&set=B3a",
             [],
@@ -584,7 +584,7 @@ analysis:
 
     monkeypatch.setattr(
         "pipelines.deck_ranking.resolve_expansion_and_url_from_config",
-        lambda cfg, paths, decks_url: (
+        lambda cfg, paths, decks_url, execution_mode=None: (
             Expansion(code="B3a", name="Paradox Drive"),
             f"{decks_url}&format=standard&set=B3a",
             [],
@@ -673,7 +673,7 @@ nan_filter:
     )
     monkeypatch.setattr(
         "pipelines.deck_ranking.resolve_expansion_and_url_from_config",
-        lambda cfg, paths, decks_url: (
+        lambda cfg, paths, decks_url, execution_mode=None: (
             Expansion(code="B3a", name="Paradox Drive"),
             f"{decks_url}&format=standard&set=B3a",
             [],
@@ -747,7 +747,7 @@ def test_run_deck_ranking_mars_stage_saves_ranking(tmp_path, monkeypatch):
 
     monkeypatch.setattr(
         "pipelines.deck_ranking.resolve_expansion_and_url_from_config",
-        lambda cfg, paths, decks_url: (Expansion(code="B3a", name="Paradox Drive"), f"{decks_url}&set=B3a", []),
+        lambda cfg, paths, decks_url, execution_mode=None: (Expansion(code="B3a", name="Paradox Drive"), f"{decks_url}&set=B3a", []),
     )
     monkeypatch.setattr(
         "pipelines.deck_ranking.scrape_decklist_html",
@@ -861,7 +861,7 @@ def test_user_output_profile_writes_latest_report_heatmap_and_manifest(tmp_path,
 
     monkeypatch.setattr(
         "pipelines.deck_ranking.resolve_expansion_and_url_from_config",
-        lambda cfg, paths, decks_url: (Expansion(code="B3a", name="Paradox Drive"), f"{decks_url}&set=B3a", []),
+        lambda cfg, paths, decks_url, execution_mode=None: (Expansion(code="B3a", name="Paradox Drive"), f"{decks_url}&set=B3a", []),
     )
     monkeypatch.setattr(
         "pipelines.deck_ranking.scrape_decklist_html",

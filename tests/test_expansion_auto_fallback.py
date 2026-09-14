@@ -1,22 +1,21 @@
 from pathlib import Path
 from types import SimpleNamespace
-import logging
 import os
-from contextlib import contextmanager
 
 import pandas as pd
+import pytest
 
 from scraper.sets.models import Expansion
 from sources.limitless.pages.sets import resolve_expansion_and_url_from_config
 from utils.expansion_routing import ExpansionRef, resolve_auto_from_outputs, write_csv_versioned_setaware
 
 
-def stub_chrome(monkeypatch):
-    @contextmanager
-    def fake_chrome(*, headless=True, detach=False):
-        yield SimpleNamespace()
+def forbid_browser_fallback(monkeypatch):
+    def forbidden(*args, **kwargs):
+        pytest.fail("Runtime set resolution must use the validated central catalog")
 
-    monkeypatch.setattr("sources.limitless.pages.sets.chrome", fake_chrome)
+    monkeypatch.setattr("sources.limitless.pages.sets.chrome", forbidden)
+    monkeypatch.setattr("sources.limitless.pages.sets.read_current_expansion_from_selenium", forbidden)
 
 
 def test_resolve_auto_from_outputs_prefers_latest_output_dir(tmp_path: Path):
@@ -33,7 +32,7 @@ def test_resolve_auto_from_outputs_prefers_latest_output_dir(tmp_path: Path):
     assert exp.name == "Paradox_Drive"
 
 
-def test_resolve_expansion_and_url_falls_back_to_latest_outputs_when_catalog_is_empty(tmp_path: Path, monkeypatch):
+def test_resolve_expansion_and_url_rejects_empty_catalog_despite_existing_outputs(tmp_path: Path, monkeypatch):
     outputs = tmp_path / "outputs"
     (outputs / "B3a__Paradox_Drive").mkdir(parents=True)
 
@@ -41,33 +40,28 @@ def test_resolve_expansion_and_url_falls_back_to_latest_outputs_when_catalog_is_
         def close(self):
             return None
 
-    stub_chrome(monkeypatch)
+    forbid_browser_fallback(monkeypatch)
     monkeypatch.setattr("sources.limitless.pages.sets.make_session", lambda timeout=20: DummySession())
     monkeypatch.setattr("sources.limitless.pages.sets.fetch_catalog_with_policy", lambda *args, **kwargs: [])
-    monkeypatch.setattr("sources.limitless.pages.sets.read_current_expansion_from_selenium", lambda *args, **kwargs: None)
 
     cfg = {"scraping": {"set": {"mode": "auto"}}}
     paths = SimpleNamespace(outputs=outputs, cache=tmp_path / "cache", logs=tmp_path / "logs")
 
-    exp, url, catalog = resolve_expansion_and_url_from_config(cfg, paths, decks_url="https://example.com")
-
-    assert exp.code == "B3a"
-    assert exp.name == "Paradox_Drive"
-    assert url.endswith("set=B3a")
-    assert catalog == []
+    with pytest.raises(RuntimeError, match="exactly one validated current expansion"):
+        resolve_expansion_and_url_from_config(cfg, paths, decks_url="https://example.com")
 
 
-def test_resolve_expansion_format_mode_keeps_url_without_set(tmp_path: Path, monkeypatch):
-    class DummySession:
-        def close(self):
-            return None
+@pytest.mark.parametrize("set_mode", ["none", "format"])
+def test_resolve_expansion_format_mode_keeps_url_without_set(tmp_path: Path, monkeypatch, set_mode):
+    def forbidden(*args, **kwargs):
+        pytest.fail("No set catalog or network session is needed in format-only mode")
 
-    monkeypatch.setattr("sources.limitless.pages.sets.make_session", lambda timeout=20: DummySession())
-    monkeypatch.setattr("sources.limitless.pages.sets.fetch_catalog_with_policy", lambda *args, **kwargs: [])
+    monkeypatch.setattr("sources.limitless.pages.sets.make_session", forbidden)
+    monkeypatch.setattr("sources.limitless.pages.sets.fetch_catalog_with_policy", forbidden)
 
     cfg = {
         "source": {"game": "PTCG", "format": {"mode": "code", "code": "2016"}},
-        "scraping": {"set": {"mode": "format", "code": ""}},
+        "scraping": {"set": {"mode": set_mode, "code": ""}},
     }
     paths = SimpleNamespace(outputs=tmp_path / "outputs", cache=tmp_path / "cache", logs=tmp_path / "logs")
 
@@ -80,28 +74,29 @@ def test_resolve_expansion_format_mode_keeps_url_without_set(tmp_path: Path, mon
     assert catalog == []
 
 
-def test_auto_mode_forces_fresh_catalog_lookup(monkeypatch):
+def test_auto_mode_uses_central_policy_once_without_manual_refresh(monkeypatch):
     class DummySession:
         def close(self):
             return None
 
-    seen = {}
+    seen = []
 
     def fake_fetch_catalog(*args, **kwargs):
-        seen["ttl_override"] = kwargs.get("ttl_override")
+        seen.append(kwargs)
         return [SimpleNamespace(code="B3a", name="Paradox Drive", is_current=True)]
 
-    stub_chrome(monkeypatch)
+    forbid_browser_fallback(monkeypatch)
     monkeypatch.setattr("sources.limitless.pages.sets.make_session", lambda timeout=20: DummySession())
     monkeypatch.setattr("sources.limitless.pages.sets.fetch_catalog_with_policy", fake_fetch_catalog)
-    monkeypatch.setattr("sources.limitless.pages.sets.read_current_expansion_from_selenium", lambda *args, **kwargs: None)
 
     cfg = {"scraping": {"set": {"mode": "auto"}}}
     paths = SimpleNamespace(outputs=Path("outputs"), cache=Path("cache/requests"), logs=Path("logs"))
 
     exp, url, catalog = resolve_expansion_and_url_from_config(cfg, paths, decks_url="https://example.com")
 
-    assert seen["ttl_override"] == 0
+    assert len(seen) == 1
+    assert "ttl_override" not in seen[0]
+    assert seen[0]["execution_mode"] == "live"
     assert exp.code == "B3a"
     assert url.endswith("set=B3a")
     assert catalog[0].code == "B3a"
@@ -205,26 +200,21 @@ def test_resolve_expansion_uses_catalog_rotation_for_manual_tcg_set(monkeypatch)
     assert catalog[0].rotation == "2025"
 
 
-def test_auto_mode_uses_minimal_tcg_url_for_live_site_lookup(monkeypatch):
+def test_auto_mode_uses_minimal_tcg_url_for_central_catalog(monkeypatch):
     class DummySession:
         def close(self):
             return None
 
     seen = {}
-    live_exp = Expansion(code="CRI", name="CRI - Celestial Guardians", is_current=True)
+    current_exp = Expansion(code="CRI", name="Chaos Rising", is_current=True, rotation="2026")
 
     def fake_fetch_catalog(*args, **kwargs):
         seen.setdefault("catalog_urls", []).append(kwargs.get("decks_url"))
-        return []
+        return [current_exp]
 
-    def fake_read_live(*args, **kwargs):
-        seen["live_url"] = kwargs.get("decks_url")
-        return live_exp
-
-    stub_chrome(monkeypatch)
+    forbid_browser_fallback(monkeypatch)
     monkeypatch.setattr("sources.limitless.pages.sets.make_session", lambda timeout=20: DummySession())
     monkeypatch.setattr("sources.limitless.pages.sets.fetch_catalog_with_policy", fake_fetch_catalog)
-    monkeypatch.setattr("sources.limitless.pages.sets.read_current_expansion_from_selenium", fake_read_live)
 
     cfg = {
         "source": {"game": "PTCG", "format": {"mode": "auto", "code": ""}},
@@ -239,43 +229,82 @@ def test_auto_mode_uses_minimal_tcg_url_for_live_site_lookup(monkeypatch):
     )
 
     assert exp.code == "CRI"
-    assert exp.name == "Celestial Guardians"
-    assert seen["catalog_urls"]
+    assert exp.name == "Chaos Rising"
+    assert len(seen["catalog_urls"]) == 1
     assert all("game=PTCG" in catalog_url for catalog_url in seen["catalog_urls"])
-    assert "game=POCKET" not in seen["live_url"]
-    assert "format=standard" in seen["live_url"]
+    assert "game=POCKET" not in seen["catalog_urls"][0]
+    assert "format=standard" in seen["catalog_urls"][0]
     assert "game=PTCG" in url
     assert "format=standard" in url
     assert "set=CRI" in url
-    assert catalog == []
+    assert catalog == [current_exp]
 
 
-def test_auto_mode_prefers_live_site_over_catalog(monkeypatch, caplog):
+def test_auto_mode_uses_validated_current_entry_without_second_discovery(monkeypatch):
     class DummySession:
         def close(self):
             return None
 
-    live_exp = Expansion(code="B3a", name="B3a - Paradox Drive", is_current=True)
-
     def fake_fetch_catalog(*args, **kwargs):
-        return [SimpleNamespace(code="A1", name="A1 - Genetic Apex", is_current=True)]
+        return [
+            Expansion(code="A1", name="Genetic Apex", is_current=False),
+            Expansion(code="B3a", name="Paradox Drive", is_current=True),
+        ]
 
-    stub_chrome(monkeypatch)
+    forbid_browser_fallback(monkeypatch)
     monkeypatch.setattr("sources.limitless.pages.sets.make_session", lambda timeout=20: DummySession())
     monkeypatch.setattr("sources.limitless.pages.sets.fetch_catalog_with_policy", fake_fetch_catalog)
-    monkeypatch.setattr("sources.limitless.pages.sets.read_current_expansion_from_selenium", lambda *args, **kwargs: live_exp)
 
     cfg = {"scraping": {"set": {"mode": "auto"}, "selenium": {"headless": True, "wait_sec": 1}}}
     paths = SimpleNamespace(outputs=Path("outputs"), cache=Path("cache/requests"), logs=Path("logs"))
 
-    caplog.set_level(logging.DEBUG, logger="ptcgp.sets")
     exp, url, catalog = resolve_expansion_and_url_from_config(cfg, paths, decks_url="https://example.com")
 
     assert exp.code == "B3a"
     assert exp.name == "Paradox Drive"
     assert url.endswith("set=B3a")
     assert catalog[0].code == "A1"
-    assert "[SET AUTO] source=live-site" in caplog.text
+
+
+@pytest.mark.parametrize("current_flags", [(False, False), (True, True)])
+def test_auto_mode_rejects_ambiguous_current_semantics(tmp_path, monkeypatch, current_flags):
+    catalog = [
+        Expansion(code="A1", name="Genetic Apex", is_current=current_flags[0]),
+        Expansion(code="B3a", name="Paradox Drive", is_current=current_flags[1]),
+    ]
+    monkeypatch.setattr("sources.limitless.pages.sets.make_session", lambda **kwargs: SimpleNamespace(close=lambda: None))
+    monkeypatch.setattr("sources.limitless.pages.sets.fetch_catalog_with_policy", lambda *args, **kwargs: catalog)
+    forbid_browser_fallback(monkeypatch)
+    paths = SimpleNamespace(outputs=tmp_path / "outputs", cache=tmp_path / "cache")
+
+    with pytest.raises(RuntimeError, match="exactly one validated current expansion"):
+        resolve_expansion_and_url_from_config({"scraping": {"set": {"mode": "auto"}}}, paths)
+
+
+def test_offline_resolver_forwards_mode_without_creating_network_session(tmp_path, monkeypatch):
+    seen = {}
+    catalog = [Expansion(code="B3a", name="Paradox Drive", is_current=True)]
+
+    def forbidden(**kwargs):
+        pytest.fail("Offline resolution must not create a live HTTP session")
+
+    def frozen_catalog(*args, **kwargs):
+        seen.update(kwargs)
+        return catalog
+
+    monkeypatch.setattr("sources.limitless.pages.sets.make_session", forbidden)
+    monkeypatch.setattr("sources.limitless.pages.sets.fetch_catalog_with_policy", frozen_catalog)
+    forbid_browser_fallback(monkeypatch)
+    paths = SimpleNamespace(outputs=tmp_path / "outputs", cache=tmp_path / "cache")
+
+    exp, _, returned = resolve_expansion_and_url_from_config(
+        {"scraping": {"set": {"mode": "auto"}}}, paths, execution_mode="offline"
+    )
+
+    assert exp.code == "B3a"
+    assert returned == catalog
+    assert seen["session"] is None
+    assert seen["execution_mode"] == "offline"
 
 
 def test_write_csv_uses_filename_prefix_with_set_key(tmp_path: Path):

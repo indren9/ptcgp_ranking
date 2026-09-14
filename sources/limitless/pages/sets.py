@@ -198,8 +198,11 @@ def _select_looks_like_set(select) -> bool:
     return False
 
 
-def parse_expansions_from_html(html: str) -> List[Expansion]:
-    """Best-effort parser: prefer the set selector, fallback to links with set=."""
+def parse_expansions_from_html(html: str, *, strict: bool = False) -> List[Expansion]:
+    """Prefer set selectors, then set links; runtime mode exposes malformed rows.
+
+    The default preserves the independent public export's historical parsing.
+    """
     from bs4 import BeautifulSoup
 
     soup = BeautifulSoup(html, "lxml")
@@ -216,7 +219,11 @@ def parse_expansions_from_html(html: str) -> List[Expansion]:
             exp = _expansion_from_option(option)
             if exp:
                 bucket.append(exp)
+            elif strict and (option.get("data-set") or option.get("value") or "").strip() not in {"", "all"}:
+                raise ValueError("Invalid expansion option in runtime catalog")
         if bucket:
+            if strict:
+                return bucket
             dedup = {}
             for exp in bucket:
                 if exp.code and exp.code not in dedup:
@@ -231,6 +238,8 @@ def parse_expansions_from_html(html: str) -> List[Expansion]:
 
     dedup = {}
     for exp in bucket:
+        if strict and exp.code in dedup and exp != dedup[exp.code]:
+            raise ValueError(f"Conflicting expansion links in runtime catalog: {exp.code}")
         if exp.code and exp.code not in dedup:
             dedup[exp.code] = exp
     return list(dedup.values())
@@ -409,10 +418,10 @@ def compute_ttl(
     return timedelta(hours=_apply_jitter(hours, frac=jitter_frac))
 
 
-def fetch_expansions_http(session, *, decks_url: str) -> List[Expansion]:
+def fetch_expansions_http(session, *, decks_url: str, strict: bool = False) -> List[Expansion]:
     resp = session.get(decks_url, timeout=getattr(session, "request_timeout", 20))
     resp.raise_for_status()
-    return parse_expansions_from_html(resp.text)
+    return parse_expansions_from_html(resp.text, strict=strict)
 
 
 def fetch_formats_http(session, *, decks_url: str) -> list[FormatOption]:
@@ -602,22 +611,23 @@ def fetch_catalog_with_policy(
     browser=None,
     ttl_override: int | None = None,
     decks_url: str = DEFAULT_DECKS_URL,
+    execution_mode: str | None = None,
 ):
-    """Apply project config/cache policy to the Limitless expansion catalog."""
-    params = expansions_cache_params_from_config(cfg)
-    decks_url = _ensure_game_format(decks_url, cfg=cfg)
-    cache_path = expansions_cache_path(paths, cfg, decks_url)
-    kwargs = dict(
+    """Compatibility wrapper for the single automatic runtime policy.
+
+    Legacy TTL/browser arguments remain accepted but cannot override freshness.
+    The independent public exporter continues to use its direct HTTP fetch.
+    """
+    from sources.limitless.catalog_refresh import ensure_catalog_fresh
+
+    api_cfg = ((cfg.get("source") or {}).get("tournament_api") or {})
+    return ensure_catalog_fresh(
+        cfg,
+        paths,
         session=session,
         decks_url=decks_url,
-        cache_path=cache_path,
-        browser=browser,
-        cfg=cfg,
-        **params,
+        execution_mode=execution_mode or api_cfg.get("execution_mode") or "live",
     )
-    if ttl_override is not None:
-        kwargs["ttl_days_fixed"] = ttl_override
-    return get_expansions_catalog(**kwargs)
 
 
 def fetch_formats_with_policy(
@@ -647,12 +657,13 @@ def resolve_expansion_and_url_from_config(
     *,
     require_in_catalog: bool = True,
     decks_url: str = DEFAULT_DECKS_URL,
+    execution_mode: str | None = None,
 ) -> Tuple[Expansion, str, List[Expansion]]:
     """
     Resolve the run expansion from config and return:
       (expansion, decks_url_for_run, catalog_list)
 
-    mode='auto' prefers the live selected set, then catalog, then latest outputs.
+    mode='auto' selects from the validated automatic runtime catalog.
     mode='code' validates/augments the configured code against the catalog.
     """
     scraping = (cfg.get("scraping", {}) or {})
@@ -661,104 +672,40 @@ def resolve_expansion_and_url_from_config(
     code_raw = (set_cfg.get("code") or "") or None
     code = code_raw.strip() if isinstance(code_raw, str) else None
     decks_url_for_catalog = _ensure_game_format(decks_url, cfg=cfg)
-
-    timeout = int(scraping.get("timeout_sec", 20) or scraping.get("request_timeout_sec", 20))
-    session = make_session(timeout=timeout)
-    catalog = fetch_catalog_with_policy(cfg, paths, session=session, browser=None, decks_url=decks_url_for_catalog)
+    api_cfg = ((cfg.get("source") or {}).get("tournament_api") or {})
+    execution_mode = str(execution_mode or api_cfg.get("execution_mode") or "live").strip().lower()
 
     if mode in {"none", "format"}:
         exp = Expansion(code=None, name=None, is_current=True)
         url = build_decks_url_for_expansion(exp, decks_url, cfg=cfg)
-        session.close()
-        return exp, url, catalog
+        return exp, url, []
 
-    if mode == "auto":
-        sel_cfg = (scraping.get("selenium", {}) or {})
-        headless = bool(sel_cfg.get("headless", True))
-
-        with chrome(headless=headless) as browser:
-            catalog = fetch_catalog_with_policy(
-                cfg,
-                paths,
-                session=session,
-                browser=browser,
-                ttl_override=0,
-                decks_url=decks_url_for_catalog,
+    timeout = int(scraping.get("timeout_sec", 20) or scraping.get("request_timeout_sec", 20))
+    session = make_session(timeout=timeout) if execution_mode == "live" else None
+    try:
+        catalog = fetch_catalog_with_policy(
+            cfg, paths, session=session, decks_url=decks_url_for_catalog,
+            execution_mode=execution_mode,
+        )
+        if mode == "auto":
+            current = [item for item in catalog if item.is_current]
+            if len(current) != 1:
+                raise RuntimeError("Catalog AUTO requires exactly one validated current expansion.")
+            exp = current[0]
+        elif mode == "code" and code:
+            hit = next((item for item in catalog if (item.code or "").casefold() == code.casefold()), None)
+            if require_in_catalog and hit is None:
+                raise RuntimeError(f"Set code '{code}' is not present in the validated Limitless catalog.")
+            exp = Expansion(
+                code=code, name=hit.name if hit else None, is_current=False,
+                rotation=getattr(hit, "rotation", None),
             )
-            live_exp = read_current_expansion_from_selenium(
-                browser,
-                decks_url=decks_url_for_catalog,
-                wait_seconds=int((scraping.get("selenium", {}) or {}).get("wait_sec", 20) or 20),
-                cfg=cfg,
-            )
-
-        source = "live-site"
-        if live_exp and live_exp.code:
-            exp = Expansion(code=live_exp.code, name=live_exp.name, is_current=True, rotation=getattr(live_exp, "rotation", None))
-        elif live_exp and not live_exp.code:
-            log.warning(
-                "Live site ha selezionato un set senza codice valido (%s); ignoro e uso catalog/fallback.",
-                getattr(live_exp, "name", None),
-            )
-            if catalog:
-                cur = next((e for e in catalog if getattr(e, "is_current", False)), None) or catalog[0]
-                exp = Expansion(code=cur.code, name=cur.name, is_current=True, rotation=getattr(cur, "rotation", None))
-                source = "catalog"
-            else:
-                fallback = resolve_auto_from_outputs(getattr(paths, "outputs", None) or getattr(paths, "output_dir", None))
-                exp = Expansion(code=fallback.code, name=fallback.name, is_current=True)
-                source = "outputs-fallback"
-                if not exp.code:
-                    log.warning("No expansion catalog and no output folder found: using an empty set.")
-        elif catalog:
-            cur = next((e for e in catalog if getattr(e, "is_current", False)), None) or catalog[0]
-            exp = Expansion(code=cur.code, name=cur.name, is_current=True, rotation=getattr(cur, "rotation", None))
-            source = "catalog"
         else:
-            fallback = resolve_auto_from_outputs(getattr(paths, "outputs", None) or getattr(paths, "output_dir", None))
-            exp = Expansion(code=fallback.code, name=fallback.name, is_current=True)
-            source = "outputs-fallback"
-            if not exp.code:
-                log.warning("No expansion catalog and no output folder found: using an empty set.")
-
-        log.debug("[SET AUTO] source=%s | code=%s | name=%s", source, getattr(exp, "code", None), getattr(exp, "name", None))
-        url = build_decks_url_for_expansion(exp, decks_url, cfg=cfg)
-        session.close()
-        return exp, url, catalog
-
-    if mode == "code" and code:
-        exp = Expansion(code=code, name=None, is_current=False)
-        need_check = require_in_catalog
-    else:
-        exp = Expansion(code=None, name=None, is_current=True)
-        need_check = False
-
-    if need_check:
-        hit = next((e for e in catalog if (e.code or "").lower() == code.lower()), None)
-        if hit and hit.name:
-            exp = Expansion(code=code, name=hit.name, is_current=False, rotation=getattr(hit, "rotation", None))
-        else:
-            sel_cfg = (scraping.get("selenium", {}) or {})
-            headless = bool(sel_cfg.get("headless", True))
-            with chrome(headless=headless) as browser:
-                catalog = fetch_catalog_with_policy(
-                    cfg,
-                    paths,
-                    session=session,
-                    browser=browser,
-                    ttl_override=0,
-                    decks_url=decks_url_for_catalog,
-                )
-            hit = next((e for e in catalog if (e.code or "").lower() == code.lower()), None)
-            if hit and hit.name:
-                exp = Expansion(code=code, name=hit.name, is_current=False, rotation=getattr(hit, "rotation", None))
-            else:
-                session.close()
-                raise RuntimeError(f"Set code '{code}' is not present in the Limitless catalog even after refresh.")
-
-    url = build_decks_url_for_expansion(exp, decks_url, cfg=cfg)
-    session.close()
-    return exp, url, catalog
+            raise ValueError("Set selection requires AUTO or an explicit CODE.")
+        return exp, build_decks_url_for_expansion(exp, decks_url, cfg=cfg), catalog
+    finally:
+        if session is not None:
+            session.close()
 
 
 def _url_without_set(url: str) -> str:

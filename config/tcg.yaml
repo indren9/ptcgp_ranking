@@ -53,6 +53,8 @@ scraping:
     code: ""
 
   expansions_cache:
+    # Legacy low-level compatibility only. Runtime expansion discovery uses
+    # the shared automatic policy; TCG canonical windows remain independent.
     ttl_days_fixed: null
     burst_enabled: true
     burst_days: 2
