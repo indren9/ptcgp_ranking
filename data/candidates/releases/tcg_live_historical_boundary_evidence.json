@@ -1,4 +1,34 @@
 {
+  "adjudications": {
+    "PAF": {
+      "conclusion": "CANONICAL_PENDING. The only full-expansion exact-time statement remains internally inconsistent (PDT in January). January 23 patch/maintenance evidence establishes client support, not the January 25 release hour. No independent authoritative statement selects 17:00, 18:00 or another release instant.",
+      "statement_ids": [
+        "6efaf93ae03fb4f42b244ff1eba6ce00ed64b54c8520c187928bbee5449aaca2",
+        "dfae1538af51a8af7df19e4086cadc559f1eb92ee6e1a49640557c29ffffccbd",
+        "2ff7619c37dda09c0cd76bcfc49558fc7ac8a91846ccc424b79c1cf96150b041"
+      ]
+    },
+    "PRE": {
+      "conclusion": "OFFICIAL_CONFLICT. The December 3 official letter independently confirms the January 16, 2025 Live launch date. Eevee’s Prismatic Parade starts tracking points at 18:00 UTC that day, but no acquired proposition explicitly equates that event clock with full expansion availability. The original release statement remains contradictory; 18:00 UTC is not promoted.",
+      "statement_ids": [
+        "25ddc8ae537fe7c20b1eda54089b23b256a2a9f3080cdd5a851bb022b355a9b9",
+        "aea5c59073a88025b42203fb5bc864cb2bb245836580db0a2dd86b1805efcd11",
+        "7f3801c23be7460a209bb5acfa4a21fad172192919f8565ff56ce803fbcbdb42",
+        "a294e02b47e258166172a342d2cbf1af91b128ae1ebd6b50f60d2525c021220b",
+        "f4c3c4033f380ee7595fbb37a6a710a5188f0a760d24c26102c20f5f2f7f3db7",
+        "5ab14924e3ea288c49b98031e3022604b6314b49e4449d0aa50561da84cb5355"
+      ]
+    },
+    "SSP": {
+      "conclusion": "OFFICIAL_CONFLICT. The release post simultaneously states local 10:00 PT (diagnostically 18:00 UTC) and explicit 17:00 UTC. The November 5 letter confirms the November 7 launch date without an hour. Maintenance/support material cannot choose between the conflicting release clocks.",
+      "statement_ids": [
+        "311cb58f4391269bf48bf294ce5dfeeb52179235207af7de225898c9bacc0675",
+        "0653a36ade75125437585451ff7d5f403a0d73b5f1105527ae2781283acf3e9e",
+        "504262ecb3576346a13feb58bbd476df439c1095c59ef8f32ccacb2786165b7d",
+        "90fdea1f28c990b5733c72a238238c5d714d2a656a8abf356788fdd998e85bf4"
+      ]
+    }
+  },
   "baseline_main": "742cb24eb3f888d92f214b9fc5363b9d39f72da5",
   "coverage": {
     "complete": false,
@@ -1787,8 +1817,8 @@
       "A versus C: all 23 expected expansion identities match the independent Limitless card index. The deck selector alone is insufficient for special expansions.",
       "B: Pokémon.com /us/news revealed the current Live article; its body and the attempted rotation articles returned CHALLENGE. The advertised US sitemap shards were also challenged. No bypass or further challenge retry was used.",
       "B therefore remains incomplete, not an empty inventory proving no missing articles. No secondary exact-time corroboration or absence of secondary conflict is claimed.",
-      "Three expansion times and rotations 2023–2025 remain unresolved. All required entries stay present; no A-to-C window can skip unresolved B.",
-      "The official lower-bound inventory is complete by named identity against C, but canonical historical coverage is NOT_READY. No new dependency or real historical Tournament API request was made."
+      "PAF, SSP and PRE remain unresolved expansion starts; these three holes alone block the required expansion sequence. Rotation metadata does not create blocking null entries.",
+      "The independent identity inventory remains complete for the bounded scope. Editorial discovery limitations are retained as audit metadata; they do not create additional rotation/format windows."
     ]
   },
   "excluded_observations": [
@@ -1825,6 +1855,7 @@
   ],
   "inventory": [
     {
+      "confirmed_date": "2023-03-30",
       "conflict": false,
       "context_evidence_ids": [],
       "corroboration": null,
@@ -1861,6 +1892,7 @@
       "status": "MACHINE_VERIFIED"
     },
     {
+      "confirmed_date": "2023-06-08",
       "conflict": false,
       "context_evidence_ids": [],
       "corroboration": null,
@@ -1897,6 +1929,7 @@
       "status": "MACHINE_VERIFIED"
     },
     {
+      "confirmed_date": "2023-08-10",
       "conflict": false,
       "context_evidence_ids": [],
       "corroboration": null,
@@ -1933,6 +1966,7 @@
       "status": "MACHINE_VERIFIED"
     },
     {
+      "confirmed_date": "2023-09-21",
       "conflict": false,
       "context_evidence_ids": [],
       "corroboration": null,
@@ -1971,6 +2005,7 @@
       "status": "MACHINE_VERIFIED"
     },
     {
+      "confirmed_date": "2023-11-02",
       "conflict": false,
       "context_evidence_ids": [],
       "corroboration": null,
@@ -2007,12 +2042,16 @@
       "status": "MACHINE_VERIFIED"
     },
     {
+      "confirmed_date": null,
       "conflict": false,
-      "context_evidence_ids": [],
+      "context_evidence_ids": [
+        "65418aa94e5998242829fdce3c2011d7a0370ab1fde68936a35355bb7139291b"
+      ],
       "corroboration": null,
       "event_id": "PAF",
       "exact_evidence_ids": [
-        "f07f521cc8a6d3745d0148ee11c0fe9b0fbb53f1631bb38458ac270daad8dbdd"
+        "f07f521cc8a6d3745d0148ee11c0fe9b0fbb53f1631bb38458ac270daad8dbdd",
+        "e4079cbc3480a4fe692cb6e4368a0f84b819b6366876e807b517e6d42ab0fcd6"
       ],
       "exact_time_verified": false,
       "found_official": true,
@@ -2033,7 +2072,8 @@
       "missing": false,
       "name": "Paldean Fates",
       "notes": [
-        "Source declares PDT in January. C1 rejects seasonal inconsistency (INVALID_LOCAL_TIME). Neither PST nor a different hour is substituted."
+        "Source declares PDT in January. C1 rejects seasonal inconsistency (INVALID_LOCAL_TIME). Neither PST nor a different hour is substituted.",
+        "D2-R1 revalidation: public official API metadata matches the first-post HTML; full original time wording is unchanged. The May 7, 2025 edit timestamp is not evidence of a clock correction."
       ],
       "observer_states": [
         "INVALID_LOCAL_TIME"
@@ -2045,6 +2085,7 @@
       "status": "CANONICAL_PENDING"
     },
     {
+      "confirmed_date": "2024-03-21",
       "conflict": false,
       "context_evidence_ids": [],
       "corroboration": null,
@@ -2081,6 +2122,7 @@
       "status": "MACHINE_VERIFIED"
     },
     {
+      "confirmed_date": "2024-05-22",
       "conflict": false,
       "context_evidence_ids": [],
       "corroboration": null,
@@ -2119,6 +2161,7 @@
       "status": "MACHINE_VERIFIED"
     },
     {
+      "confirmed_date": "2024-08-01",
       "conflict": false,
       "context_evidence_ids": [],
       "corroboration": null,
@@ -2157,6 +2200,7 @@
       "status": "MACHINE_VERIFIED"
     },
     {
+      "confirmed_date": "2024-09-12",
       "conflict": false,
       "context_evidence_ids": [],
       "corroboration": null,
@@ -2193,12 +2237,17 @@
       "status": "MACHINE_VERIFIED"
     },
     {
+      "confirmed_date": null,
       "conflict": true,
-      "context_evidence_ids": [],
+      "context_evidence_ids": [
+        "c730a92064a23e17c91a307da09903c33764cc4bb9a71ecfcc15d7b47e0ef473",
+        "06cfb6153442a3dd0efbe1db61e82f407f2658306a38a16234488436bdd0b5d3"
+      ],
       "corroboration": null,
       "event_id": "SSP",
       "exact_evidence_ids": [
-        "702c15fc20ed75eb634c4455a3e14048e09afbafeeca659212115a1ab9fb00cd"
+        "702c15fc20ed75eb634c4455a3e14048e09afbafeeca659212115a1ab9fb00cd",
+        "78964ea277cdabb04fe9ade58cca76ddbfcf6a043efe3754a1c8a994cc467f64"
       ],
       "exact_time_verified": false,
       "found_official": true,
@@ -2219,7 +2268,8 @@
       "missing": false,
       "name": "Surging Sparks",
       "notes": [
-        "Source says 10:00 AM PT with 17:00 UTC on November 7, 2024. Los Angeles is PST: the clocks disagree. No timestamp accepted."
+        "Source says 10:00 AM PT with 17:00 UTC on November 7, 2024. Los Angeles is PST: the clocks disagree. No timestamp accepted.",
+        "D2-R1 revalidation: public official API metadata matches the first-post HTML; full original time wording is unchanged. The May 7, 2025 edit timestamp is not evidence of a clock correction."
       ],
       "observer_states": [
         "OFFICIAL_CONFLICT"
@@ -2231,12 +2281,18 @@
       "status": "OFFICIAL_CONFLICT"
     },
     {
+      "confirmed_date": null,
       "conflict": true,
-      "context_evidence_ids": [],
+      "context_evidence_ids": [
+        "56f830692a9ce2f4b8bb51ac1f3802d0be382149afa82fef6b8e37fa86528ccd",
+        "c02482c4cf4eb4e4c019736093108aafff23eb8f458763e961257aec66c3c152",
+        "99e9a3ca5ef9a6a172dbe73b44e88c2b900cd2e40f4cf11701d22ff086fe905c"
+      ],
       "corroboration": null,
       "event_id": "PRE",
       "exact_evidence_ids": [
-        "ebb2b2b062852d926c4fd35fe2b79db204743163e049388893190789887c2eec"
+        "ebb2b2b062852d926c4fd35fe2b79db204743163e049388893190789887c2eec",
+        "fb251e1498b11c67631503940f100bc89590d85e11f12758e63c2049484ae4b9"
       ],
       "exact_time_verified": false,
       "found_official": true,
@@ -2257,7 +2313,8 @@
       "missing": false,
       "name": "Prismatic Evolutions",
       "notes": [
-        "The official expression says Thursday, January 16th, 2024; that calendar date is Tuesday. Its 10:00 AM PT also conflicts with 17:00 UTC in winter. Neither year nor hour is repaired from release order."
+        "The official expression says Thursday, January 16th, 2024; that calendar date is Tuesday. Its 10:00 AM PT also conflicts with 17:00 UTC in winter. Neither year nor hour is repaired from release order.",
+        "D2-R1 revalidation: public official API metadata matches the first-post HTML; full original time wording is unchanged. The May 7, 2025 edit timestamp is not evidence of a clock correction."
       ],
       "observer_states": [
         "OFFICIAL_CONFLICT"
@@ -2269,6 +2326,7 @@
       "status": "OFFICIAL_CONFLICT"
     },
     {
+      "confirmed_date": "2025-03-27",
       "conflict": false,
       "context_evidence_ids": [],
       "corroboration": null,
@@ -2305,6 +2363,7 @@
       "status": "MACHINE_VERIFIED"
     },
     {
+      "confirmed_date": "2025-05-29",
       "conflict": false,
       "context_evidence_ids": [],
       "corroboration": null,
@@ -2341,6 +2400,7 @@
       "status": "MACHINE_VERIFIED"
     },
     {
+      "confirmed_date": "2025-07-17",
       "conflict": false,
       "context_evidence_ids": [],
       "corroboration": null,
@@ -2379,6 +2439,7 @@
       "status": "MACHINE_VERIFIED"
     },
     {
+      "confirmed_date": "2025-07-17",
       "conflict": false,
       "context_evidence_ids": [],
       "corroboration": null,
@@ -2417,6 +2478,7 @@
       "status": "MACHINE_VERIFIED"
     },
     {
+      "confirmed_date": "2025-09-25",
       "conflict": false,
       "context_evidence_ids": [],
       "corroboration": null,
@@ -2453,6 +2515,7 @@
       "status": "MACHINE_VERIFIED"
     },
     {
+      "confirmed_date": "2025-11-13",
       "conflict": false,
       "context_evidence_ids": [],
       "corroboration": null,
@@ -2489,6 +2552,7 @@
       "status": "MACHINE_VERIFIED"
     },
     {
+      "confirmed_date": "2026-01-29",
       "conflict": false,
       "context_evidence_ids": [],
       "corroboration": null,
@@ -2525,6 +2589,7 @@
       "status": "MACHINE_VERIFIED"
     },
     {
+      "confirmed_date": "2026-03-26",
       "conflict": false,
       "context_evidence_ids": [],
       "corroboration": null,
@@ -2551,7 +2616,7 @@
       "missing": false,
       "name": "Perfect Order",
       "notes": [
-        "The same first-post release block explicitly makes the 2026 Standard format effective. ROTATION_2026 is a separate event at this instant."
+        "The same first-post release block explicitly makes the 2026 Standard format effective. ROTATION_2026 remains separate ledger metadata coincident with POR, outside the runner boundary array."
       ],
       "observer_states": [
         "EXACT"
@@ -2563,6 +2628,7 @@
       "status": "MACHINE_VERIFIED"
     },
     {
+      "confirmed_date": "2026-05-21",
       "conflict": false,
       "context_evidence_ids": [],
       "corroboration": null,
@@ -2599,6 +2665,7 @@
       "status": "MACHINE_VERIFIED"
     },
     {
+      "confirmed_date": "2026-07-16",
       "conflict": false,
       "context_evidence_ids": [],
       "corroboration": null,
@@ -2635,6 +2702,7 @@
       "status": "MACHINE_VERIFIED"
     },
     {
+      "confirmed_date": "2026-09-15",
       "conflict": false,
       "context_evidence_ids": [],
       "corroboration": null,
@@ -2673,6 +2741,8 @@
       "status": "MACHINE_VERIFIED"
     },
     {
+      "coincident_expansion_ids": [],
+      "confirmed_date": null,
       "conflict": false,
       "context_evidence_ids": [
         "785a135569656d06978efc6ded3abebe6833fc8a14442be21867ebb9a3813ad2"
@@ -2706,6 +2776,8 @@
       "status": "CANONICAL_PENDING"
     },
     {
+      "coincident_expansion_ids": [],
+      "confirmed_date": null,
       "conflict": false,
       "context_evidence_ids": [
         "784faa5a1d8e846314df43b8936ed1b04cbfcd3f7d254d24317309f47d1afcb8"
@@ -2739,6 +2811,8 @@
       "status": "CANONICAL_PENDING"
     },
     {
+      "coincident_expansion_ids": [],
+      "confirmed_date": "2025-03-27",
       "conflict": false,
       "context_evidence_ids": [
         "7705613e62f4390536917c91a8c120baf37bfb3dae43864c379d052b71fd8751"
@@ -2761,17 +2835,27 @@
       "missing": false,
       "name": "Standard rotation 2025",
       "notes": [
-        "The letter states Thursday March 27th for rotation (year contextual to the 2025 letter); the nearby 10:00 AM PDT / 17:00 UTC belongs to Trainer Trials. No rotation clock may be borrowed."
+        "Official rotation date retained as DATE_CONFIRMED: March 27 in the explicitly dated March 20, 2025 letter. No hour is assigned; the nearby clock belongs to Trainer Trials. Rotation metadata never blocks expansion windows."
       ],
       "observer_states": [],
       "official_name": "2025 Pokémon TCG Standard format",
       "official_source_expansion": null,
+      "rotation_date_evidence": {
+        "date": "2025-03-27",
+        "raw_date": "Thursday March 27th",
+        "source_observation_id": "7705613e62f4390536917c91a8c120baf37bfb3dae43864c379d052b71fd8751",
+        "year_context": "Letter to the Community - March 20, 2025"
+      },
       "rotation_year": 2025,
       "secondary_status": "SOURCE_UNAVAILABLE",
       "start_utc": null,
-      "status": "CANONICAL_PENDING"
+      "status": "DATE_CONFIRMED"
     },
     {
+      "coincident_expansion_ids": [
+        "POR"
+      ],
+      "confirmed_date": "2026-03-26",
       "conflict": false,
       "context_evidence_ids": [
         "091cbcce18aed2e3a8f6b4e6d41ecd49d4a5902ad8f8c57b143bdf2ab9b0605f"
@@ -2796,7 +2880,7 @@
       "missing": false,
       "name": "Standard rotation 2026",
       "notes": [
-        "Explicit combined availability/rotation proposition in the Perfect Order first post, not inferred from equal dates. A separate community letter corroborates the March 26, 2026 date only."
+        "Explicit combined availability/rotation proposition in the Perfect Order first post; retained exact metadata and coincidence with POR. It does not create a runner window."
       ],
       "observer_states": [
         "EXACT"
@@ -4573,6 +4657,677 @@
       "title": "Pokémon TCG: 30th Celebration Expansion Release",
       "tzdb_version": "tzdata:2026.3",
       "verification_method": "MACHINE_POLICY"
+    },
+    {
+      "api_status": "NOT_USED",
+      "author_id": "219",
+      "author_name": "TPCi_CursedSoup",
+      "authority": "PASS",
+      "authority_policy_version": "pokemon-live-na-admin-1",
+      "bound_rotation_years": [],
+      "canonical_url": "https://community.pokemon.com/en-us/discussion/8715/letter-to-the-community-dec-29-2023",
+      "category": "https://community.pokemon.com/en-us/categories/tcg-live-news-announcements",
+      "content_digest": "439a707347e8ac087f036d54a4724a6d1ed1b8fd3824b568a49544de0a016b6d",
+      "edited_at": null,
+      "event_kind": "EVENT_AMBIGUOUS",
+      "excerpt": "",
+      "excerpt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "expansion": null,
+      "fetched_url": "https://community.pokemon.com/en-us/discussion/8715/letter-to-the-community-dec-29-2023",
+      "human_reviewed": false,
+      "metadata_fingerprint": "a4177f5d5ec0133dd5b14928dbd566d27d401aa4ea19e458b195c9a4de724305",
+      "observation_id": "3525ca806462f1fc0c11f84a60af911e0c2f51e945c8b4c7e19b8f96a9fda860",
+      "origin_excerpt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "origin_observation_id": "179cde69bdafb4ab8eae91140cf419bc988b8b8e564d421ea5c72cad92f23973",
+      "parser_version": "live-release-2",
+      "projection_policy": "historical-ledger-minimal-1",
+      "provisional_identity": null,
+      "published_at": "2023-12-29T23:05:53+00:00",
+      "raw_edit_label": "Edited May 7, 2025 9:29PM by TPCi_GarbageKing.",
+      "redirect_chain": [
+        "https://community.pokemon.com/en-us/discussion/8715/letter-to-the-community-dec-29-2023"
+      ],
+      "retrieved_at": "2026-09-18T19:46:04.856002Z",
+      "role_markers": [
+        "Administrator",
+        "Rank-Admin",
+        "Role_Administrator"
+      ],
+      "rotation_binding_excerpt": "",
+      "schema_version": 1,
+      "source_adapter_version": "pokemon-html-1",
+      "source_id": "8715",
+      "source_tier": "B",
+      "state": "EVENT_AMBIGUOUS",
+      "time": null,
+      "title": "Letter to the Community - Dec 29, 2023",
+      "tzdb_version": "tzdata:2026.3",
+      "verification_method": "MACHINE_POLICY"
+    },
+    {
+      "api_status": "NOT_USED",
+      "author_id": "219",
+      "author_name": "TPCi_CursedSoup",
+      "authority": "PASS",
+      "authority_policy_version": "pokemon-live-na-admin-1",
+      "bound_rotation_years": [],
+      "canonical_url": "https://community.pokemon.com/en-us/discussion/8962/version-1-10-0-patch-notes",
+      "category": "https://community.pokemon.com/en-us/categories/tcg-live-news-announcements",
+      "content_digest": "9fc578b6bc940075fe249d32f3aab1313691987abc4277d3f9136962ce31d0bd",
+      "edited_at": null,
+      "event_kind": "NOT_EXPANSION_EVENT",
+      "excerpt": "January 23, 2024 … 8 AM PST(16:00 PM UTC)",
+      "excerpt_sha256": "ea03903deb5417c08f4a39de4f422ad87b05187377fe0801b488052a0348ed8c",
+      "expansion": null,
+      "fetched_url": "https://community.pokemon.com/en-us/discussion/8962/version-1-10-0-patch-notes",
+      "human_reviewed": false,
+      "metadata_fingerprint": "8f4df32dd58a014807a5f18ece9d70ee3873f594d73cde0dcd96e0fc73c00a3b",
+      "observation_id": "65418aa94e5998242829fdce3c2011d7a0370ab1fde68936a35355bb7139291b",
+      "origin_excerpt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "origin_observation_id": "ce19ad1f2b769ebab921271d56e2ec9f56736da8e140a97297a16c90d7a9a0b2",
+      "parser_version": "live-release-2",
+      "projection_policy": "historical-ledger-minimal-1",
+      "provisional_identity": null,
+      "published_at": "2024-01-18T18:08:14+00:00",
+      "raw_edit_label": "Edited May 7, 2025 9:29PM by TPCi_GarbageKing.",
+      "redirect_chain": [
+        "https://community.pokemon.com/en-us/discussion/8962/version-1-10-0-patch-notes"
+      ],
+      "retrieved_at": "2026-09-18T19:46:02.854296Z",
+      "role_markers": [
+        "Administrator",
+        "Rank-Admin",
+        "Role_Administrator"
+      ],
+      "rotation_binding_excerpt": "",
+      "schema_version": 1,
+      "source_adapter_version": "pokemon-html-1",
+      "source_id": "8962",
+      "source_tier": "B",
+      "state": "NOT_EXPANSION_EVENT",
+      "time": null,
+      "title": "Version 1.10.0 - Patch Notes",
+      "tzdb_version": "tzdata:2026.3",
+      "verification_method": "MACHINE_POLICY"
+    },
+    {
+      "api_status": "MATCHED",
+      "author_id": "219",
+      "author_name": "TPCi_CursedSoup",
+      "authority": "PASS",
+      "authority_policy_version": "pokemon-live-na-admin-1",
+      "bound_rotation_years": [],
+      "canonical_url": "https://community.pokemon.com/en-us/discussion/8969/scarlet-violet-paldean-fates-release",
+      "category": "https://community.pokemon.com/en-us/categories/tcg-live-news-announcements",
+      "content_digest": "db5336a0011bd1a0a4dcf6a1436d13b188fa2d4d9d3699dfb9bcfde81125780a",
+      "edited_at": "2025-05-07T21:29:09+00:00",
+      "event_kind": "expansion",
+      "excerpt": "Thursday, January 25th, 2024 - 10:00 AM PDT (17:00 UTC)",
+      "excerpt_sha256": "6aa50cedc48838bffaa07b7f93e8d7a9aae02b8c3f52a307180b15633968a02e",
+      "expansion": "Scarlet & Violet—Paldean Fates",
+      "fetched_url": "https://community.pokemon.com/en-us/discussion/8969/scarlet-violet-paldean-fates-release",
+      "human_reviewed": false,
+      "metadata_fingerprint": "39ae6000fd52787d5b869ec9b460639ad884f6f6c9c3d12d6efc6e396c6505e6",
+      "observation_id": "e4079cbc3480a4fe692cb6e4368a0f84b819b6366876e807b517e6d42ab0fcd6",
+      "origin_excerpt_sha256": "89548514389a8262e12529620bc96e30f334defcb4233a490feff8d7ad9e91bc",
+      "origin_observation_id": "bc09785e436e123d53f6182ec97b6c23bae4a3e30b71fb225a025c30d875bbd8",
+      "parser_version": "live-release-2",
+      "projection_policy": "historical-ledger-minimal-1",
+      "provisional_identity": "ptcg:ptcgl:expansion:e47c52536fc9fd804365edf9",
+      "published_at": "2024-01-18T19:19:02+00:00",
+      "raw_edit_label": "Edited May 7, 2025 9:29PM by TPCi_GarbageKing.",
+      "redirect_chain": [
+        "https://community.pokemon.com/en-us/discussion/8969/scarlet-violet-paldean-fates-release"
+      ],
+      "retrieved_at": "2026-09-18T19:46:00.940110Z",
+      "role_markers": [
+        "Administrator",
+        "Rank-Admin",
+        "Role_Administrator"
+      ],
+      "rotation_binding_excerpt": "",
+      "schema_version": 1,
+      "source_adapter_version": "pokemon-html-1",
+      "source_id": "8969",
+      "source_tier": "B",
+      "state": "INVALID_LOCAL_TIME",
+      "time": {
+        "calculated_utc": null,
+        "date": "2024-01-25",
+        "explicit_utc": "17:00",
+        "local": null,
+        "raw_local": "Thursday, January 25th, 2024 - 10:00 AM PDT (17:00 UTC)",
+        "raw_zone": "PDT",
+        "state": "INVALID_LOCAL_TIME",
+        "tzdb_version": "tzdata:2026.3"
+      },
+      "title": "Scarlet & Violet— Paldean Fates Release",
+      "tzdb_version": "tzdata:2026.3",
+      "verification_method": "MACHINE_POLICY"
+    },
+    {
+      "api_status": "NOT_USED",
+      "author_id": "219",
+      "author_name": "TPCi_CursedSoup",
+      "authority": "PASS",
+      "authority_policy_version": "pokemon-live-na-admin-1",
+      "bound_rotation_years": [],
+      "canonical_url": "https://community.pokemon.com/en-us/discussion/9413/version-1-11-0-patch-notes",
+      "category": "https://community.pokemon.com/en-us/categories/tcg-live-news-announcements",
+      "content_digest": "5c7cce83a380dae3e3a3dca6ac8ab3aaaeb04fc2d34e32685e5b850b4c5437a9",
+      "edited_at": null,
+      "event_kind": "NOT_EXPANSION_EVENT",
+      "excerpt": "",
+      "excerpt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "expansion": null,
+      "fetched_url": "https://community.pokemon.com/en-us/discussion/9413/version-1-11-0-patch-notes",
+      "human_reviewed": false,
+      "metadata_fingerprint": "063637d2c9dbb9e212320138d4977eb8e05552a33b9a1118ac28b4ace4c986e2",
+      "observation_id": "f93c49649a46f5152bc694b3d889dcfc48c54f06e24333413971576f29d261ce",
+      "origin_excerpt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "origin_observation_id": "b4f9df07faaf801c4e6317b5178ef394f7c0caaed6863ec0d416941fcab5be71",
+      "parser_version": "live-release-2",
+      "projection_policy": "historical-ledger-minimal-1",
+      "provisional_identity": null,
+      "published_at": "2024-02-17T00:12:14+00:00",
+      "raw_edit_label": "Edited May 7, 2025 9:29PM by TPCi_GarbageKing.",
+      "redirect_chain": [
+        "https://community.pokemon.com/en-us/discussion/9413/version-1-11-0-patch-notes"
+      ],
+      "retrieved_at": "2026-09-18T19:45:58.847127Z",
+      "role_markers": [
+        "Administrator",
+        "Rank-Admin",
+        "Role_Administrator"
+      ],
+      "rotation_binding_excerpt": "",
+      "schema_version": 1,
+      "source_adapter_version": "pokemon-html-1",
+      "source_id": "9413",
+      "source_tier": "B",
+      "state": "NOT_EXPANSION_EVENT",
+      "time": null,
+      "title": "Version 1.11.0 - Patch Notes",
+      "tzdb_version": "tzdata:2026.3",
+      "verification_method": "MACHINE_POLICY"
+    },
+    {
+      "api_status": "NOT_USED",
+      "author_id": "219",
+      "author_name": "TPCi_CursedSoup",
+      "authority": "PASS",
+      "authority_policy_version": "pokemon-live-na-admin-1",
+      "bound_rotation_years": [],
+      "canonical_url": "https://community.pokemon.com/en-us/discussion/13239/letter-to-the-community-november-5-2024",
+      "category": "https://community.pokemon.com/en-us/categories/tcg-live-news-announcements",
+      "content_digest": "89ace85fc8e141e0f7b1a52b5a6159b87512e60ce434b8d85a50bfa6451ce35f",
+      "edited_at": null,
+      "event_kind": "EVENT_AMBIGUOUS",
+      "excerpt": "Thursday, November 7",
+      "excerpt_sha256": "fc6f0823e984a4239811c304ea45d250fa025bc84593f2d13a26581044f0736f",
+      "expansion": null,
+      "fetched_url": "https://community.pokemon.com/en-us/discussion/13239/letter-to-the-community-november-5-2024",
+      "human_reviewed": false,
+      "metadata_fingerprint": "aefdf729189af169112708b0509811ae3df652fa8b8ffe3406bab3fdd20a78c4",
+      "observation_id": "c730a92064a23e17c91a307da09903c33764cc4bb9a71ecfcc15d7b47e0ef473",
+      "origin_excerpt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "origin_observation_id": "b8a42744333cff630d285102d3e5a28dffa855aca0d0baee1dfb6ced4e637b6d",
+      "parser_version": "live-release-2",
+      "projection_policy": "historical-ledger-minimal-1",
+      "provisional_identity": null,
+      "published_at": "2024-09-17T18:01:59+00:00",
+      "raw_edit_label": "Edited May 7, 2025 9:29PM by TPCi_GarbageKing.",
+      "redirect_chain": [
+        "https://community.pokemon.com/en-us/discussion/13239/letter-to-the-community-november-5-2024"
+      ],
+      "retrieved_at": "2026-09-18T19:45:54.880757Z",
+      "role_markers": [
+        "Administrator",
+        "Rank-Admin",
+        "Role_Administrator"
+      ],
+      "rotation_binding_excerpt": "",
+      "schema_version": 1,
+      "source_adapter_version": "pokemon-html-1",
+      "source_id": "13239",
+      "source_tier": "B",
+      "state": "EVENT_AMBIGUOUS",
+      "time": null,
+      "title": "Letter to the Community - November 5, 2024",
+      "tzdb_version": "tzdata:2026.3",
+      "verification_method": "MACHINE_POLICY"
+    },
+    {
+      "api_status": "NOT_USED",
+      "author_id": "219",
+      "author_name": "TPCi_CursedSoup",
+      "authority": "PASS",
+      "authority_policy_version": "pokemon-live-na-admin-1",
+      "bound_rotation_years": [],
+      "canonical_url": "https://community.pokemon.com/en-us/discussion/13601/version-1-19-0-patch-notes",
+      "category": "https://community.pokemon.com/en-us/categories/tcg-live-news-announcements",
+      "content_digest": "7420a1a51694348f7318c3b627bbb47a6fd3a9887cf9bbd060a9af19fdbc8cf3",
+      "edited_at": null,
+      "event_kind": "NOT_EXPANSION_EVENT",
+      "excerpt": "",
+      "excerpt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "expansion": null,
+      "fetched_url": "https://community.pokemon.com/en-us/discussion/13601/version-1-19-0-patch-notes",
+      "human_reviewed": false,
+      "metadata_fingerprint": "b887b89a1325420acc16a8ece4ecb5edf3139160f123ca50e18cca287ce468b7",
+      "observation_id": "3bd41d67ab4a3cf796c5bca2290e8785a999bed16a76f2e95bc9b998d886d2df",
+      "origin_excerpt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "origin_observation_id": "9484a33aaf29600f36d1169678972537f95b51989fd9cf2991bb7add6b36348f",
+      "parser_version": "live-release-2",
+      "projection_policy": "historical-ledger-minimal-1",
+      "provisional_identity": null,
+      "published_at": "2024-10-09T21:56:22+00:00",
+      "raw_edit_label": "Edited May 7, 2025 9:29PM by TPCi_GarbageKing.",
+      "redirect_chain": [
+        "https://community.pokemon.com/en-us/discussion/13601/version-1-19-0-patch-notes"
+      ],
+      "retrieved_at": "2026-09-18T19:45:52.869462Z",
+      "role_markers": [
+        "Administrator",
+        "Rank-Admin",
+        "Role_Administrator"
+      ],
+      "rotation_binding_excerpt": "",
+      "schema_version": 1,
+      "source_adapter_version": "pokemon-html-1",
+      "source_id": "13601",
+      "source_tier": "B",
+      "state": "NOT_EXPANSION_EVENT",
+      "time": null,
+      "title": "Version 1.19.0 - Patch Notes",
+      "tzdb_version": "tzdata:2026.3",
+      "verification_method": "MACHINE_POLICY"
+    },
+    {
+      "api_status": "NOT_USED",
+      "author_id": "219",
+      "author_name": "TPCi_CursedSoup",
+      "authority": "PASS",
+      "authority_policy_version": "pokemon-live-na-admin-1",
+      "bound_rotation_years": [],
+      "canonical_url": "https://community.pokemon.com/en-us/discussion/13604/letter-to-the-community-december-3-2024",
+      "category": "https://community.pokemon.com/en-us/categories/tcg-live-news-announcements",
+      "content_digest": "654a6af4c12a1979100de395c03d760eb3211d365e25a34ae848618a2c033c4a",
+      "edited_at": null,
+      "event_kind": "EVENT_AMBIGUOUS",
+      "excerpt": "when the expansion officially launches in PTCGL on January 16th, 2025.",
+      "excerpt_sha256": "d5084afdc55384467d5ee05ee03c251ef14db69781b7b9797b5848f180a74d62",
+      "expansion": null,
+      "fetched_url": "https://community.pokemon.com/en-us/discussion/13604/letter-to-the-community-december-3-2024",
+      "human_reviewed": false,
+      "metadata_fingerprint": "e38dc067b03b6e97835a2db51ee981afb39883b361c5452243da55ad480ba7b6",
+      "observation_id": "56f830692a9ce2f4b8bb51ac1f3802d0be382149afa82fef6b8e37fa86528ccd",
+      "origin_excerpt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "origin_observation_id": "3a11d926d6784a285e5492c0ffe3ce3cea3c3c78917aec35ebf442f43f189342",
+      "parser_version": "live-release-2",
+      "projection_policy": "historical-ledger-minimal-1",
+      "provisional_identity": null,
+      "published_at": "2024-10-09T22:11:30+00:00",
+      "raw_edit_label": "Edited May 7, 2025 9:29PM by TPCi_GarbageKing.",
+      "redirect_chain": [
+        "https://community.pokemon.com/en-us/discussion/13604/letter-to-the-community-december-3-2024"
+      ],
+      "retrieved_at": "2026-09-18T19:45:51.038479Z",
+      "role_markers": [
+        "Administrator",
+        "Rank-Admin",
+        "Role_Administrator"
+      ],
+      "rotation_binding_excerpt": "",
+      "schema_version": 1,
+      "source_adapter_version": "pokemon-html-1",
+      "source_id": "13604",
+      "source_tier": "B",
+      "state": "EVENT_AMBIGUOUS",
+      "time": null,
+      "title": "Letter to the Community - December 3, 2024",
+      "tzdb_version": "tzdata:2026.3",
+      "verification_method": "MACHINE_POLICY"
+    },
+    {
+      "api_status": "NOT_USED",
+      "author_id": "219",
+      "author_name": "TPCi_CursedSoup",
+      "authority": "PASS",
+      "authority_policy_version": "pokemon-live-na-admin-1",
+      "bound_rotation_years": [],
+      "canonical_url": "https://community.pokemon.com/en-us/discussion/13952/version-1-20-0-patch-notes",
+      "category": "https://community.pokemon.com/en-us/categories/tcg-live-news-announcements",
+      "content_digest": "859fb73e22e8158e1594b01f524831e219852c129e09ee52fef2c9d43ccd8614",
+      "edited_at": null,
+      "event_kind": "NOT_EXPANSION_EVENT",
+      "excerpt": "November 5, 2024 … 8 AM PT(15:00 UTC)",
+      "excerpt_sha256": "28d5b681e34c65bd399e0bb870ccbfb00300d46c7fa0de119b7263a88087ab8b",
+      "expansion": null,
+      "fetched_url": "https://community.pokemon.com/en-us/discussion/13952/version-1-20-0-patch-notes",
+      "human_reviewed": false,
+      "metadata_fingerprint": "84bc4fd4e2db5f3147b2f28511f53b3502dac203a33cb1b46fd975602eea156e",
+      "observation_id": "06cfb6153442a3dd0efbe1db61e82f407f2658306a38a16234488436bdd0b5d3",
+      "origin_excerpt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "origin_observation_id": "43bb4d6796bf1a6df3fb0cfcc9e66b29065c3f05d5d5aaad533a8e349ef27825",
+      "parser_version": "live-release-2",
+      "projection_policy": "historical-ledger-minimal-1",
+      "provisional_identity": null,
+      "published_at": "2024-10-30T23:35:57+00:00",
+      "raw_edit_label": "Edited May 7, 2025 9:29PM by TPCi_GarbageKing.",
+      "redirect_chain": [
+        "https://community.pokemon.com/en-us/discussion/13952/version-1-20-0-patch-notes"
+      ],
+      "retrieved_at": "2026-09-18T19:45:48.858591Z",
+      "role_markers": [
+        "Administrator",
+        "Rank-Admin",
+        "Role_Administrator"
+      ],
+      "rotation_binding_excerpt": "",
+      "schema_version": 1,
+      "source_adapter_version": "pokemon-html-1",
+      "source_id": "13952",
+      "source_tier": "B",
+      "state": "NOT_EXPANSION_EVENT",
+      "time": null,
+      "title": "Version 1.20.0 - Patch Notes",
+      "tzdb_version": "tzdata:2026.3",
+      "verification_method": "MACHINE_POLICY"
+    },
+    {
+      "api_status": "MATCHED",
+      "author_id": "219",
+      "author_name": "TPCi_CursedSoup",
+      "authority": "PASS",
+      "authority_policy_version": "pokemon-live-na-admin-1",
+      "bound_rotation_years": [],
+      "canonical_url": "https://community.pokemon.com/en-us/discussion/13953/scarlet-violet-surging-sparks-release",
+      "category": "https://community.pokemon.com/en-us/categories/tcg-live-news-announcements",
+      "content_digest": "a1bca4e8ab8b6abf97d6eb02473b35f2d50b395cf2cb01a3d2121ca6d771765f",
+      "edited_at": "2025-05-07T21:29:10+00:00",
+      "event_kind": "expansion",
+      "excerpt": "Thursday, November 7th, 2024 - 10:00 AM PT (17:00 UTC)",
+      "excerpt_sha256": "1738efb0bdaac8c0bafd5c16f61adc508f490c410c806bbaadf87537f055047a",
+      "expansion": "Scarlet & Violet—Surging Sparks",
+      "fetched_url": "https://community.pokemon.com/en-us/discussion/13953/scarlet-violet-surging-sparks-release",
+      "human_reviewed": false,
+      "metadata_fingerprint": "b6fc654932cdfec7393f1c42ad3e4233ca81248bb2154542396246bca0f92e54",
+      "observation_id": "78964ea277cdabb04fe9ade58cca76ddbfcf6a043efe3754a1c8a994cc467f64",
+      "origin_excerpt_sha256": "3e3552ac721b6359c5f57a2ffb3061626e0521f3c5cb21f49773653ff944ed1e",
+      "origin_observation_id": "43dfffe1ef2e6a57709436ade9783864741be7e2147cb35e5bb6be79ceed706d",
+      "parser_version": "live-release-2",
+      "projection_policy": "historical-ledger-minimal-1",
+      "provisional_identity": "ptcg:ptcgl:expansion:2b0295b5c72a9292bb7b2985",
+      "published_at": "2024-10-30T23:36:28+00:00",
+      "raw_edit_label": "Edited May 7, 2025 9:29PM by TPCi_GarbageKing.",
+      "redirect_chain": [
+        "https://community.pokemon.com/en-us/discussion/13953/scarlet-violet-surging-sparks-release"
+      ],
+      "retrieved_at": "2026-09-18T19:45:47.186396Z",
+      "role_markers": [
+        "Administrator",
+        "Rank-Admin",
+        "Role_Administrator"
+      ],
+      "rotation_binding_excerpt": "",
+      "schema_version": 1,
+      "source_adapter_version": "pokemon-html-1",
+      "source_id": "13953",
+      "source_tier": "B",
+      "state": "OFFICIAL_CONFLICT",
+      "time": {
+        "calculated_utc": null,
+        "date": "2024-11-07",
+        "explicit_utc": "17:00",
+        "local": null,
+        "raw_local": "Thursday, November 7th, 2024 - 10:00 AM PT (17:00 UTC)",
+        "raw_zone": "PT",
+        "state": "OFFICIAL_CONFLICT",
+        "tzdb_version": "tzdata:2026.3"
+      },
+      "title": "Scarlet & Violet— Surging Sparks Release",
+      "tzdb_version": "tzdata:2026.3",
+      "verification_method": "MACHINE_POLICY"
+    },
+    {
+      "api_status": "NOT_USED",
+      "author_id": "219",
+      "author_name": "TPCi_CursedSoup",
+      "authority": "PASS",
+      "authority_policy_version": "pokemon-live-na-admin-1",
+      "bound_rotation_years": [],
+      "canonical_url": "https://community.pokemon.com/en-us/discussion/14755/version-1-21-0-patch-notes",
+      "category": "https://community.pokemon.com/en-us/categories/tcg-live-news-announcements",
+      "content_digest": "ae50c93c774d02a298c433c79ae8f1a9b50e5e943a134117013ebf1fe2a0123a",
+      "edited_at": null,
+      "event_kind": "NOT_EXPANSION_EVENT",
+      "excerpt": "",
+      "excerpt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "expansion": null,
+      "fetched_url": "https://community.pokemon.com/en-us/discussion/14755/version-1-21-0-patch-notes",
+      "human_reviewed": false,
+      "metadata_fingerprint": "e444a455282d733f4421dfef790755545d6b54e6846f0fba550d74bb94b33c3f",
+      "observation_id": "9bc4d913ed38b8138b578cde0fd22fe67dfd20bb40ee0a1924c0b4e56d45f548",
+      "origin_excerpt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "origin_observation_id": "9fc1500f0245ab4d13f11e1970a83b720d170d453a6044e3225c538d7e27e5cf",
+      "parser_version": "live-release-2",
+      "projection_policy": "historical-ledger-minimal-1",
+      "provisional_identity": null,
+      "published_at": "2024-12-03T18:29:51+00:00",
+      "raw_edit_label": "Edited May 7, 2025 9:29PM by TPCi_GarbageKing.",
+      "redirect_chain": [
+        "https://community.pokemon.com/en-us/discussion/14755/version-1-21-0-patch-notes"
+      ],
+      "retrieved_at": "2026-09-18T19:45:44.621056Z",
+      "role_markers": [
+        "Administrator",
+        "Rank-Admin",
+        "Role_Administrator"
+      ],
+      "rotation_binding_excerpt": "",
+      "schema_version": 1,
+      "source_adapter_version": "pokemon-html-1",
+      "source_id": "14755",
+      "source_tier": "B",
+      "state": "NOT_EXPANSION_EVENT",
+      "time": null,
+      "title": "Version 1.21.0 - Patch Notes",
+      "tzdb_version": "tzdata:2026.3",
+      "verification_method": "MACHINE_POLICY"
+    },
+    {
+      "api_status": "NOT_USED",
+      "author_id": "219",
+      "author_name": "TPCi_CursedSoup",
+      "authority": "PASS",
+      "authority_policy_version": "pokemon-live-na-admin-1",
+      "bound_rotation_years": [],
+      "canonical_url": "https://community.pokemon.com/en-us/discussion/15413/version-1-22-0-patch-notes",
+      "category": "https://community.pokemon.com/en-us/categories/tcg-live-news-announcements",
+      "content_digest": "04d107bfc73ed2bd3e9c5de0cb09b46291e06f96519658d98d886dbbf8ae5c70",
+      "edited_at": null,
+      "event_kind": "NOT_EXPANSION_EVENT",
+      "excerpt": "January 14, 2025 … 8 AM PT(15:00 UTC)",
+      "excerpt_sha256": "87c44d788376304f27423fb682cc36772f9be7bb86f3dd93c79d6e9da0dbfbd7",
+      "expansion": null,
+      "fetched_url": "https://community.pokemon.com/en-us/discussion/15413/version-1-22-0-patch-notes",
+      "human_reviewed": false,
+      "metadata_fingerprint": "53391204abe755abbe074bdf6467bb17e32b819eb1169c7eca11ee64ca9d7dda",
+      "observation_id": "99e9a3ca5ef9a6a172dbe73b44e88c2b900cd2e40f4cf11701d22ff086fe905c",
+      "origin_excerpt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "origin_observation_id": "f048c9a78cfe7f7d156d17764109e4c916905ea6686d81e6b2ffab78d4b01246",
+      "parser_version": "live-release-2",
+      "projection_policy": "historical-ledger-minimal-1",
+      "provisional_identity": null,
+      "published_at": "2025-01-09T18:55:17+00:00",
+      "raw_edit_label": "Edited May 7, 2025 9:29PM by TPCi_GarbageKing.",
+      "redirect_chain": [
+        "https://community.pokemon.com/en-us/discussion/15413/version-1-22-0-patch-notes"
+      ],
+      "retrieved_at": "2026-09-18T19:45:42.531628Z",
+      "role_markers": [
+        "Administrator",
+        "Rank-Admin",
+        "Role_Administrator"
+      ],
+      "rotation_binding_excerpt": "",
+      "schema_version": 1,
+      "source_adapter_version": "pokemon-html-1",
+      "source_id": "15413",
+      "source_tier": "B",
+      "state": "NOT_EXPANSION_EVENT",
+      "time": null,
+      "title": "Version 1.22.0 - Patch Notes",
+      "tzdb_version": "tzdata:2026.3",
+      "verification_method": "MACHINE_POLICY"
+    },
+    {
+      "api_status": "MATCHED",
+      "author_id": "219",
+      "author_name": "TPCi_CursedSoup",
+      "authority": "PASS",
+      "authority_policy_version": "pokemon-live-na-admin-1",
+      "bound_rotation_years": [],
+      "canonical_url": "https://community.pokemon.com/en-us/discussion/15414/scarlet-violet-prismatic-evolutions-release",
+      "category": "https://community.pokemon.com/en-us/categories/tcg-live-news-announcements",
+      "content_digest": "830c84692c88dbf8fd16b1437c1c4eee51682fc2d391e7af250f61b018de8c33",
+      "edited_at": "2025-05-07T21:29:10+00:00",
+      "event_kind": "expansion",
+      "excerpt": "Thursday, January 16th, 2024 - 10:00 AM PT (17:00 UTC)",
+      "excerpt_sha256": "0d9536a6fd02b80ad2822dbe958e1780700e10a4ec56849c19b9837cfc129b46",
+      "expansion": "Scarlet & Violet—Prismatic Evolutions",
+      "fetched_url": "https://community.pokemon.com/en-us/discussion/15414/scarlet-violet-prismatic-evolutions-release",
+      "human_reviewed": false,
+      "metadata_fingerprint": "23b2478e831a2f203bdec8dd7c2ec5369f595875bc0c0a0502c1dd651b3c3e48",
+      "observation_id": "fb251e1498b11c67631503940f100bc89590d85e11f12758e63c2049484ae4b9",
+      "origin_excerpt_sha256": "cee8319706a1e490f14a3b8d00ccba97ae3640f0333cce8aef698c3073272eec",
+      "origin_observation_id": "d8a6596770330f5dc2b619d7aa7234ab61dab736ec37326d857729da28b3c76c",
+      "parser_version": "live-release-2",
+      "projection_policy": "historical-ledger-minimal-1",
+      "provisional_identity": "ptcg:ptcgl:expansion:fcc5bdaeab486e5745f5d498",
+      "published_at": "2025-01-09T18:55:58+00:00",
+      "raw_edit_label": "Edited May 7, 2025 9:29PM by TPCi_GarbageKing.",
+      "redirect_chain": [
+        "https://community.pokemon.com/en-us/discussion/15414/scarlet-violet-prismatic-evolutions-release"
+      ],
+      "retrieved_at": "2026-09-18T19:45:40.516393Z",
+      "role_markers": [
+        "Administrator",
+        "Rank-Admin",
+        "Role_Administrator"
+      ],
+      "rotation_binding_excerpt": "",
+      "schema_version": 1,
+      "source_adapter_version": "pokemon-html-1",
+      "source_id": "15414",
+      "source_tier": "B",
+      "state": "OFFICIAL_CONFLICT",
+      "time": {
+        "calculated_utc": null,
+        "date": "2024-01-16",
+        "explicit_utc": null,
+        "local": null,
+        "raw_local": "Thursday, January 16th, 2024 - 10:00 AM PT (17:00 UTC)",
+        "raw_zone": null,
+        "state": "OFFICIAL_CONFLICT",
+        "tzdb_version": null
+      },
+      "title": "Scarlet & Violet— Prismatic Evolutions Release",
+      "tzdb_version": "tzdata:2026.3",
+      "verification_method": "MACHINE_POLICY"
+    },
+    {
+      "api_status": "NOT_USED",
+      "author_id": "219",
+      "author_name": "TPCi_CursedSoup",
+      "authority": "PASS",
+      "authority_policy_version": "pokemon-live-na-admin-1",
+      "bound_rotation_years": [],
+      "canonical_url": "https://community.pokemon.com/en-us/discussion/15698/eevee-s-prismatic-parade-event-in-pokemon-trading-card-game-live",
+      "category": "https://community.pokemon.com/en-us/categories/tcg-live-news-announcements",
+      "content_digest": "9b73c2bebf351702f4218cd6b2550acb405399e103cf4ba84dc39afa8f6faeb6",
+      "edited_at": null,
+      "event_kind": "EVENT_AMBIGUOUS",
+      "excerpt": "Points will be tracked between January 16, 2025, at 10:00 a.m. PST and March 27, 2025, at 10:00 a.m. PDT.",
+      "excerpt_sha256": "bcdce703f46a90600e628cd2a097823acadff5308697b89422ba9f6d1cf1cee6",
+      "expansion": null,
+      "fetched_url": "https://community.pokemon.com/en-us/discussion/15698/eevee-s-prismatic-parade-event-in-pokemon-trading-card-game-live",
+      "human_reviewed": false,
+      "metadata_fingerprint": "0fc945a0855a0aa0149b4b3d5095bb8c6444c000693d658e9af941278701a3ee",
+      "observation_id": "c02482c4cf4eb4e4c019736093108aafff23eb8f458763e961257aec66c3c152",
+      "origin_excerpt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "origin_observation_id": "44cbfbbacf3f4f2fb1753386d91972359135baa9998a393cdef616b64e339a4b",
+      "parser_version": "live-release-2",
+      "projection_policy": "historical-ledger-minimal-1",
+      "provisional_identity": null,
+      "published_at": "2025-01-23T22:22:39+00:00",
+      "raw_edit_label": "Edited May 7, 2025 9:29PM by TPCi_GarbageKing.",
+      "redirect_chain": [
+        "https://community.pokemon.com/en-us/discussion/15698/eevee-s-prismatic-parade-event-in-pokemon-trading-card-game-live"
+      ],
+      "retrieved_at": "2026-09-18T19:45:38.554884Z",
+      "role_markers": [
+        "Administrator",
+        "Rank-Admin",
+        "Role_Administrator"
+      ],
+      "rotation_binding_excerpt": "",
+      "schema_version": 1,
+      "source_adapter_version": "pokemon-html-1",
+      "source_id": "15698",
+      "source_tier": "B",
+      "state": "EVENT_AMBIGUOUS",
+      "time": null,
+      "title": "Eevee’s Prismatic Parade Event in Pokémon Trading Card Game Live!",
+      "tzdb_version": "tzdata:2026.3",
+      "verification_method": "MACHINE_POLICY"
+    },
+    {
+      "api_status": "NOT_USED",
+      "author_id": "62799",
+      "author_name": "TPCi_GlowingMoon",
+      "authority": "PASS",
+      "authority_policy_version": "pokemon-live-na-admin-1",
+      "bound_rotation_years": [],
+      "canonical_url": "https://community.pokemon.com/en-us/discussion/16496/version-1-23-0-patch-notes",
+      "category": "https://community.pokemon.com/en-us/categories/tcg-live-news-announcements",
+      "content_digest": "e02ab1ed68f488c77bd83c47c5177611da26f5224bf5eeca844de3f480f8cbd6",
+      "edited_at": null,
+      "event_kind": "NOT_EXPANSION_EVENT",
+      "excerpt": "",
+      "excerpt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "expansion": null,
+      "fetched_url": "https://community.pokemon.com/en-us/discussion/16496/version-1-23-0-patch-notes",
+      "human_reviewed": false,
+      "metadata_fingerprint": "ceb12d3cc3fad28a7560614ab86882a5e555b7c364ffd55c0711d701437384ca",
+      "observation_id": "cde6e83c38719016a90ae05593841fcca64579d3926597a4ffc19d1ae3112f0b",
+      "origin_excerpt_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "origin_observation_id": "efae850b8f8463151ab366a8786c9805be15cd3bc76046bc3c04f70937224a6e",
+      "parser_version": "live-release-2",
+      "projection_policy": "historical-ledger-minimal-1",
+      "provisional_identity": null,
+      "published_at": "2025-02-13T23:33:26+00:00",
+      "raw_edit_label": "Edited May 7, 2025 9:29PM by TPCi_GarbageKing.",
+      "redirect_chain": [
+        "https://community.pokemon.com/en-us/discussion/16496/version-1-23-0-patch-notes"
+      ],
+      "retrieved_at": "2026-09-18T19:45:36.682673Z",
+      "role_markers": [
+        "Administrator",
+        "Rank-Admin",
+        "Role_Administrator"
+      ],
+      "rotation_binding_excerpt": "",
+      "schema_version": 1,
+      "source_adapter_version": "pokemon-html-1",
+      "source_id": "16496",
+      "source_tier": "B",
+      "state": "NOT_EXPANSION_EVENT",
+      "time": null,
+      "title": "Version 1.23.0 - Patch Notes",
+      "tzdb_version": "tzdata:2026.3",
+      "verification_method": "MACHINE_POLICY"
     }
   ],
   "pre_scope": [
@@ -5031,8 +5786,636 @@
       "revision_kind": "PARSER_REPROCESSING_SAME_CAPTURE",
       "source_id": "26004",
       "url": "https://community.pokemon.com/en-us/discussion/26004/pokemon-tcg-30th-celebration-expansion-release"
+    },
+    {
+      "api_status": "NOT_USED",
+      "edited_at": null,
+      "official_correction": false,
+      "original_observation_id": "179cde69bdafb4ab8eae91140cf419bc988b8b8e564d421ea5c72cad92f23973",
+      "retrieved_at": "2026-09-18T19:46:04.856002Z",
+      "revision_kind": "D2_R1_RESEARCH_OR_API_CORROBORATION",
+      "source_content_digest": "439a707347e8ac087f036d54a4724a6d1ed1b8fd3824b568a49544de0a016b6d",
+      "source_id": "8715",
+      "url": "https://community.pokemon.com/en-us/discussion/8715/letter-to-the-community-dec-29-2023"
+    },
+    {
+      "api_status": "NOT_USED",
+      "edited_at": null,
+      "official_correction": false,
+      "original_observation_id": "ce19ad1f2b769ebab921271d56e2ec9f56736da8e140a97297a16c90d7a9a0b2",
+      "retrieved_at": "2026-09-18T19:46:02.854296Z",
+      "revision_kind": "D2_R1_RESEARCH_OR_API_CORROBORATION",
+      "source_content_digest": "9fc578b6bc940075fe249d32f3aab1313691987abc4277d3f9136962ce31d0bd",
+      "source_id": "8962",
+      "url": "https://community.pokemon.com/en-us/discussion/8962/version-1-10-0-patch-notes"
+    },
+    {
+      "api_status": "MATCHED",
+      "edited_at": "2025-05-07T21:29:09+00:00",
+      "official_correction": false,
+      "original_observation_id": "bc09785e436e123d53f6182ec97b6c23bae4a3e30b71fb225a025c30d875bbd8",
+      "retrieved_at": "2026-09-18T19:46:00.940110Z",
+      "revision_kind": "D2_R1_RESEARCH_OR_API_CORROBORATION",
+      "source_content_digest": "db5336a0011bd1a0a4dcf6a1436d13b188fa2d4d9d3699dfb9bcfde81125780a",
+      "source_id": "8969",
+      "url": "https://community.pokemon.com/en-us/discussion/8969/scarlet-violet-paldean-fates-release"
+    },
+    {
+      "api_status": "NOT_USED",
+      "edited_at": null,
+      "official_correction": false,
+      "original_observation_id": "b4f9df07faaf801c4e6317b5178ef394f7c0caaed6863ec0d416941fcab5be71",
+      "retrieved_at": "2026-09-18T19:45:58.847127Z",
+      "revision_kind": "D2_R1_RESEARCH_OR_API_CORROBORATION",
+      "source_content_digest": "5c7cce83a380dae3e3a3dca6ac8ab3aaaeb04fc2d34e32685e5b850b4c5437a9",
+      "source_id": "9413",
+      "url": "https://community.pokemon.com/en-us/discussion/9413/version-1-11-0-patch-notes"
+    },
+    {
+      "api_status": "NOT_USED",
+      "edited_at": null,
+      "official_correction": false,
+      "original_observation_id": "2200aac02bfe25ed5b2b3d1fc6ac30d742b911a851e5862db39bf254603355fc",
+      "retrieved_at": "2026-09-18T19:45:56.885553Z",
+      "revision_kind": "D2_R1_RESEARCH_OR_API_CORROBORATION",
+      "source_content_digest": "d376c8fc5d8795fa48bfc4ad344b998bf8b327544d4430a48ad23d68a5d18858",
+      "source_id": "9496",
+      "url": "https://community.pokemon.com/en-us/discussion/9496/letter-to-the-community-feb-20-2024"
+    },
+    {
+      "api_status": "NOT_USED",
+      "edited_at": null,
+      "official_correction": false,
+      "original_observation_id": "b8a42744333cff630d285102d3e5a28dffa855aca0d0baee1dfb6ced4e637b6d",
+      "retrieved_at": "2026-09-18T19:45:54.880757Z",
+      "revision_kind": "D2_R1_RESEARCH_OR_API_CORROBORATION",
+      "source_content_digest": "89ace85fc8e141e0f7b1a52b5a6159b87512e60ce434b8d85a50bfa6451ce35f",
+      "source_id": "13239",
+      "url": "https://community.pokemon.com/en-us/discussion/13239/letter-to-the-community-november-5-2024"
+    },
+    {
+      "api_status": "NOT_USED",
+      "edited_at": null,
+      "official_correction": false,
+      "original_observation_id": "9484a33aaf29600f36d1169678972537f95b51989fd9cf2991bb7add6b36348f",
+      "retrieved_at": "2026-09-18T19:45:52.869462Z",
+      "revision_kind": "D2_R1_RESEARCH_OR_API_CORROBORATION",
+      "source_content_digest": "7420a1a51694348f7318c3b627bbb47a6fd3a9887cf9bbd060a9af19fdbc8cf3",
+      "source_id": "13601",
+      "url": "https://community.pokemon.com/en-us/discussion/13601/version-1-19-0-patch-notes"
+    },
+    {
+      "api_status": "NOT_USED",
+      "edited_at": null,
+      "official_correction": false,
+      "original_observation_id": "3a11d926d6784a285e5492c0ffe3ce3cea3c3c78917aec35ebf442f43f189342",
+      "retrieved_at": "2026-09-18T19:45:51.038479Z",
+      "revision_kind": "D2_R1_RESEARCH_OR_API_CORROBORATION",
+      "source_content_digest": "654a6af4c12a1979100de395c03d760eb3211d365e25a34ae848618a2c033c4a",
+      "source_id": "13604",
+      "url": "https://community.pokemon.com/en-us/discussion/13604/letter-to-the-community-december-3-2024"
+    },
+    {
+      "api_status": "NOT_USED",
+      "edited_at": null,
+      "official_correction": false,
+      "original_observation_id": "43bb4d6796bf1a6df3fb0cfcc9e66b29065c3f05d5d5aaad533a8e349ef27825",
+      "retrieved_at": "2026-09-18T19:45:48.858591Z",
+      "revision_kind": "D2_R1_RESEARCH_OR_API_CORROBORATION",
+      "source_content_digest": "859fb73e22e8158e1594b01f524831e219852c129e09ee52fef2c9d43ccd8614",
+      "source_id": "13952",
+      "url": "https://community.pokemon.com/en-us/discussion/13952/version-1-20-0-patch-notes"
+    },
+    {
+      "api_status": "MATCHED",
+      "edited_at": "2025-05-07T21:29:10+00:00",
+      "official_correction": false,
+      "original_observation_id": "43dfffe1ef2e6a57709436ade9783864741be7e2147cb35e5bb6be79ceed706d",
+      "retrieved_at": "2026-09-18T19:45:47.186396Z",
+      "revision_kind": "D2_R1_RESEARCH_OR_API_CORROBORATION",
+      "source_content_digest": "a1bca4e8ab8b6abf97d6eb02473b35f2d50b395cf2cb01a3d2121ca6d771765f",
+      "source_id": "13953",
+      "url": "https://community.pokemon.com/en-us/discussion/13953/scarlet-violet-surging-sparks-release"
+    },
+    {
+      "api_status": "NOT_USED",
+      "edited_at": null,
+      "official_correction": false,
+      "original_observation_id": "9fc1500f0245ab4d13f11e1970a83b720d170d453a6044e3225c538d7e27e5cf",
+      "retrieved_at": "2026-09-18T19:45:44.621056Z",
+      "revision_kind": "D2_R1_RESEARCH_OR_API_CORROBORATION",
+      "source_content_digest": "ae50c93c774d02a298c433c79ae8f1a9b50e5e943a134117013ebf1fe2a0123a",
+      "source_id": "14755",
+      "url": "https://community.pokemon.com/en-us/discussion/14755/version-1-21-0-patch-notes"
+    },
+    {
+      "api_status": "NOT_USED",
+      "edited_at": null,
+      "official_correction": false,
+      "original_observation_id": "f048c9a78cfe7f7d156d17764109e4c916905ea6686d81e6b2ffab78d4b01246",
+      "retrieved_at": "2026-09-18T19:45:42.531628Z",
+      "revision_kind": "D2_R1_RESEARCH_OR_API_CORROBORATION",
+      "source_content_digest": "04d107bfc73ed2bd3e9c5de0cb09b46291e06f96519658d98d886dbbf8ae5c70",
+      "source_id": "15413",
+      "url": "https://community.pokemon.com/en-us/discussion/15413/version-1-22-0-patch-notes"
+    },
+    {
+      "api_status": "MATCHED",
+      "edited_at": "2025-05-07T21:29:10+00:00",
+      "official_correction": false,
+      "original_observation_id": "d8a6596770330f5dc2b619d7aa7234ab61dab736ec37326d857729da28b3c76c",
+      "retrieved_at": "2026-09-18T19:45:40.516393Z",
+      "revision_kind": "D2_R1_RESEARCH_OR_API_CORROBORATION",
+      "source_content_digest": "830c84692c88dbf8fd16b1437c1c4eee51682fc2d391e7af250f61b018de8c33",
+      "source_id": "15414",
+      "url": "https://community.pokemon.com/en-us/discussion/15414/scarlet-violet-prismatic-evolutions-release"
+    },
+    {
+      "api_status": "NOT_USED",
+      "edited_at": null,
+      "official_correction": false,
+      "original_observation_id": "44cbfbbacf3f4f2fb1753386d91972359135baa9998a393cdef616b64e339a4b",
+      "retrieved_at": "2026-09-18T19:45:38.554884Z",
+      "revision_kind": "D2_R1_RESEARCH_OR_API_CORROBORATION",
+      "source_content_digest": "9b73c2bebf351702f4218cd6b2550acb405399e103cf4ba84dc39afa8f6faeb6",
+      "source_id": "15698",
+      "url": "https://community.pokemon.com/en-us/discussion/15698/eevee-s-prismatic-parade-event-in-pokemon-trading-card-game-live"
+    },
+    {
+      "api_status": "NOT_USED",
+      "edited_at": null,
+      "official_correction": false,
+      "original_observation_id": "efae850b8f8463151ab366a8786c9805be15cd3bc76046bc3c04f70937224a6e",
+      "retrieved_at": "2026-09-18T19:45:36.682673Z",
+      "revision_kind": "D2_R1_RESEARCH_OR_API_CORROBORATION",
+      "source_content_digest": "e02ab1ed68f488c77bd83c47c5177611da26f5224bf5eeca844de3f480f8cbd6",
+      "source_id": "16496",
+      "url": "https://community.pokemon.com/en-us/discussion/16496/version-1-23-0-patch-notes"
     }
   ],
+  "resolution_research": {
+    "baseline_head": "b57a38ce1657190b71be4eaf47c5d6a5478182cd",
+    "frozen_expansion_starts": {
+      "30C": "2026-09-15T17:00:00Z",
+      "ASC": "2026-01-29T17:00:00Z",
+      "BLK": "2025-07-17T17:00:00Z",
+      "CRI": "2026-05-21T17:00:00Z",
+      "DRI": "2025-05-29T17:00:00Z",
+      "JTG": "2025-03-27T17:00:00Z",
+      "MEG": "2025-09-25T17:00:00Z",
+      "MEW": "2023-09-21T17:00:00Z",
+      "OBF": "2023-08-10T17:00:00Z",
+      "PAL": "2023-06-08T17:00:00Z",
+      "PAR": "2023-11-02T17:00:00Z",
+      "PBL": "2026-07-16T17:00:00Z",
+      "PFL": "2025-11-13T17:00:00Z",
+      "POR": "2026-03-26T17:00:00Z",
+      "SCR": "2024-09-12T17:00:00Z",
+      "SFA": "2024-08-01T17:00:00Z",
+      "SVI": "2023-03-30T17:00:00Z",
+      "TEF": "2024-03-21T17:00:00Z",
+      "TWM": "2024-05-22T17:00:00Z",
+      "WHT": "2025-07-17T17:00:00Z"
+    },
+    "gate": "1.11-D2-R1",
+    "http_receipts": [
+      {
+        "body_sha256": "2fb1643ebb9f0512d1e6e137faedeead569f24bac0b33cb6a16f39e1f6eb5a8f",
+        "retrieved_at": "2026-09-18T19:53:49.639735Z",
+        "status": 200,
+        "url": "https://www.pokemon.com/us/strategy/pokemon-tcg-scarlet-violet-surging-sparks-battle-pass-deck-strategies"
+      },
+      {
+        "body_sha256": "20ec5f6079e30ec6d2c46beca8cfa62f20b919b813a7a1eb8c0664e05171dd2f",
+        "retrieved_at": "2026-09-18T19:50:47.771150Z",
+        "status": 200,
+        "url": "https://community.pokemon.com/api/v2/discussions/15414"
+      },
+      {
+        "body_sha256": "5e15dc0b6f583451831fd05c229d36c609ab452a2f7587d02a5189b0216d3f91",
+        "retrieved_at": "2026-09-18T19:45:44.482936Z",
+        "status": 200,
+        "url": "https://community.pokemon.com/en-us/discussion/14755/version-1-21-0-patch-notes"
+      },
+      {
+        "body_sha256": "b7448359d9cbf76d85145975f1bac402527137fc4c96b7e5879fc28ed7d270f0",
+        "retrieved_at": "2026-09-18T19:45:56.734417Z",
+        "status": 200,
+        "url": "https://community.pokemon.com/en-us/discussion/9496/letter-to-the-community-feb-20-2024"
+      },
+      {
+        "body_sha256": "7c6c7528864d377281318eaf9edd15b7050f60cd418ae63de9f98355eec636db",
+        "retrieved_at": "2026-09-18T19:45:36.514873Z",
+        "status": 200,
+        "url": "https://community.pokemon.com/en-us/discussion/16496/version-1-23-0-patch-notes"
+      },
+      {
+        "body_sha256": "f64ce4634405726476ed09624db2c32453937baa423a55a340883246002be017",
+        "retrieved_at": "2026-09-18T19:45:38.490326Z",
+        "status": 200,
+        "url": "https://community.pokemon.com/en-us/discussion/15698/eevee-s-prismatic-parade-event-in-pokemon-trading-card-game-live"
+      },
+      {
+        "body_sha256": "72ae14c1fe964d5411f5fae7002a2014ea7c606bfb4d95fbd9cd78d34c481123",
+        "retrieved_at": "2026-09-18T19:50:45.813883Z",
+        "status": 200,
+        "url": "https://community.pokemon.com/api/v2/discussions/13953"
+      },
+      {
+        "body_sha256": "f3f9c7b7cf9a0fe2575f97ddfe9c28f80bc38c7c4e6d60a36e46e22e3a634f18",
+        "retrieved_at": "2026-09-18T19:46:02.756179Z",
+        "status": 200,
+        "url": "https://community.pokemon.com/en-us/discussion/8962/version-1-10-0-patch-notes"
+      },
+      {
+        "body_sha256": "8abad63662fbe15f67ae5e47a151b7dae7b4a2cb39e167ecf7f88a7df64b2b3c",
+        "retrieved_at": "2026-09-18T19:50:35.661299Z",
+        "status": 200,
+        "url": "https://www.pokemon.com/us/search/?q=Paldean%20Fates%20Live"
+      },
+      {
+        "body_sha256": "eb06c1557c86003a3fce393aaf1337b59270896f3804545fa266238fcba3ffe9",
+        "retrieved_at": "2026-09-18T19:50:37.640428Z",
+        "status": 200,
+        "url": "https://www.pokemon.com/us/search/?q=Surging%20Sparks%20Live"
+      },
+      {
+        "body_sha256": "aca32a6586aa417fa17ae33755c6965ead1574b66a414bc79362ada196077486",
+        "retrieved_at": "2026-09-18T19:47:44.974264Z",
+        "status": 200,
+        "url": "https://www.pokemon.com/us/pokemon-news/scarlet-violet-surging-sparks-is-now-available-in-pokemon-tcg-live"
+      },
+      {
+        "body_sha256": "e05ca65d1ef9a6df867bc43e910bde47e3b1287211c26ba1124d1ea30eae7fc1",
+        "retrieved_at": "2026-09-18T19:53:47.580486Z",
+        "status": 200,
+        "url": "https://www.pokemon.com/us/strategy/pokemon-tcg-scarlet-violet-paldean-fates-battle-pass-deck-strategies"
+      },
+      {
+        "body_sha256": "8ffed18dfaaeb2628a5b0b0ff1b93e68e37f3082360f7c7c79a9e6ff25fa3f8c",
+        "retrieved_at": "2026-09-18T19:46:04.776479Z",
+        "status": 200,
+        "url": "https://community.pokemon.com/en-us/discussion/8715/letter-to-the-community-dec-29-2023"
+      },
+      {
+        "body_sha256": "9f0ed0324dcd9733b827e7cd7849215b2f1771a2743d9ad81107788caaeebeb7",
+        "retrieved_at": "2026-09-18T19:50:39.629635Z",
+        "status": 200,
+        "url": "https://www.pokemon.com/us/search/?q=Prismatic%20Evolutions%20Live"
+      },
+      {
+        "body_sha256": "8eea408b5d30cdd4e26ebe17560926d7496e6cead7e8b8fcabf31020fccf3861",
+        "retrieved_at": "2026-09-18T19:47:34.948738Z",
+        "status": 200,
+        "url": "https://www.pokemon.com/us/pokemon-tcg/scarlet-violet-paldean-fates"
+      },
+      {
+        "body_sha256": "b7c9ecf298068e16d2e83c151ed7427f15f723e9c619663f574c6732970e470f",
+        "retrieved_at": "2026-09-18T19:45:42.473020Z",
+        "status": 200,
+        "url": "https://community.pokemon.com/en-us/discussion/15413/version-1-22-0-patch-notes"
+      },
+      {
+        "body_sha256": "702b54a576899bc1461e7c71cff03330e926a38f10546d4843ae880e4ecb03d5",
+        "retrieved_at": "2026-09-18T19:47:37.017220Z",
+        "status": 200,
+        "url": "https://www.pokemon.com/us/pokemon-tcg/scarlet-violet-surging-sparks"
+      },
+      {
+        "body_sha256": "85d37d85eba9ad7f7ac51e677ef9a61e10f681dbebd91610cee170916efd141e",
+        "retrieved_at": "2026-09-18T19:47:41.022570Z",
+        "status": 307,
+        "url": "https://www.pokemon.com/us/pokemon-news/scarlet-violet-paldean-fates-is-now-available-in-pokemon-tcg-live"
+      },
+      {
+        "body_sha256": "660dfacfe188f40edaf02075546dbe8c49d929bd46a14aabfac6f19ddbdb3455",
+        "retrieved_at": "2026-09-18T19:47:33.234626Z",
+        "status": 404,
+        "url": "https://www.pokemon.com/robots.txt"
+      },
+      {
+        "body_sha256": "e8c8aae108203e83a7ab1dff06d63083d8381586e8b3ac727c43ace76dc7b87b",
+        "retrieved_at": "2026-09-18T19:50:33.826432Z",
+        "status": 404,
+        "url": "https://www.pokemon.com/robots.txt"
+      },
+      {
+        "body_sha256": "6c06a36b923fe2400c3affcae28ec9c54c04aa150c0d1ad3eb13ee38c856f15e",
+        "retrieved_at": "2026-09-18T19:53:46.368304Z",
+        "status": 404,
+        "url": "https://www.pokemon.com/robots.txt"
+      },
+      {
+        "body_sha256": "4696cb99d914a2cdcdd053d6b34d13694c2106f2918802a75d2f99c4280c0a11",
+        "retrieved_at": "2026-09-18T19:45:52.790302Z",
+        "status": 200,
+        "url": "https://community.pokemon.com/en-us/discussion/13601/version-1-19-0-patch-notes"
+      },
+      {
+        "body_sha256": "992b8c3b48aa45ed2ce32aca7c201b5edad0d1dfcd9c7ba7bb06461181556d80",
+        "retrieved_at": "2026-09-18T19:45:54.789469Z",
+        "status": 200,
+        "url": "https://community.pokemon.com/en-us/discussion/13239/letter-to-the-community-november-5-2024"
+      },
+      {
+        "body_sha256": "217a7e8c76a47810bd06864df5077def5b4c385349aa1f4b34e7a4abca43ad07",
+        "retrieved_at": "2026-09-18T19:45:58.729767Z",
+        "status": 200,
+        "url": "https://community.pokemon.com/en-us/discussion/9413/version-1-11-0-patch-notes"
+      },
+      {
+        "body_sha256": "96c023aea61da3ffdef815d97c2058e80ab136f82c8944ba59a4a59497eab836",
+        "retrieved_at": "2026-09-18T19:45:48.786780Z",
+        "status": 200,
+        "url": "https://community.pokemon.com/en-us/discussion/13952/version-1-20-0-patch-notes"
+      },
+      {
+        "body_sha256": "1f9a9c1daef6fc88c37f2d6847a2cb7eaef051c255aecd25a2007e3443e89204",
+        "retrieved_at": "2026-09-18T19:45:34.458171Z",
+        "status": 200,
+        "url": "https://community.pokemon.com/robots.txt"
+      },
+      {
+        "body_sha256": "1f9a9c1daef6fc88c37f2d6847a2cb7eaef051c255aecd25a2007e3443e89204",
+        "retrieved_at": "2026-09-18T19:50:41.761770Z",
+        "status": 200,
+        "url": "https://community.pokemon.com/robots.txt"
+      },
+      {
+        "body_sha256": "37371428113fc8c5ce9aaa42e939c9ee1716fb71eefcce646c2f6bae4e6fa397",
+        "retrieved_at": "2026-09-18T19:53:51.574476Z",
+        "status": 200,
+        "url": "https://www.pokemon.com/us/strategy/pokemon-tcg-scarlet-violet-prismatic-evolutions-battle-pass-deck-strategies"
+      },
+      {
+        "body_sha256": "16a26c69964c180f3bdf2223a9febbd26560e881716a9f9ccda07e0e6a6be67d",
+        "retrieved_at": "2026-09-18T19:45:50.814628Z",
+        "status": 200,
+        "url": "https://community.pokemon.com/en-us/discussion/13604/letter-to-the-community-december-3-2024"
+      },
+      {
+        "body_sha256": "cbbf54368c8adf792b8ad48f0fcf92ddda921be24ba10e73504bb83c65c4bc61",
+        "retrieved_at": "2026-09-18T19:45:40.446516Z",
+        "status": 200,
+        "url": "https://community.pokemon.com/en-us/discussion/15414/scarlet-violet-prismatic-evolutions-release"
+      },
+      {
+        "body_sha256": "00eae7459388a534c5d1a3c6d11747f2c31f04f048300df0042999370b95b3fe",
+        "retrieved_at": "2026-09-18T19:46:00.852729Z",
+        "status": 200,
+        "url": "https://community.pokemon.com/en-us/discussion/8969/scarlet-violet-paldean-fates-release"
+      },
+      {
+        "body_sha256": "7a19da7c61a49e39ea3b44c0d10df370c8e1967fe444a63217e470bcbb6486b5",
+        "retrieved_at": "2026-09-18T19:47:46.941483Z",
+        "status": 200,
+        "url": "https://www.pokemon.com/us/pokemon-news/scarlet-violet-prismatic-evolutions-is-now-available-in-pokemon-tcg-live"
+      },
+      {
+        "body_sha256": "e4abeb072a66ccbf31a3ab99abad743c32683ad5ddea4f7813e871f1a1cb4127",
+        "retrieved_at": "2026-09-18T19:47:39.009672Z",
+        "status": 200,
+        "url": "https://www.pokemon.com/us/pokemon-tcg/scarlet-violet-prismatic-evolutions"
+      },
+      {
+        "body_sha256": "7ba0b5840fc9f4e31cbaf8dae3df06e5d740900588c87678b65970e21cb09259",
+        "retrieved_at": "2026-09-18T19:50:43.803978Z",
+        "status": 200,
+        "url": "https://community.pokemon.com/api/v2/discussions/8969"
+      },
+      {
+        "body_sha256": "5671db78f3acf8b8b62dca38ce5705a3a4cc09d2e021a9d03473d9d5f55bf0c1",
+        "retrieved_at": "2026-09-18T19:47:43.519176Z",
+        "status": 404,
+        "url": "https://www.pokemon.com/us/news/scarlet-violet-paldean-fates-is-now-available-in-pokemon-tcg-live"
+      },
+      {
+        "body_sha256": "e274ea8c54a950df4bcb6117d5991bc0567ba4f1218fa7f5470eb49fe938313d",
+        "retrieved_at": "2026-09-18T19:45:46.718867Z",
+        "status": 200,
+        "url": "https://community.pokemon.com/en-us/discussion/13953/scarlet-violet-surging-sparks-release"
+      }
+    ],
+    "inspected_forum_sources": [
+      {
+        "authority": "PASS",
+        "edited_at": null,
+        "evidence_id": "3525ca806462f1fc0c11f84a60af911e0c2f51e945c8b4c7e19b8f96a9fda860",
+        "published_at": "2023-12-29T23:05:53+00:00",
+        "relevant_temporal_statements": false,
+        "source_id": "8715",
+        "state": "EVENT_AMBIGUOUS",
+        "url": "https://community.pokemon.com/en-us/discussion/8715/letter-to-the-community-dec-29-2023"
+      },
+      {
+        "authority": "PASS",
+        "edited_at": null,
+        "evidence_id": "65418aa94e5998242829fdce3c2011d7a0370ab1fde68936a35355bb7139291b",
+        "published_at": "2024-01-18T18:08:14+00:00",
+        "relevant_temporal_statements": true,
+        "source_id": "8962",
+        "state": "NOT_EXPANSION_EVENT",
+        "url": "https://community.pokemon.com/en-us/discussion/8962/version-1-10-0-patch-notes"
+      },
+      {
+        "authority": "PASS",
+        "edited_at": "2025-05-07T21:29:09+00:00",
+        "evidence_id": "e4079cbc3480a4fe692cb6e4368a0f84b819b6366876e807b517e6d42ab0fcd6",
+        "published_at": "2024-01-18T19:19:02+00:00",
+        "relevant_temporal_statements": true,
+        "source_id": "8969",
+        "state": "INVALID_LOCAL_TIME",
+        "url": "https://community.pokemon.com/en-us/discussion/8969/scarlet-violet-paldean-fates-release"
+      },
+      {
+        "authority": "PASS",
+        "edited_at": null,
+        "evidence_id": "f93c49649a46f5152bc694b3d889dcfc48c54f06e24333413971576f29d261ce",
+        "published_at": "2024-02-17T00:12:14+00:00",
+        "relevant_temporal_statements": false,
+        "source_id": "9413",
+        "state": "NOT_EXPANSION_EVENT",
+        "url": "https://community.pokemon.com/en-us/discussion/9413/version-1-11-0-patch-notes"
+      },
+      {
+        "authority": "PASS",
+        "edited_at": null,
+        "evidence_id": "972736518d6994d60d55a43b3e3a01eda9203d61bb7faf21931cca91cb8353be",
+        "published_at": "2024-02-20T20:57:28+00:00",
+        "relevant_temporal_statements": false,
+        "source_id": "9496",
+        "state": "EVENT_AMBIGUOUS",
+        "url": "https://community.pokemon.com/en-us/discussion/9496/letter-to-the-community-feb-20-2024"
+      },
+      {
+        "authority": "PASS",
+        "edited_at": null,
+        "evidence_id": "c730a92064a23e17c91a307da09903c33764cc4bb9a71ecfcc15d7b47e0ef473",
+        "published_at": "2024-09-17T18:01:59+00:00",
+        "relevant_temporal_statements": true,
+        "source_id": "13239",
+        "state": "EVENT_AMBIGUOUS",
+        "url": "https://community.pokemon.com/en-us/discussion/13239/letter-to-the-community-november-5-2024"
+      },
+      {
+        "authority": "PASS",
+        "edited_at": null,
+        "evidence_id": "3bd41d67ab4a3cf796c5bca2290e8785a999bed16a76f2e95bc9b998d886d2df",
+        "published_at": "2024-10-09T21:56:22+00:00",
+        "relevant_temporal_statements": false,
+        "source_id": "13601",
+        "state": "NOT_EXPANSION_EVENT",
+        "url": "https://community.pokemon.com/en-us/discussion/13601/version-1-19-0-patch-notes"
+      },
+      {
+        "authority": "PASS",
+        "edited_at": null,
+        "evidence_id": "56f830692a9ce2f4b8bb51ac1f3802d0be382149afa82fef6b8e37fa86528ccd",
+        "published_at": "2024-10-09T22:11:30+00:00",
+        "relevant_temporal_statements": true,
+        "source_id": "13604",
+        "state": "EVENT_AMBIGUOUS",
+        "url": "https://community.pokemon.com/en-us/discussion/13604/letter-to-the-community-december-3-2024"
+      },
+      {
+        "authority": "PASS",
+        "edited_at": null,
+        "evidence_id": "06cfb6153442a3dd0efbe1db61e82f407f2658306a38a16234488436bdd0b5d3",
+        "published_at": "2024-10-30T23:35:57+00:00",
+        "relevant_temporal_statements": true,
+        "source_id": "13952",
+        "state": "NOT_EXPANSION_EVENT",
+        "url": "https://community.pokemon.com/en-us/discussion/13952/version-1-20-0-patch-notes"
+      },
+      {
+        "authority": "PASS",
+        "edited_at": "2025-05-07T21:29:10+00:00",
+        "evidence_id": "78964ea277cdabb04fe9ade58cca76ddbfcf6a043efe3754a1c8a994cc467f64",
+        "published_at": "2024-10-30T23:36:28+00:00",
+        "relevant_temporal_statements": true,
+        "source_id": "13953",
+        "state": "OFFICIAL_CONFLICT",
+        "url": "https://community.pokemon.com/en-us/discussion/13953/scarlet-violet-surging-sparks-release"
+      },
+      {
+        "authority": "PASS",
+        "edited_at": null,
+        "evidence_id": "9bc4d913ed38b8138b578cde0fd22fe67dfd20bb40ee0a1924c0b4e56d45f548",
+        "published_at": "2024-12-03T18:29:51+00:00",
+        "relevant_temporal_statements": false,
+        "source_id": "14755",
+        "state": "NOT_EXPANSION_EVENT",
+        "url": "https://community.pokemon.com/en-us/discussion/14755/version-1-21-0-patch-notes"
+      },
+      {
+        "authority": "PASS",
+        "edited_at": null,
+        "evidence_id": "99e9a3ca5ef9a6a172dbe73b44e88c2b900cd2e40f4cf11701d22ff086fe905c",
+        "published_at": "2025-01-09T18:55:17+00:00",
+        "relevant_temporal_statements": true,
+        "source_id": "15413",
+        "state": "NOT_EXPANSION_EVENT",
+        "url": "https://community.pokemon.com/en-us/discussion/15413/version-1-22-0-patch-notes"
+      },
+      {
+        "authority": "PASS",
+        "edited_at": "2025-05-07T21:29:10+00:00",
+        "evidence_id": "fb251e1498b11c67631503940f100bc89590d85e11f12758e63c2049484ae4b9",
+        "published_at": "2025-01-09T18:55:58+00:00",
+        "relevant_temporal_statements": true,
+        "source_id": "15414",
+        "state": "OFFICIAL_CONFLICT",
+        "url": "https://community.pokemon.com/en-us/discussion/15414/scarlet-violet-prismatic-evolutions-release"
+      },
+      {
+        "authority": "PASS",
+        "edited_at": null,
+        "evidence_id": "c02482c4cf4eb4e4c019736093108aafff23eb8f458763e961257aec66c3c152",
+        "published_at": "2025-01-23T22:22:39+00:00",
+        "relevant_temporal_statements": true,
+        "source_id": "15698",
+        "state": "EVENT_AMBIGUOUS",
+        "url": "https://community.pokemon.com/en-us/discussion/15698/eevee-s-prismatic-parade-event-in-pokemon-trading-card-game-live"
+      },
+      {
+        "authority": "PASS",
+        "edited_at": null,
+        "evidence_id": "cde6e83c38719016a90ae05593841fcca64579d3926597a4ffc19d1ae3112f0b",
+        "published_at": "2025-02-13T23:33:26+00:00",
+        "relevant_temporal_statements": false,
+        "source_id": "16496",
+        "state": "NOT_EXPANSION_EVENT",
+        "url": "https://community.pokemon.com/en-us/discussion/16496/version-1-23-0-patch-notes"
+      }
+    ],
+    "methodology": "EXPANSION_WINDOWS_ROTATIONS_AUDIT_ONLY",
+    "notes": [
+      "D2-R1 inspects 15 official forum first posts covering the three releases, adjacent patch material, community letters and Eevee’s Prismatic Parade. Their administrator/category authority passes unchanged C1 policy.",
+      "The three public discussion API responses match first-post HTML under C1. They supply exact May 7, 2025 edit metadata, but unchanged content and no public revision/history field or link. No official archived correction was established; predecessor observations remain immutable.",
+      "New independent relevant sources: November 5, 2024 letter (SSP date); December 3, 2024 letter (PRE January 16, 2025 date); Eevee’s Prismatic Parade (event start/end); the three adjacent support/maintenance patch posts.",
+      "The three linked Pokémon.com product pages are physical product/identity material and do not establish a Live release clock. They do not pass the C1 editorial availability profile and never authorize timing.",
+      "Internal Pokémon.com search and the candidate Live/Battle Pass articles returned CHALLENGE, except the PAF Live availability candidate URL returned HTTP 404. Candidate URLs are probes, not assertions that those articles exist. No blocked source was bypassed or used as corroboration.",
+      "Other inspected letters/patches did not supply an independent full-expansion exact clock. Later maintenance clocks and retrospective mentions are excluded; no pattern of source errors is used to repair another source.",
+      "Minimal excerpts can join literal source fields with an ellipsis. Maintenance date and clock were checked within the same source paragraph. C1 performs all date/time conversion; its time/authority/parser policies are unchanged in R1.",
+      "All 20 previously machine-verified expansion timestamps are frozen. Rotation 2025 keeps a date-only record; rotation 2026 keeps exact metadata/coincidence. Neither enters the expansion-only runner array."
+    ],
+    "unavailable_sources": [
+      {
+        "error": "CHALLENGE",
+        "retrieved_at": "2026-09-18T19:53:49.645966Z",
+        "state": "SOURCE_UNAVAILABLE",
+        "url": "https://www.pokemon.com/us/strategy/pokemon-tcg-scarlet-violet-surging-sparks-battle-pass-deck-strategies"
+      },
+      {
+        "error": "CHALLENGE",
+        "retrieved_at": "2026-09-18T19:50:35.666134Z",
+        "state": "SOURCE_UNAVAILABLE",
+        "url": "https://www.pokemon.com/us/search/?q=Paldean%20Fates%20Live"
+      },
+      {
+        "error": "CHALLENGE",
+        "retrieved_at": "2026-09-18T19:50:37.645240Z",
+        "state": "SOURCE_UNAVAILABLE",
+        "url": "https://www.pokemon.com/us/search/?q=Surging%20Sparks%20Live"
+      },
+      {
+        "error": "CHALLENGE",
+        "retrieved_at": "2026-09-18T19:47:44.978682Z",
+        "state": "SOURCE_UNAVAILABLE",
+        "url": "https://www.pokemon.com/us/pokemon-news/scarlet-violet-surging-sparks-is-now-available-in-pokemon-tcg-live"
+      },
+      {
+        "error": "CHALLENGE",
+        "retrieved_at": "2026-09-18T19:53:47.584219Z",
+        "state": "SOURCE_UNAVAILABLE",
+        "url": "https://www.pokemon.com/us/strategy/pokemon-tcg-scarlet-violet-paldean-fates-battle-pass-deck-strategies"
+      },
+      {
+        "error": "CHALLENGE",
+        "retrieved_at": "2026-09-18T19:50:39.633338Z",
+        "state": "SOURCE_UNAVAILABLE",
+        "url": "https://www.pokemon.com/us/search/?q=Prismatic%20Evolutions%20Live"
+      },
+      {
+        "error": "HTTP_404",
+        "retrieved_at": "2026-09-18T19:47:43.524600Z",
+        "state": "SOURCE_UNAVAILABLE",
+        "url": "https://www.pokemon.com/us/pokemon-news/scarlet-violet-paldean-fates-is-now-available-in-pokemon-tcg-live"
+      },
+      {
+        "error": "CHALLENGE",
+        "retrieved_at": "2026-09-18T19:53:51.581433Z",
+        "state": "SOURCE_UNAVAILABLE",
+        "url": "https://www.pokemon.com/us/strategy/pokemon-tcg-scarlet-violet-prismatic-evolutions-battle-pass-deck-strategies"
+      },
+      {
+        "error": "CHALLENGE",
+        "retrieved_at": "2026-09-18T19:47:46.945602Z",
+        "state": "SOURCE_UNAVAILABLE",
+        "url": "https://www.pokemon.com/us/pokemon-news/scarlet-violet-prismatic-evolutions-is-now-available-in-pokemon-tcg-live"
+      }
+    ]
+  },
   "reviewed": false,
   "schema_version": 1,
   "scope": {
@@ -5041,5 +6424,524 @@
     "first_expansion": "SVI",
     "minimum_date": "2023-03-30",
     "research_date": "2026-09-18"
-  }
+  },
+  "temporal_statements": [
+    {
+      "assembly": "literal",
+      "eligible_for_expansion": false,
+      "event_id": "PAF",
+      "local_clock_diagnostic": {
+        "calculated_utc": null,
+        "date": "2024-01-25",
+        "explicit_utc": null,
+        "local": null,
+        "raw_local": "Thursday, January 25th, 2024 - 10:00 AM PDT",
+        "raw_zone": "PDT",
+        "state": "INVALID_LOCAL_TIME",
+        "tzdb_version": "tzdata:2026.3"
+      },
+      "notes": "The original PDT declaration is seasonally invalid in January. Explicit 17:00 UTC does not override this contradiction; changing PDT to PST would be an unsupported correction.",
+      "parser_input": "Thursday, January 25th, 2024 - 10:00 AM PDT (17:00 UTC)",
+      "proposition": "Full card playability; Battle Pass and Ladder begin in the same release block",
+      "proposition_kinds": [
+        "battle_pass",
+        "full_expansion",
+        "ladder"
+      ],
+      "reviewed": false,
+      "source_declared_utc": "17:00 UTC",
+      "source_declared_zone": "PDT",
+      "source_fragments": [
+        "Thursday, January 25th, 2024 - 10:00 AM PDT (17:00 UTC)"
+      ],
+      "source_observation_id": "e4079cbc3480a4fe692cb6e4368a0f84b819b6366876e807b517e6d42ab0fcd6",
+      "statement_id": "6efaf93ae03fb4f42b244ff1eba6ce00ed64b54c8520c187928bbee5449aaca2",
+      "time": {
+        "calculated_utc": null,
+        "date": "2024-01-25",
+        "explicit_utc": "17:00",
+        "local": null,
+        "raw_local": "Thursday, January 25th, 2024 - 10:00 AM PDT (17:00 UTC)",
+        "raw_zone": "PDT",
+        "state": "INVALID_LOCAL_TIME",
+        "tzdb_version": "tzdata:2026.3"
+      }
+    },
+    {
+      "assembly": "literal",
+      "eligible_for_expansion": false,
+      "event_id": "SSP",
+      "local_clock_diagnostic": {
+        "calculated_utc": "2024-11-07T18:00:00Z",
+        "date": "2024-11-07",
+        "explicit_utc": null,
+        "local": "2024-11-07T10:00:00-08:00",
+        "raw_local": "Thursday, November 7th, 2024 - 10:00 AM PT",
+        "raw_zone": "PT",
+        "state": "EXACT",
+        "tzdb_version": "tzdata:2026.3"
+      },
+      "notes": "The literal local clock calculates to 18:00 UTC, while the same source explicitly says 17:00 UTC. Diagnostic conversion does not select an authoritative clock.",
+      "parser_input": "Thursday, November 7th, 2024 - 10:00 AM PT (17:00 UTC)",
+      "proposition": "Full card playability; Battle Pass and Ladder begin in the same release block",
+      "proposition_kinds": [
+        "battle_pass",
+        "full_expansion",
+        "ladder"
+      ],
+      "reviewed": false,
+      "source_declared_utc": "17:00 UTC",
+      "source_declared_zone": "PT",
+      "source_fragments": [
+        "Thursday, November 7th, 2024 - 10:00 AM PT (17:00 UTC)"
+      ],
+      "source_observation_id": "78964ea277cdabb04fe9ade58cca76ddbfcf6a043efe3754a1c8a994cc467f64",
+      "statement_id": "311cb58f4391269bf48bf294ce5dfeeb52179235207af7de225898c9bacc0675",
+      "time": {
+        "calculated_utc": null,
+        "date": "2024-11-07",
+        "explicit_utc": "17:00",
+        "local": null,
+        "raw_local": "Thursday, November 7th, 2024 - 10:00 AM PT (17:00 UTC)",
+        "raw_zone": "PT",
+        "state": "OFFICIAL_CONFLICT",
+        "tzdb_version": "tzdata:2026.3"
+      }
+    },
+    {
+      "assembly": "literal",
+      "eligible_for_expansion": false,
+      "event_id": "PRE",
+      "local_clock_diagnostic": {
+        "calculated_utc": null,
+        "date": "2024-01-16",
+        "explicit_utc": null,
+        "local": null,
+        "raw_local": "Thursday, January 16th, 2024 - 10:00 AM PT",
+        "raw_zone": null,
+        "state": "OFFICIAL_CONFLICT",
+        "tzdb_version": null
+      },
+      "notes": "The literal year is 2024 although the page and independent letter concern 2025. January 16, 2024 is Tuesday, not Thursday. No year or clock is repaired; even a hypothetical 2025 winter clock would not agree with 17:00 UTC.",
+      "parser_input": "Thursday, January 16th, 2024 - 10:00 AM PT (17:00 UTC)",
+      "proposition": "Full card playability; Battle Pass and Ladder begin in the same release block",
+      "proposition_kinds": [
+        "battle_pass",
+        "full_expansion",
+        "ladder"
+      ],
+      "reviewed": false,
+      "source_declared_utc": "17:00 UTC",
+      "source_declared_zone": "PT",
+      "source_fragments": [
+        "Thursday, January 16th, 2024 - 10:00 AM PT (17:00 UTC)"
+      ],
+      "source_observation_id": "fb251e1498b11c67631503940f100bc89590d85e11f12758e63c2049484ae4b9",
+      "statement_id": "25ddc8ae537fe7c20b1eda54089b23b256a2a9f3080cdd5a851bb022b355a9b9",
+      "time": {
+        "calculated_utc": null,
+        "date": "2024-01-16",
+        "explicit_utc": null,
+        "local": null,
+        "raw_local": "Thursday, January 16th, 2024 - 10:00 AM PT (17:00 UTC)",
+        "raw_zone": null,
+        "state": "OFFICIAL_CONFLICT",
+        "tzdb_version": null
+      }
+    },
+    {
+      "assembly": "same_maintenance_paragraph",
+      "eligible_for_expansion": false,
+      "event_id": "PAF",
+      "local_clock_diagnostic": {
+        "calculated_utc": "2024-01-23T16:00:00Z",
+        "date": "2024-01-23",
+        "explicit_utc": null,
+        "local": "2024-01-23T08:00:00-08:00",
+        "raw_local": "January 23, 2024 - 8 AM PST",
+        "raw_zone": "PST",
+        "state": "EXACT",
+        "tzdb_version": "tzdata:2026.3"
+      },
+      "notes": "Maintenance has a separate date and cannot establish expansion availability. The literal explicit UTC is retained, including its source error; no maintenance duration is added to infer a release.",
+      "parser_input": "January 23, 2024 - 8 AM PST(16:00 PM UTC)",
+      "proposition": "Client offline start (not full expansion availability)",
+      "proposition_kinds": [
+        "maintenance"
+      ],
+      "reviewed": false,
+      "source_declared_utc": "16:00 PM UTC",
+      "source_declared_zone": "PST",
+      "source_fragments": [
+        "January 23, 2024",
+        "8 AM PST(16:00 PM UTC)"
+      ],
+      "source_observation_id": "65418aa94e5998242829fdce3c2011d7a0370ab1fde68936a35355bb7139291b",
+      "statement_id": "dfae1538af51a8af7df19e4086cadc559f1eb92ee6e1a49640557c29ffffccbd",
+      "time": {
+        "calculated_utc": null,
+        "date": null,
+        "explicit_utc": null,
+        "local": null,
+        "raw_local": "January 23, 2024 - 8 AM PST(16:00 PM UTC)",
+        "raw_zone": null,
+        "state": "TIME_UNPARSEABLE",
+        "tzdb_version": null
+      }
+    },
+    {
+      "assembly": "literal",
+      "eligible_for_expansion": false,
+      "event_id": "PAF",
+      "local_clock_diagnostic": {
+        "calculated_utc": null,
+        "date": "2024-01-23",
+        "explicit_utc": null,
+        "local": null,
+        "raw_local": "January 23, 2024",
+        "raw_zone": null,
+        "state": "DATE_CONFIRMED",
+        "tzdb_version": null
+      },
+      "notes": "Support being added to the client is not a statement that all expansion cards become playable at the maintenance clock.",
+      "parser_input": "January 23, 2024",
+      "proposition": "Client update adds expansion support; date only",
+      "proposition_kinds": [
+        "patch_support"
+      ],
+      "reviewed": false,
+      "source_declared_utc": null,
+      "source_declared_zone": null,
+      "source_fragments": [
+        "January 23, 2024"
+      ],
+      "source_observation_id": "65418aa94e5998242829fdce3c2011d7a0370ab1fde68936a35355bb7139291b",
+      "statement_id": "2ff7619c37dda09c0cd76bcfc49558fc7ac8a91846ccc424b79c1cf96150b041",
+      "time": {
+        "calculated_utc": null,
+        "date": "2024-01-23",
+        "explicit_utc": null,
+        "local": null,
+        "raw_local": "January 23, 2024",
+        "raw_zone": null,
+        "state": "DATE_CONFIRMED",
+        "tzdb_version": null
+      }
+    },
+    {
+      "assembly": "same_maintenance_paragraph",
+      "eligible_for_expansion": false,
+      "event_id": "SSP",
+      "local_clock_diagnostic": {
+        "calculated_utc": "2024-11-05T16:00:00Z",
+        "date": "2024-11-05",
+        "explicit_utc": null,
+        "local": "2024-11-05T08:00:00-08:00",
+        "raw_local": "November 5, 2024 - 8 AM PT",
+        "raw_zone": "PT",
+        "state": "EXACT",
+        "tzdb_version": "tzdata:2026.3"
+      },
+      "notes": "Maintenance has a separate date and cannot establish expansion availability. The literal explicit UTC is retained, including its source error; no maintenance duration is added to infer a release.",
+      "parser_input": "November 5, 2024 - 8 AM PT(15:00 UTC)",
+      "proposition": "Client offline start (not full expansion availability)",
+      "proposition_kinds": [
+        "maintenance"
+      ],
+      "reviewed": false,
+      "source_declared_utc": "15:00 UTC",
+      "source_declared_zone": "PT",
+      "source_fragments": [
+        "November 5, 2024",
+        "8 AM PT(15:00 UTC)"
+      ],
+      "source_observation_id": "06cfb6153442a3dd0efbe1db61e82f407f2658306a38a16234488436bdd0b5d3",
+      "statement_id": "0653a36ade75125437585451ff7d5f403a0d73b5f1105527ae2781283acf3e9e",
+      "time": {
+        "calculated_utc": null,
+        "date": "2024-11-05",
+        "explicit_utc": "15:00",
+        "local": null,
+        "raw_local": "November 5, 2024 - 8 AM PT(15:00 UTC)",
+        "raw_zone": "PT",
+        "state": "OFFICIAL_CONFLICT",
+        "tzdb_version": "tzdata:2026.3"
+      }
+    },
+    {
+      "assembly": "literal",
+      "eligible_for_expansion": false,
+      "event_id": "SSP",
+      "local_clock_diagnostic": {
+        "calculated_utc": null,
+        "date": "2024-11-05",
+        "explicit_utc": null,
+        "local": null,
+        "raw_local": "November 5, 2024",
+        "raw_zone": null,
+        "state": "DATE_CONFIRMED",
+        "tzdb_version": null
+      },
+      "notes": "Support being added to the client is not a statement that all expansion cards become playable at the maintenance clock.",
+      "parser_input": "November 5, 2024",
+      "proposition": "Client update adds expansion support; date only",
+      "proposition_kinds": [
+        "patch_support"
+      ],
+      "reviewed": false,
+      "source_declared_utc": null,
+      "source_declared_zone": null,
+      "source_fragments": [
+        "November 5, 2024"
+      ],
+      "source_observation_id": "06cfb6153442a3dd0efbe1db61e82f407f2658306a38a16234488436bdd0b5d3",
+      "statement_id": "504262ecb3576346a13feb58bbd476df439c1095c59ef8f32ccacb2786165b7d",
+      "time": {
+        "calculated_utc": null,
+        "date": "2024-11-05",
+        "explicit_utc": null,
+        "local": null,
+        "raw_local": "November 5, 2024",
+        "raw_zone": null,
+        "state": "DATE_CONFIRMED",
+        "tzdb_version": null
+      }
+    },
+    {
+      "assembly": "same_maintenance_paragraph",
+      "eligible_for_expansion": false,
+      "event_id": "PRE",
+      "local_clock_diagnostic": {
+        "calculated_utc": "2025-01-14T16:00:00Z",
+        "date": "2025-01-14",
+        "explicit_utc": null,
+        "local": "2025-01-14T08:00:00-08:00",
+        "raw_local": "January 14, 2025 - 8 AM PT",
+        "raw_zone": "PT",
+        "state": "EXACT",
+        "tzdb_version": "tzdata:2026.3"
+      },
+      "notes": "Maintenance has a separate date and cannot establish expansion availability. The literal explicit UTC is retained, including its source error; no maintenance duration is added to infer a release.",
+      "parser_input": "January 14, 2025 - 8 AM PT(15:00 UTC)",
+      "proposition": "Client offline start (not full expansion availability)",
+      "proposition_kinds": [
+        "maintenance"
+      ],
+      "reviewed": false,
+      "source_declared_utc": "15:00 UTC",
+      "source_declared_zone": "PT",
+      "source_fragments": [
+        "January 14, 2025",
+        "8 AM PT(15:00 UTC)"
+      ],
+      "source_observation_id": "99e9a3ca5ef9a6a172dbe73b44e88c2b900cd2e40f4cf11701d22ff086fe905c",
+      "statement_id": "aea5c59073a88025b42203fb5bc864cb2bb245836580db0a2dd86b1805efcd11",
+      "time": {
+        "calculated_utc": null,
+        "date": "2025-01-14",
+        "explicit_utc": "15:00",
+        "local": null,
+        "raw_local": "January 14, 2025 - 8 AM PT(15:00 UTC)",
+        "raw_zone": "PT",
+        "state": "OFFICIAL_CONFLICT",
+        "tzdb_version": "tzdata:2026.3"
+      }
+    },
+    {
+      "assembly": "literal",
+      "eligible_for_expansion": false,
+      "event_id": "PRE",
+      "local_clock_diagnostic": {
+        "calculated_utc": null,
+        "date": "2025-01-14",
+        "explicit_utc": null,
+        "local": null,
+        "raw_local": "January 14, 2025",
+        "raw_zone": null,
+        "state": "DATE_CONFIRMED",
+        "tzdb_version": null
+      },
+      "notes": "Support being added to the client is not a statement that all expansion cards become playable at the maintenance clock.",
+      "parser_input": "January 14, 2025",
+      "proposition": "Client update adds expansion support; date only",
+      "proposition_kinds": [
+        "patch_support"
+      ],
+      "reviewed": false,
+      "source_declared_utc": null,
+      "source_declared_zone": null,
+      "source_fragments": [
+        "January 14, 2025"
+      ],
+      "source_observation_id": "99e9a3ca5ef9a6a172dbe73b44e88c2b900cd2e40f4cf11701d22ff086fe905c",
+      "statement_id": "7f3801c23be7460a209bb5acfa4a21fad172192919f8565ff56ce803fbcbdb42",
+      "time": {
+        "calculated_utc": null,
+        "date": "2025-01-14",
+        "explicit_utc": null,
+        "local": null,
+        "raw_local": "January 14, 2025",
+        "raw_zone": null,
+        "state": "DATE_CONFIRMED",
+        "tzdb_version": null
+      }
+    },
+    {
+      "assembly": "date_with_official_title_year",
+      "eligible_for_expansion": false,
+      "event_id": "SSP",
+      "local_clock_diagnostic": {
+        "calculated_utc": null,
+        "date": "2024-11-07",
+        "explicit_utc": null,
+        "local": null,
+        "raw_local": "Thursday, November 7, 2024",
+        "raw_zone": null,
+        "state": "DATE_CONFIRMED",
+        "tzdb_version": null
+      },
+      "notes": "The official letter title supplies the year 2024. The paragraph names the expansion launch date but supplies no hour; it cannot distinguish 17:00 from 18:00 UTC.",
+      "parser_input": "Thursday, November 7, 2024",
+      "proposition": "Expansion launch date and new Battle Pass screen",
+      "proposition_kinds": [
+        "battle_pass",
+        "full_expansion"
+      ],
+      "reviewed": false,
+      "source_declared_utc": null,
+      "source_declared_zone": null,
+      "source_fragments": [
+        "Thursday, November 7"
+      ],
+      "source_observation_id": "c730a92064a23e17c91a307da09903c33764cc4bb9a71ecfcc15d7b47e0ef473",
+      "statement_id": "90fdea1f28c990b5733c72a238238c5d714d2a656a8abf356788fdd998e85bf4",
+      "time": {
+        "calculated_utc": null,
+        "date": "2024-11-07",
+        "explicit_utc": null,
+        "local": null,
+        "raw_local": "Thursday, November 7, 2024",
+        "raw_zone": null,
+        "state": "DATE_CONFIRMED",
+        "tzdb_version": null
+      }
+    },
+    {
+      "assembly": "literal",
+      "eligible_for_expansion": false,
+      "event_id": "PRE",
+      "local_clock_diagnostic": {
+        "calculated_utc": null,
+        "date": "2025-01-16",
+        "explicit_utc": null,
+        "local": null,
+        "raw_local": "January 16th, 2025",
+        "raw_zone": null,
+        "state": "DATE_CONFIRMED",
+        "tzdb_version": null
+      },
+      "notes": "Independent first-party confirmation of January 16, 2025 resolves the date context, not the exact release clock or the original conflicting announcement.",
+      "parser_input": "January 16th, 2025",
+      "proposition": "Expansion officially launches in PTCGL; date only",
+      "proposition_kinds": [
+        "full_expansion"
+      ],
+      "reviewed": false,
+      "source_declared_utc": null,
+      "source_declared_zone": null,
+      "source_fragments": [
+        "January 16th, 2025"
+      ],
+      "source_observation_id": "56f830692a9ce2f4b8bb51ac1f3802d0be382149afa82fef6b8e37fa86528ccd",
+      "statement_id": "a294e02b47e258166172a342d2cbf1af91b128ae1ebd6b50f60d2525c021220b",
+      "time": {
+        "calculated_utc": null,
+        "date": "2025-01-16",
+        "explicit_utc": null,
+        "local": null,
+        "raw_local": "January 16th, 2025",
+        "raw_zone": null,
+        "state": "DATE_CONFIRMED",
+        "tzdb_version": null
+      }
+    },
+    {
+      "assembly": "literal",
+      "eligible_for_expansion": false,
+      "event_id": "PRE",
+      "local_clock_diagnostic": {
+        "calculated_utc": "2025-01-16T18:00:00Z",
+        "date": "2025-01-16",
+        "explicit_utc": null,
+        "local": "2025-01-16T10:00:00-08:00",
+        "raw_local": "January 16, 2025, at 10:00 a.m. PST",
+        "raw_zone": "PST",
+        "state": "EXACT",
+        "tzdb_version": "tzdata:2026.3"
+      },
+      "notes": "18:00 UTC is exact for event point tracking. Celebrating an expansion launch does not explicitly bind this clock to full expansion availability/playability.",
+      "parser_input": "January 16, 2025, at 10:00 a.m. PST",
+      "proposition": "Eevee’s Prismatic Parade point tracking begins",
+      "proposition_kinds": [
+        "event"
+      ],
+      "reviewed": false,
+      "source_declared_utc": null,
+      "source_declared_zone": "PST",
+      "source_fragments": [
+        "January 16, 2025, at 10:00 a.m. PST"
+      ],
+      "source_observation_id": "c02482c4cf4eb4e4c019736093108aafff23eb8f458763e961257aec66c3c152",
+      "statement_id": "f4c3c4033f380ee7595fbb37a6a710a5188f0a760d24c26102c20f5f2f7f3db7",
+      "time": {
+        "calculated_utc": "2025-01-16T18:00:00Z",
+        "date": "2025-01-16",
+        "explicit_utc": null,
+        "local": "2025-01-16T10:00:00-08:00",
+        "raw_local": "January 16, 2025, at 10:00 a.m. PST",
+        "raw_zone": "PST",
+        "state": "EXACT",
+        "tzdb_version": "tzdata:2026.3"
+      }
+    },
+    {
+      "assembly": "literal",
+      "eligible_for_expansion": false,
+      "event_id": "PRE",
+      "local_clock_diagnostic": {
+        "calculated_utc": "2025-03-27T17:00:00Z",
+        "date": "2025-03-27",
+        "explicit_utc": null,
+        "local": "2025-03-27T10:00:00-07:00",
+        "raw_local": "March 27, 2025, at 10:00 a.m. PDT",
+        "raw_zone": "PDT",
+        "state": "EXACT",
+        "tzdb_version": "tzdata:2026.3"
+      },
+      "notes": "The other end of the event tracking interval is retained for scope clarity; it is not a PRE expansion boundary.",
+      "parser_input": "March 27, 2025, at 10:00 a.m. PDT",
+      "proposition": "Eevee’s Prismatic Parade point tracking ends",
+      "proposition_kinds": [
+        "event"
+      ],
+      "reviewed": false,
+      "source_declared_utc": null,
+      "source_declared_zone": "PDT",
+      "source_fragments": [
+        "March 27, 2025, at 10:00 a.m. PDT"
+      ],
+      "source_observation_id": "c02482c4cf4eb4e4c019736093108aafff23eb8f458763e961257aec66c3c152",
+      "statement_id": "5ab14924e3ea288c49b98031e3022604b6314b49e4449d0aa50561da84cb5355",
+      "time": {
+        "calculated_utc": "2025-03-27T17:00:00Z",
+        "date": "2025-03-27",
+        "explicit_utc": null,
+        "local": "2025-03-27T10:00:00-07:00",
+        "raw_local": "March 27, 2025, at 10:00 a.m. PDT",
+        "raw_zone": "PDT",
+        "state": "EXACT",
+        "tzdb_version": "tzdata:2026.3"
+      }
+    }
+  ]
 }

@@ -15,20 +15,6 @@
       "start_utc": "2023-03-30T17:00:00Z"
     },
     {
-      "event_id": "ROTATION_2023",
-      "evidence": {
-        "exact_time": false,
-        "reviewed": false,
-        "url": "https://community.pokemon.com/en-us/discussion/2899/version-1-4-0-patch-notes"
-      },
-      "kind": "rotation",
-      "name": "Standard rotation 2023",
-      "reasons": [
-        "standard_rotation"
-      ],
-      "start_utc": null
-    },
-    {
       "event_id": "PAL",
       "evidence": {
         "exact_time": true,
@@ -113,20 +99,6 @@
       "start_utc": "2024-03-21T17:00:00Z"
     },
     {
-      "event_id": "ROTATION_2024",
-      "evidence": {
-        "exact_time": false,
-        "reviewed": false,
-        "url": "https://community.pokemon.com/en-us/discussion/10067/version-1-12-0-patch-notes"
-      },
-      "kind": "rotation",
-      "name": "Standard rotation 2024",
-      "reasons": [
-        "standard_rotation"
-      ],
-      "start_utc": null
-    },
-    {
       "event_id": "TWM",
       "evidence": {
         "exact_time": true,
@@ -209,20 +181,6 @@
         "expansion"
       ],
       "start_utc": "2025-03-27T17:00:00Z"
-    },
-    {
-      "event_id": "ROTATION_2025",
-      "evidence": {
-        "exact_time": false,
-        "reviewed": false,
-        "url": "https://community.pokemon.com/en-us/discussion/17429/letter-to-the-community-march-20-2025"
-      },
-      "kind": "rotation",
-      "name": "Standard rotation 2025",
-      "reasons": [
-        "standard_rotation"
-      ],
-      "start_utc": null
     },
     {
       "event_id": "DRI",
@@ -323,20 +281,6 @@
       "start_utc": "2026-03-26T17:00:00Z"
     },
     {
-      "event_id": "ROTATION_2026",
-      "evidence": {
-        "exact_time": true,
-        "reviewed": false,
-        "url": "https://community.pokemon.com/en-us/discussion/23169/mega-evolution-perfect-order-expansion-release"
-      },
-      "kind": "rotation",
-      "name": "Standard rotation 2026",
-      "reasons": [
-        "standard_rotation"
-      ],
-      "start_utc": "2026-03-26T17:00:00Z"
-    },
-    {
       "event_id": "CRI",
       "evidence": {
         "exact_time": true,
@@ -381,5 +325,6 @@
   ],
   "catalog_status": "INCOMPLETE_NOT_READY",
   "reviewed": false,
-  "schema_version": 1
+  "schema_version": 1,
+  "window_unit": "expansion"
 }

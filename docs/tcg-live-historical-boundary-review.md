@@ -1,11 +1,12 @@
-# TCG Live historical boundary review — Gate 1.11-D2
+# TCG Live historical boundary review — Gate 1.11-D2-R1
 
 **NOT_READY — candidate reviewed=false; no human approval, promotion or historical rebuild.**
 
 Coverage: Scarlet & Violet (2023-03-30) through 30th Celebration (2026-09-15), current OPEN.
 Expected: 23 full-expansion identities, 22 expansion release instants (Black Bolt / White Flare share one), and 4 Standard rotations.
 Exact machine-verified event records: 20 expansions; 1 Standard rotation.
-The sequence is incomplete. Unknown entries remain visible with null starts; **no windows are derived across gaps**.
+Methodology: **one MARS per expansion release window**. Only expansion starts determine contiguity. Rotations remain audited metadata and never create extra windows or supply expansion timestamps.
+The expansion sequence is incomplete. Unknown expansion starts remain null; **no windows are derived across gaps**. Unknown rotation times do not block it.
 
 ## Chronological expansion inventory
 
@@ -36,9 +37,16 @@ Identity order is independently reconciled; pending rows do not assert an exact 
 | Chaos Rising | expansion | CRI | Release Date: Thursday, May 21, 2026 - 10:00 AM PT (17:00 UTC) | 2026-05-21T17:00:00Z | [official](https://community.pokemon.com/en-us/discussion/24085/mega-evolution-chaos-rising-expansion-release) | unavailable / not corroborated | PASS | MAPPED | MACHINE_VERIFIED |
 | Pitch Black | expansion | PBL | Release Date: Thursday, July 16, 2026 - 10:00 AM PT (17:00 UTC) | 2026-07-16T17:00:00Z | [official](https://community.pokemon.com/en-us/discussion/24856/mega-evolution-pitch-black-expansion-release) | unavailable / not corroborated | PASS | MAPPED | MACHINE_VERIFIED |
 | 30th Celebration | expansion | 30C | Release Date: Tuesday, September 15, 2026 - 10:00 AM PT (17:00 UTC) | 2026-09-15T17:00:00Z | [official](https://community.pokemon.com/en-us/discussion/26004/pokemon-tcg-30th-celebration-expansion-release) | unavailable / not corroborated | PASS | MAPPED | MACHINE_VERIFIED |
+
+## Audited rotations — metadata only
+
+These records stay outside the runner boundary array. A confirmed date is not midnight or an exact UTC instant.
+
+| Event | Type | Code | Official local time / date | Verified UTC | Primary official source | Secondary source | Machine authority | Identity | Conflict / status |
+|---|---|---|---|---|---|---|---|---|---|
 | Standard rotation 2023 | rotation | ROTATION_2023 | Exact time not established | — | [official](https://community.pokemon.com/en-us/discussion/2899/version-1-4-0-patch-notes) | unavailable / not corroborated | PASS | MAPPED | CANONICAL_PENDING |
 | Standard rotation 2024 | rotation | ROTATION_2024 | Exact time not established | — | [official](https://community.pokemon.com/en-us/discussion/10067/version-1-12-0-patch-notes) | unavailable / not corroborated | PASS | MAPPED | CANONICAL_PENDING |
-| Standard rotation 2025 | rotation | ROTATION_2025 | Exact time not established | — | [official](https://community.pokemon.com/en-us/discussion/17429/letter-to-the-community-march-20-2025) | unavailable / not corroborated | PASS | MAPPED | CANONICAL_PENDING |
+| Standard rotation 2025 | rotation | ROTATION_2025 | Date only: 2025-03-27 | — | [official](https://community.pokemon.com/en-us/discussion/17429/letter-to-the-community-march-20-2025) | unavailable / not corroborated | PASS | MAPPED | DATE_CONFIRMED |
 | Standard rotation 2026 | rotation | ROTATION_2026 | Release Date: Thursday, March 26, 2026 - 10:00 AM PT (17:00 UTC) | 2026-03-26T17:00:00Z | [official](https://community.pokemon.com/en-us/discussion/23169/mega-evolution-perfect-order-expansion-release) | unavailable / not corroborated | PASS | MAPPED | MACHINE_VERIFIED |
 
 ## Timezone conversion
@@ -73,18 +81,87 @@ All exact values below come from C1 `extract_time`, using versioned `tzdata:2026
 
 - **151:** The official Scarlet & Violet—151 identity is labeled Pokémon 151 (MEW) in the card index; the exact naming alias is identity-only.
 - **Paldean Fates:** Source declares PDT in January. C1 rejects seasonal inconsistency (INVALID_LOCAL_TIME). Neither PST nor a different hour is substituted.
+- **Paldean Fates:** D2-R1 revalidation: public official API metadata matches the first-post HTML; full original time wording is unchanged. The May 7, 2025 edit timestamp is not evidence of a clock correction.
 - **Twilight Masquerade:** Official Live availability is Wednesday May 22, 2024; no physical release date is substituted.
 - **Shrouded Fable:** C1 parser v2 equates whitespace around the same em dash in the playability and availability names. Raw source text and the predecessor parser-v1 EVENT_AMBIGUOUS observation are retained locally. Time/authority rules are unchanged.
 - **Surging Sparks:** Source says 10:00 AM PT with 17:00 UTC on November 7, 2024. Los Angeles is PST: the clocks disagree. No timestamp accepted.
+- **Surging Sparks:** D2-R1 revalidation: public official API metadata matches the first-post HTML; full original time wording is unchanged. The May 7, 2025 edit timestamp is not evidence of a clock correction.
 - **Prismatic Evolutions:** The official expression says Thursday, January 16th, 2024; that calendar date is Tuesday. Its 10:00 AM PT also conflicts with 17:00 UTC in winter. Neither year nor hour is repaired from release order.
+- **Prismatic Evolutions:** D2-R1 revalidation: public official API metadata matches the first-post HTML; full original time wording is unchanged. The May 7, 2025 edit timestamp is not evidence of a clock correction.
 - **Black Bolt:** One official first post explicitly binds Black Bolt and White Flare to the same release instant. Separate identities, one derived instant.
 - **White Flare:** Shared official availability proposition with Black Bolt; no zero-length window.
-- **Perfect Order:** The same first-post release block explicitly makes the 2026 Standard format effective. ROTATION_2026 is a separate event at this instant.
+- **Perfect Order:** The same first-post release block explicitly makes the 2026 Standard format effective. ROTATION_2026 remains separate ledger metadata coincident with POR, outside the runner boundary array.
 - **30th Celebration:** 30C is attested by the Limitless card identity index; the deck selector alone omits this identity. Candidate mapping is not human approval or production activation. Current end remains OPEN.
 - **Standard rotation 2023:** Patch notes describe the 2023 format update, but client maintenance is not an exact rotation-effective timestamp. Coincidence with Scarlet & Violet remains unproved.
 - **Standard rotation 2024:** Patch support for rotation is not an exact effective timestamp. Do not use the March 19 maintenance clock or assume Temporal Forces coincidence.
-- **Standard rotation 2025:** The letter states Thursday March 27th for rotation (year contextual to the 2025 letter); the nearby 10:00 AM PDT / 17:00 UTC belongs to Trainer Trials. No rotation clock may be borrowed.
-- **Standard rotation 2026:** Explicit combined availability/rotation proposition in the Perfect Order first post, not inferred from equal dates. A separate community letter corroborates the March 26, 2026 date only.
+- **Standard rotation 2025:** Official rotation date retained as DATE_CONFIRMED: March 27 in the explicitly dated March 20, 2025 letter. No hour is assigned; the nearby clock belongs to Trainer Trials. Rotation metadata never blocks expansion windows.
+- **Standard rotation 2026:** Explicit combined availability/rotation proposition in the Perfect Order first post; retained exact metadata and coincidence with POR. It does not create a runner window.
+
+## D2-R1: PAF / SSP / PRE adjudication
+
+Calculated local UTC below is diagnostic when the source has a conflicting explicit UTC or invalid date. Only a conflict-free full-expansion availability proposition can authorize a boundary. Event, Battle Pass, Ladder and maintenance clocks are not replacements.
+
+### PAF — CANONICAL_PENDING
+
+CANONICAL_PENDING. The only full-expansion exact-time statement remains internally inconsistent (PDT in January). January 23 patch/maintenance evidence establishes client support, not the January 25 release hour. No independent authoritative statement selects 17:00, 18:00 or another release instant.
+
+| Official source / authority | Proposition | Source time fields | Zone | Local-clock UTC (diagnostic) | Explicit UTC | C1 state |
+|---|---|---|---|---|---|---|
+| [8969](https://community.pokemon.com/en-us/discussion/8969/scarlet-violet-paldean-fates-release) / PASS | Full card playability; Battle Pass and Ladder begin in the same release block | Thursday, January 25th, 2024 - 10:00 AM PDT (17:00 UTC) | PDT | — | 17:00 UTC | INVALID_LOCAL_TIME |
+| [8962](https://community.pokemon.com/en-us/discussion/8962/version-1-10-0-patch-notes) / PASS | Client offline start (not full expansion availability) | January 23, 2024 … 8 AM PST(16:00 PM UTC) | PST | 2024-01-23T16:00:00Z | 16:00 PM UTC | TIME_UNPARSEABLE |
+| [8962](https://community.pokemon.com/en-us/discussion/8962/version-1-10-0-patch-notes) / PASS | Client update adds expansion support; date only | January 23, 2024 | — | — | not supplied | DATE_CONFIRMED |
+
+- The original PDT declaration is seasonally invalid in January. Explicit 17:00 UTC does not override this contradiction; changing PDT to PST would be an unsupported correction.
+- Maintenance has a separate date and cannot establish expansion availability. The literal explicit UTC is retained, including its source error; no maintenance duration is added to infer a release.
+- Support being added to the client is not a statement that all expansion cards become playable at the maintenance clock.
+
+### SSP — OFFICIAL_CONFLICT
+
+OFFICIAL_CONFLICT. The release post simultaneously states local 10:00 PT (diagnostically 18:00 UTC) and explicit 17:00 UTC. The November 5 letter confirms the November 7 launch date without an hour. Maintenance/support material cannot choose between the conflicting release clocks.
+
+| Official source / authority | Proposition | Source time fields | Zone | Local-clock UTC (diagnostic) | Explicit UTC | C1 state |
+|---|---|---|---|---|---|---|
+| [13953](https://community.pokemon.com/en-us/discussion/13953/scarlet-violet-surging-sparks-release) / PASS | Full card playability; Battle Pass and Ladder begin in the same release block | Thursday, November 7th, 2024 - 10:00 AM PT (17:00 UTC) | PT | 2024-11-07T18:00:00Z | 17:00 UTC | OFFICIAL_CONFLICT |
+| [13952](https://community.pokemon.com/en-us/discussion/13952/version-1-20-0-patch-notes) / PASS | Client offline start (not full expansion availability) | November 5, 2024 … 8 AM PT(15:00 UTC) | PT | 2024-11-05T16:00:00Z | 15:00 UTC | OFFICIAL_CONFLICT |
+| [13952](https://community.pokemon.com/en-us/discussion/13952/version-1-20-0-patch-notes) / PASS | Client update adds expansion support; date only | November 5, 2024 | — | — | not supplied | DATE_CONFIRMED |
+| [13239](https://community.pokemon.com/en-us/discussion/13239/letter-to-the-community-november-5-2024) / PASS | Expansion launch date and new Battle Pass screen | Thursday, November 7 | — | — | not supplied | DATE_CONFIRMED |
+
+- The literal local clock calculates to 18:00 UTC, while the same source explicitly says 17:00 UTC. Diagnostic conversion does not select an authoritative clock.
+- Maintenance has a separate date and cannot establish expansion availability. The literal explicit UTC is retained, including its source error; no maintenance duration is added to infer a release.
+- Support being added to the client is not a statement that all expansion cards become playable at the maintenance clock.
+- The official letter title supplies the year 2024. The paragraph names the expansion launch date but supplies no hour; it cannot distinguish 17:00 from 18:00 UTC.
+
+### PRE — OFFICIAL_CONFLICT
+
+OFFICIAL_CONFLICT. The December 3 official letter independently confirms the January 16, 2025 Live launch date. Eevee’s Prismatic Parade starts tracking points at 18:00 UTC that day, but no acquired proposition explicitly equates that event clock with full expansion availability. The original release statement remains contradictory; 18:00 UTC is not promoted.
+
+| Official source / authority | Proposition | Source time fields | Zone | Local-clock UTC (diagnostic) | Explicit UTC | C1 state |
+|---|---|---|---|---|---|---|
+| [15414](https://community.pokemon.com/en-us/discussion/15414/scarlet-violet-prismatic-evolutions-release) / PASS | Full card playability; Battle Pass and Ladder begin in the same release block | Thursday, January 16th, 2024 - 10:00 AM PT (17:00 UTC) | PT | — | 17:00 UTC | OFFICIAL_CONFLICT |
+| [15413](https://community.pokemon.com/en-us/discussion/15413/version-1-22-0-patch-notes) / PASS | Client offline start (not full expansion availability) | January 14, 2025 … 8 AM PT(15:00 UTC) | PT | 2025-01-14T16:00:00Z | 15:00 UTC | OFFICIAL_CONFLICT |
+| [15413](https://community.pokemon.com/en-us/discussion/15413/version-1-22-0-patch-notes) / PASS | Client update adds expansion support; date only | January 14, 2025 | — | — | not supplied | DATE_CONFIRMED |
+| [13604](https://community.pokemon.com/en-us/discussion/13604/letter-to-the-community-december-3-2024) / PASS | Expansion officially launches in PTCGL; date only | January 16th, 2025 | — | — | not supplied | DATE_CONFIRMED |
+| [15698](https://community.pokemon.com/en-us/discussion/15698/eevee-s-prismatic-parade-event-in-pokemon-trading-card-game-live) / PASS | Eevee’s Prismatic Parade point tracking begins | January 16, 2025, at 10:00 a.m. PST | PST | 2025-01-16T18:00:00Z | not supplied | EXACT |
+| [15698](https://community.pokemon.com/en-us/discussion/15698/eevee-s-prismatic-parade-event-in-pokemon-trading-card-game-live) / PASS | Eevee’s Prismatic Parade point tracking ends | March 27, 2025, at 10:00 a.m. PDT | PDT | 2025-03-27T17:00:00Z | not supplied | EXACT |
+
+- The literal year is 2024 although the page and independent letter concern 2025. January 16, 2024 is Tuesday, not Thursday. No year or clock is repaired; even a hypothetical 2025 winter clock would not agree with 17:00 UTC.
+- Maintenance has a separate date and cannot establish expansion availability. The literal explicit UTC is retained, including its source error; no maintenance duration is added to infer a release.
+- Support being added to the client is not a statement that all expansion cards become playable at the maintenance clock.
+- Independent first-party confirmation of January 16, 2025 resolves the date context, not the exact release clock or the original conflicting announcement.
+- 18:00 UTC is exact for event point tracking. Celebrating an expansion launch does not explicitly bind this clock to full expansion availability/playability.
+- The other end of the event tracking interval is retained for scope clarity; it is not a PRE expansion boundary.
+
+
+### Research coverage and source revisions
+
+- D2-R1 inspects 15 official forum first posts covering the three releases, adjacent patch material, community letters and Eevee’s Prismatic Parade. Their administrator/category authority passes unchanged C1 policy.
+- The three public discussion API responses match first-post HTML under C1. They supply exact May 7, 2025 edit metadata, but unchanged content and no public revision/history field or link. No official archived correction was established; predecessor observations remain immutable.
+- New independent relevant sources: November 5, 2024 letter (SSP date); December 3, 2024 letter (PRE January 16, 2025 date); Eevee’s Prismatic Parade (event start/end); the three adjacent support/maintenance patch posts.
+- The three linked Pokémon.com product pages are physical product/identity material and do not establish a Live release clock. They do not pass the C1 editorial availability profile and never authorize timing.
+- Internal Pokémon.com search and the candidate Live/Battle Pass articles returned CHALLENGE, except the PAF Live availability candidate URL returned HTTP 404. Candidate URLs are probes, not assertions that those articles exist. No blocked source was bypassed or used as corroboration.
+- Other inspected letters/patches did not supply an independent full-expansion exact clock. Later maintenance clocks and retrospective mentions are excluded; no pattern of source errors is used to repair another source.
+- Minimal excerpts can join literal source fields with an ellipsis. Maintenance date and clock were checked within the same source paragraph. C1 performs all date/time conversion; its time/authority/parser policies are unchanged in R1.
+- All 20 previously machine-verified expansion timestamps are frozen. Rotation 2025 keeps a date-only record; rotation 2026 keeps exact metadata/coincidence. Neither enters the expansion-only runner array.
 
 ## Independent inventory reconciliation
 
@@ -124,8 +201,8 @@ A: 130 unique forum discussions discovered with no C1 discovery errors; 22 in-sc
 A versus C: all 23 expected expansion identities match the independent Limitless card index. The deck selector alone is insufficient for special expansions.
 B: Pokémon.com /us/news revealed the current Live article; its body and the attempted rotation articles returned CHALLENGE. The advertised US sitemap shards were also challenged. No bypass or further challenge retry was used.
 B therefore remains incomplete, not an empty inventory proving no missing articles. No secondary exact-time corroboration or absence of secondary conflict is claimed.
-Three expansion times and rotations 2023–2025 remain unresolved. All required entries stay present; no A-to-C window can skip unresolved B.
-The official lower-bound inventory is complete by named identity against C, but canonical historical coverage is NOT_READY. No new dependency or real historical Tournament API request was made.
+PAF, SSP and PRE remain unresolved expansion starts; these three holes alone block the required expansion sequence. Rotation metadata does not create blocking null entries.
+The independent identity inventory remains complete for the bounded scope. Editorial discovery limitations are retained as audit metadata; they do not create additional rotation/format windows.
 
 ## Pre-scope inventory
 
@@ -138,16 +215,16 @@ The official lower-bound inventory is complete by named identity against C, but 
 - Evidence ledger: `data/candidates/releases/tcg_live_historical_boundary_evidence.json`.
 - Preview: `data/candidates/releases/tcg_live_historical_window_preview.json`.
 - D1 compatibility of the actual candidate, with review flags temporarily true **only in memory**: `BLOCKED_BY_UNRESOLVED_BOUNDARY`.
-- No complete window list is emitted while boundaries/coverage remain unresolved. Setting review flags alone cannot repair missing times.
+- No complete window list is emitted while required expansion starts remain unresolved. Rotation timing and secondary discovery limitations remain visible audit metadata; they do not split/block an otherwise complete expansion sequence.
 - The latest known expansion is `30C`: `[2026-09-15T17:00:00Z, OPEN)`. No observation cutoff is part of this catalog.
-- Perfect Order and the explicitly coupled 2026 rotation retain two event records at one instant. Black Bolt and White Flare similarly retain both expansion identities. D1 groups coincident events without zero-length windows.
-- Rotations 2023/2024/2025 are not assumed coincident. Their placeholder placement in JSON is an investigation grouping, not a claimed temporal order; resolution and sorting are required before approval.
+- Perfect Order / rotation 2026 coincidence is retained in ledger metadata (`coincident_expansion_ids=[POR]`); the runner gets only the expansion event. Rotations 2023/2024/2025 are never assumed coincident.
+- Black Bolt and White Flare retain both expansion identities at their shared official release instant. D1 groups that joint release into one window without a zero-length interval. No rotation creates an extra MARS/window.
 
 ## Provenance and review procedure
 
 Each ledger observation is a separately checksummed minimal projection of a C1 observation. It retains the original observation ID/excerpt digest, normalized source content digest, metadata fingerprint, author/role/publication/edit evidence, parser/adapter/policy/tzdb versions and retrieval provenance. Raw captures/full selected excerpts remain ignored local research evidence; full copyrighted announcements are not committed.
 The only observer change is whitespace equivalence around the em dash in expansion names (`live-release-2`), demonstrated by Shrouded Fable. The time parser and authority policy are unchanged. The former parser observation is retained as a predecessor reference, not portrayed as an official source correction.
-No official correction resolving the three inconsistent expansion timestamps was established. Blocked Pokémon.com sources may contain additional evidence; absence of conflict there is not claimed. Human review must resolve all holes/conflicts, verify source authority and code crosswalks, reconcile editorial coverage and then explicitly approve a separate runner-ready input.
+No official correction resolving the three inconsistent expansion timestamps was established. Blocked Pokémon.com sources may contain additional evidence; absence of conflict there is not claimed. Human review must resolve expansion holes/conflicts, inspect the coverage limitations and explicitly approve a separate runner-ready input. Unknown rotation times remain metadata.
 
 ## Offline validation
 
