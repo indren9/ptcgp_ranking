@@ -1,0 +1,7 @@
+{
+  "d1_compatibility": "BLOCKED_BY_UNRESOLVED_BOUNDARY",
+  "reason": "NOT READY: an explicit official UTC timestamp, including time, is required",
+  "skipped_gaps": false,
+  "status": "NOT_READY",
+  "windows": []
+}
