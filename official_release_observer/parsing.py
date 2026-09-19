@@ -90,8 +90,12 @@ def classify(body, title, editorial=False):
     if len(playable) != 1:
         negative = re.search(r"maintenance|patch notes|trainer trials|build & battle|ranked ladder|battle pass|prerelease|rotation|code redemption", title, re.I)
         return None, [], None, "NOT_EXPANSION_EVENT" if negative else "EVENT_AMBIGUOUS"
-    name = playable[0].removesuffix(" cards can be played in all game modes.")
-    proposition = re.compile(r"We're excited to share (?:that )?the new " + re.escape(name) +
+    # Historical Shrouded Fable first post inserts a space after the em dash in
+    # its playability line, but not in its availability proposition. Treat only
+    # whitespace around that same punctuation as equivalent; retain raw excerpts.
+    name = re.sub(r"\s*—\s*", "—", playable[0].removesuffix(" cards can be played in all game modes."))
+    name_pattern = re.escape(name).replace("—", r"\s*—\s*")
+    proposition = re.compile(r"We're excited to share (?:that )?the new " + name_pattern +
                              r" expansion (?:availability (?:with you )?today|is available starting today)[.!]", re.I)
     props = [b for b in blocks if proposition.fullmatch(b)]
     dates = [b for b in blocks if re.match(r"(?:Release Date:|(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),?\s|(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d)", b, re.I)]
