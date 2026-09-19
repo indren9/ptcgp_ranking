@@ -1,5 +1,14 @@
 # Gate 1.11-D2-R2 — first-party adjudication and targeted Limitless fallback
 
+**R3 update:** this document and the R2 JSON preserve the historical R2 outcome
+below. Chat Madre/user subsequently approved PAF/SSP/PRE at their published
+17:00 UTC through `GATE_1_11_D2_R3`; PRE uses the independently confirmed
+2025-01-16 date. These are **HUMAN_ADJUDICATED**, not machine-verified or
+Limitless-derived. The current complete, still-unreviewed catalog and 22-window
+preview are described in the [current boundary review](tcg-live-historical-boundary-review.md).
+R2's evidence, observations and replay remain unchanged; the R3 approvals live
+in a separate register. No fallback is used to select the R3 times.
+
 **NOT_READY.** All three expansion starts still have two plausible clock hypotheses.
 No canonical time is proposed, no candidate is reviewed, and no historical MARS
 rebuild or Tournament API acquisition was executed. The fallback stops at its

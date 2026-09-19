@@ -16,6 +16,7 @@ from official_release_observer.parsing import integrity, normalized, safe_url, s
 from official_release_observer.reconcile import reconcile
 from official_release_observer.timeparse import extract_time
 from .adjudication import verify_statements, render_adjudications
+from .human_adjudication import apply_human_adjudications, render_human_adjudications
 
 BASE = Path(__file__).resolve().parents[1]
 DATA = BASE / "data/candidates/releases"
@@ -23,6 +24,12 @@ LEDGER = DATA / "tcg_live_historical_boundary_evidence.json"
 CANDIDATE = DATA / "tcg_live_historical_boundaries_candidate.json"
 PREVIEW = DATA / "tcg_live_historical_window_preview.json"
 REVIEW = BASE / "docs/tcg-live-historical-boundary-review.md"
+HUMAN_ADJUDICATIONS = DATA / "tcg_live_human_adjudications.json"
+
+
+def load_human_adjudications():
+    """Explicit CLI input; pure machine compilation never reads approvals itself."""
+    return json.loads(HUMAN_ADJUDICATIONS.read_text(encoding="utf-8")) if HUMAN_ADJUDICATIONS.exists() else None
 
 # Names/identities only. Order is independently reconciled against the official
 # forum inventory and card identity index; it is never a source of release times.
@@ -173,7 +180,7 @@ def assess(entry, observations):
                 corroboration=result.get("corroboration"))
 
 
-def compile_catalog(ledger):
+def compile_catalog(ledger, human_adjudications=None):
     if ledger.get("schema_version") != 1 or ledger.get("reviewed") is not False:
         raise ValueError("ledger must remain explicitly unreviewed")
     records = ledger["observations"]
@@ -200,6 +207,9 @@ def compile_catalog(ledger):
                 raise ValueError("missing evidence reference")
         item.update(assess(item, observations))
         entries.append(item)
+    # The source ledger and C1 result are immutable inputs. Human decisions form
+    # a separate, explicitly supplied layer and cannot turn conflicts into EXACT.
+    entries = apply_human_adjudications(ledger, entries, human_adjudications)
     by_id = {e["event_id"]: e for e in entries}
     boundaries = []
     # D2-R1: one MARS per expansion release window. Rotations remain in the
@@ -208,9 +218,15 @@ def compile_catalog(ledger):
         entry = by_id[event_id]
         ids = entry.get("exact_evidence_ids") or entry.get("context_evidence_ids") or []
         source = observations[ids[0]]["canonical_url"] if ids else entry.get("attempted_source_url", "")
+        evidence = dict(url=source, reviewed=False, exact_time=bool(entry["start_utc"]),
+            status=entry["status"], c1_machine_states=entry["observer_states"],
+            authority_class=("HUMAN_ADJUDICATED" if entry["status"] == "HUMAN_ADJUDICATED" else
+                             "MACHINE_VERIFIED_SOURCE" if entry["status"] == "MACHINE_VERIFIED" else None))
+        if entry["status"] == "HUMAN_ADJUDICATED":
+            evidence.update(adjudication_id=entry["human_adjudication"]["adjudication_id"],
+                            adjudication_reviewed=True, machine_status=entry["machine_status"])
         boundaries.append(dict(event_id=entry["event_id"], name=entry["name"], kind="expansion",
-            start_utc=entry["start_utc"], reasons=["expansion"],
-            evidence=dict(url=source, reviewed=False, exact_time=bool(entry["start_utc"]))))
+            start_utc=entry["start_utc"], reasons=["expansion"], evidence=evidence))
     if all(b["start_utc"] for b in boundaries):
         boundaries.sort(key=lambda b: (b["start_utc"], b["event_id"]))
     for entry in entries:
@@ -219,7 +235,8 @@ def compile_catalog(ledger):
                 if entry["start_utc"] and b["start_utc"] == entry["start_utc"]]
     # Editorial discovery limitations remain visible in the audit; readiness
     # follows the required expansion identities and their accepted starts.
-    complete = all(by_id[code]["status"] == "MACHINE_VERIFIED" for code, _ in REQUIRED_EXPANSIONS)
+    complete = all(by_id[code]["status"] in {"MACHINE_VERIFIED", "HUMAN_ADJUDICATED"}
+                   and by_id[code]["start_utc"] for code, _ in REQUIRED_EXPANSIONS)
     candidate = dict(schema_version=1, reviewed=False, boundaries=boundaries,
                      window_unit="expansion",
                      catalog_status="COMPLETE_UNREVIEWED" if complete else "INCOMPLETE_NOT_READY")
@@ -244,8 +261,14 @@ def compatibility_preview(candidate, complete):
     if not complete:
         return dict(status="NOT_READY", d1_compatibility="EXPANSION_SEQUENCE_INCOMPLETE",
                     windows=[], reason="required expansion sequence incomplete", skipped_gaps=False)
+    definitions = [w.definition() for w in windows]
+    # Discard D1's temporary full-catalog review attestations before persisting
+    # the preview. Individual human approvals remain separate and unchanged.
+    for window in definitions:
+        for event in (*window["events"], *window["end_events"]):
+            event["evidence"]["reviewed"] = False
     return dict(status="UNREVIEWED_PREVIEW", d1_compatibility="PASS_IN_MEMORY_ONLY",
-                windows=[w.definition() for w in windows], skipped_gaps=False)
+                windows=definitions, reviewed=False, skipped_gaps=False)
 
 
 def render_review(ledger, candidate, entries, preview):
@@ -253,24 +276,27 @@ def render_review(ledger, candidate, entries, preview):
     expansion = [e for e in entries if e["kind"] == "expansion"]
     rotations = [e for e in entries if e["kind"] == "rotation"]
     ready = candidate["catalog_status"] == "COMPLETE_UNREVIEWED"
-    verdict = "READY_FOR_HUMAN_REVIEW" if ready else "NOT_READY"
-    lines = ["# TCG Live historical boundary review — Gate 1.11-D2-R1", "",
-        f"**{verdict} — candidate reviewed=false; no human approval, promotion or historical rebuild.**", "",
+    verdict = "READY_FOR_FINAL_CATALOG_REVIEW" if ready else "NOT_READY"
+    human_count = sum(e["status"] == "HUMAN_ADJUDICATED" for e in expansion)
+    distinct_starts = len({e["start_utc"] for e in expansion if e["start_utc"]})
+    lines = ["# TCG Live historical boundary review — Gate 1.11-D2-R3", "",
+        f"**{verdict} — candidate reviewed=false; {human_count} individually approved human adjudications; no catalog approval, promotion or historical rebuild.**", "",
         "Coverage: Scarlet & Violet (2023-03-30) through 30th Celebration (2026-09-15), current OPEN.",
-        f"Expected: {len(expansion)} full-expansion identities, 22 expansion release instants (Black Bolt / White Flare share one), and {len(rotations)} Standard rotations.",
+        f"Inventory: {len(expansion)} full-expansion identities; {distinct_starts} resolved distinct release instants; {len(preview['windows'])} derived windows; {len(rotations)} Standard rotations as metadata. Black Bolt / White Flare share one instant.",
         f"Exact machine-verified event records: {sum(e['exact_time_verified'] for e in expansion)} expansions; {sum(e['exact_time_verified'] for e in rotations)} Standard rotation.",
+        f"Human-adjudicated expansion records: {human_count}. Unresolved expansion starts: {sum(e['start_utc'] is None for e in expansion)}. MACHINE_VERIFIED and HUMAN_ADJUDICATED are distinct authorities.",
         "Methodology: **one MARS per expansion release window**. Only expansion starts determine contiguity. Rotations remain audited metadata and never create extra windows or supply expansion timestamps.",
-        "The expansion sequence is complete, awaiting human review." if ready else
+        "The expansion sequence is complete, awaiting final full-catalog human review. Individual R3 decisions are already approved." if ready else
         "The expansion sequence is incomplete. Unknown expansion starts remain null; **no windows are derived across gaps**. Unknown rotation times do not block it.", "",
         "## Chronological expansion inventory", "",
         "Identity order is independently reconciled; pending rows do not assert an exact timestamp. Local time below is the source expression, including its errors.", "",
-        "| Event | Type | Code | Official local time | Verified UTC | Primary official source | Secondary source | Machine authority | Identity | Conflict / status |",
+        "| Event | Type | Code | Original official expression | Proposed UTC | Primary official source | Date corroboration | Source authority | Identity | Boundary status |",
         "|---|---|---|---|---|---|---|---|---|---|"]
     for e in expansion + rotations:
         if e == rotations[0]:
             lines += ["", "## Audited rotations — metadata only", "",
                 "These records stay outside the runner boundary array. A confirmed date is not midnight or an exact UTC instant.", "",
-                "| Event | Type | Code | Official local time / date | Verified UTC | Primary official source | Secondary source | Machine authority | Identity | Conflict / status |",
+                "| Event | Type | Code | Official local time / date | Metadata UTC | Primary official source | Secondary source | Source authority | Identity | Status |",
                 "|---|---|---|---|---|---|---|---|---|---|"]
         ids = e.get("exact_evidence_ids") or e.get("context_evidence_ids") or []
         source = observations[ids[0]] if ids else None
@@ -279,7 +305,10 @@ def render_review(ledger, candidate, entries, preview):
             "Date only: " + e["confirmed_date"] if e.get("confirmed_date") else "Exact time not established")
         url = source["canonical_url"] if source else e.get("attempted_source_url", "")
         authority = source["authority"] if source else "UNVERIFIED"
-        lines.append(f"| {e['name']} | {e['kind']} | {e['identity'].get('code') or e['event_id']} | {local} | {e['machine_verified_utc'] or '—'} | [official]({url}) | unavailable / not corroborated | {authority} | {'MAPPED' if e['mapped'] else 'UNMAPPED'} | {e['status']} |")
+        corroboration = e.get("human_adjudication", {}).get("corroborating_official_sources", [])
+        secondary = " / ".join(f"[official date]({s['url']})" for s in corroboration) or "unavailable / not corroborated"
+        lines.append(f"| {e['name']} | {e['kind']} | {e['identity'].get('code') or e['event_id']} | {local} | {e['start_utc'] or '—'} | [official]({url}) | {secondary} | {authority} | {'MAPPED' if e['mapped'] else 'UNMAPPED'} | {e['status']} |")
+    lines += render_human_adjudications(entries)
     lines += ["", "## Timezone conversion", "",
               "All exact values below come from C1 `extract_time`, using versioned `tzdata:2026.3` and America/Los_Angeles. No default hour, midnight or Limitless release date is used.", "",
               "| Event | Declared zone | Parsed local | Calculated UTC | Explicit UTC clock |", "|---|---|---|---|---|"]
@@ -289,7 +318,8 @@ def render_review(ledger, candidate, entries, preview):
         source = observations[e["exact_evidence_ids"][0]]
         t = source["time"]
         lines.append(f"| {e['name']} | {t['raw_zone']} | {t['local']} | {t['calculated_utc']} | {t['explicit_utc'] or 'not supplied'} |")
-    lines += ["", "## Nontrivial findings and blockers", ""]
+    lines += ["", "## Preserved machine findings and research limitations", "",
+              "The following source findings and R1 conclusions are retained as predecessor evidence. R3 human decisions resolve the proposed expansion starts without repairing these machine conflicts.", ""]
     for e in entries:
         for note in e.get("notes", []):
             lines.append(f"- **{e['name']}:** {note}")
@@ -300,24 +330,27 @@ def render_review(ledger, candidate, entries, preview):
               "|---|---|---|---|---|---|---|"]
     for e in entries:
         lines.append(f"| {e['name']} | yes | {e['found_official']} | {e['exact_time_verified']} | {e['mapped']} | {e['conflict']} | {e['missing']} |")
-    lines += ["", *ledger["coverage"]["notes"], "", "## Pre-scope inventory", ""]
+    lines += ["", "Historical coverage notes below describe D2/R1 before the R3 human decisions; they are preserved rather than rewritten as new machine evidence.", "", *ledger["coverage"]["notes"], "", "## Pre-scope inventory", ""]
     for item in ledger["pre_scope"]:
         lines.append(f"- [{item['name']}]({item['url']}): {item['status']}. Outside required rebuild scope; no exact boundary accepted or scope extension.")
     lines += ["", "## Candidate and derived-window preview", "",
         "- Candidate: `data/candidates/releases/tcg_live_historical_boundaries_candidate.json`.",
         "- Evidence ledger: `data/candidates/releases/tcg_live_historical_boundary_evidence.json`.",
+        "- Separate human decisions: `data/candidates/releases/tcg_live_human_adjudications.json`.",
         "- Preview: `data/candidates/releases/tcg_live_historical_window_preview.json`.",
         f"- D1 compatibility of the actual candidate, with review flags temporarily true **only in memory**: `{preview['d1_compatibility']}`.",
-        "- No complete window list is emitted while required expansion starts remain unresolved. Rotation timing and secondary discovery limitations remain visible audit metadata; they do not split/block an otherwise complete expansion sequence.",
+        "- `evidence.exact_time` denotes a precise proposed boundary; it does not assert C1 machine verification. `status` / `authority_class` and the separate decision ID distinguish human adjudication from coherent machine evidence. Catalog and boundary `reviewed` flags remain false.",
+        f"- Complete preview: {len(preview['windows'])} contiguous expansion-release windows, derived through D1; temporary full-catalog review flags are discarded before persistence." if ready else
+        "- No complete window list is emitted while required expansion starts remain unresolved. Rotations and secondary discovery limitations remain audit metadata.",
         "- The latest known expansion is `30C`: `[2026-09-15T17:00:00Z, OPEN)`. No observation cutoff is part of this catalog.",
         "- Perfect Order / rotation 2026 coincidence is retained in ledger metadata (`coincident_expansion_ids=[POR]`); the runner gets only the expansion event. Rotations 2023/2024/2025 are never assumed coincident.",
         "- Black Bolt and White Flare retain both expansion identities at their shared official release instant. D1 groups that joint release into one window without a zero-length interval. No rotation creates an extra MARS/window.",
         "", "## Provenance and review procedure", "",
         "Each ledger observation is a separately checksummed minimal projection of a C1 observation. It retains the original observation ID/excerpt digest, normalized source content digest, metadata fingerprint, author/role/publication/edit evidence, parser/adapter/policy/tzdb versions and retrieval provenance. Raw captures/full selected excerpts remain ignored local research evidence; full copyrighted announcements are not committed.",
         "The only observer change is whitespace equivalence around the em dash in expansion names (`live-release-2`), demonstrated by Shrouded Fable. The time parser and authority policy are unchanged. The former parser observation is retained as a predecessor reference, not portrayed as an official source correction.",
-        "No official correction resolving the three inconsistent expansion timestamps was established. Blocked Pokémon.com sources may contain additional evidence; absence of conflict there is not claimed. Human review must resolve expansion holes/conflicts, inspect the coverage limitations and explicitly approve a separate runner-ready input. Unknown rotation times remain metadata.",
+        "No official correction resolving the three inconsistent sources was established. R3 explicitly approves the published UTC for PAF/SSP and combines the independent official date with published UTC for PRE. This does not claim machine verification or erase discovery limitations. Final catalog review must still explicitly approve a separate runner-ready input. Unknown rotation times remain metadata.",
         "", "## Offline validation", "",
-        "Run `python -m historical_boundaries` to verify ledger integrity, regenerate the candidate/preview in memory and compare committed outputs. It performs no network requests and invokes only the D1 boundary loader, never NEXT/ALL/WINDOW. Run `python -m historical_boundaries --write` to regenerate the fixed unreviewed artifacts from the ledger after reviewed research changes; it cannot write active catalogs.",
+        "Run `python -m historical_boundaries` to verify the unchanged ledger and separate human decision register, regenerate the candidate/preview in memory and compare committed outputs. It performs no network requests and invokes only the D1 boundary loader, never NEXT/ALL/WINDOW. Run `python -m historical_boundaries --write` to regenerate the fixed unreviewed artifacts; it cannot write active catalogs. Pure `compile_catalog(ledger)` intentionally retains the original machine-only result; human decisions must be explicitly supplied as a second argument. The R2 offline replay continues to reproduce its historical NOT_READY result without using the R3 decisions.",
         "", f"**Verdict: {verdict}.**", ""]
     return "\n".join(lines)
 
@@ -326,7 +359,7 @@ def serialize(value):
     return json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
 
 
-def artifacts(ledger):
-    candidate, entries, preview = compile_catalog(ledger)
+def artifacts(ledger, human_adjudications=None):
+    candidate, entries, preview = compile_catalog(ledger, human_adjudications)
     return {CANDIDATE: serialize(candidate), PREVIEW: serialize(preview),
             REVIEW: render_review(ledger, candidate, entries, preview)}

@@ -81,10 +81,11 @@ def render_adjudications(ledger, entries, observations):
     statements = {s["statement_id"]: s for s in ledger["temporal_statements"]}
     by_event = {e["event_id"]: e for e in entries}
     lines = ["", "## D2-R1: PAF / SSP / PRE adjudication", "",
-        "Calculated local UTC below is diagnostic when the source has a conflicting explicit UTC or invalid date. Only a conflict-free full-expansion availability proposition can authorize a boundary. Event, Battle Pass, Ladder and maintenance clocks are not replacements.", ""]
+        "The following is the preserved R1 machine assessment, before R3 human adjudication. Calculated local UTC is diagnostic when the source has a conflicting explicit UTC or invalid date. Only a conflict-free full-expansion proposition can authorize machine acceptance. Event, Battle Pass, Ladder and maintenance clocks are not replacements.", ""]
     for code in ("PAF", "SSP", "PRE"):
         audit = ledger["adjudications"][code]
-        lines += [f"### {code} — {by_event[code]['status']}", "", audit["conclusion"], "",
+        machine_status = by_event[code].get("machine_status", by_event[code]["status"])
+        lines += [f"### {code} — R1 machine result: {machine_status}", "", audit["conclusion"], "",
             "| Official source / authority | Proposition | Source time fields | Zone | Local-clock UTC (diagnostic) | Explicit UTC | C1 state |",
             "|---|---|---|---|---|---|---|"]
         for sid in audit["statement_ids"]:

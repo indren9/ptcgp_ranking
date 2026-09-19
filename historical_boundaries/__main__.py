@@ -3,7 +3,7 @@ import argparse
 import json
 
 from historical_rebuild.store import atomic_write
-from .catalog import LEDGER, artifacts
+from .catalog import LEDGER, artifacts, load_human_adjudications
 
 
 def main(argv=None):
@@ -11,7 +11,7 @@ def main(argv=None):
     parser.add_argument("--write", action="store_true", help="write fixed unreviewed candidate/preview/review paths only")
     args = parser.parse_args(argv)
     ledger = json.loads(LEDGER.read_text(encoding="utf-8"))
-    outputs = artifacts(ledger)
+    outputs = artifacts(ledger, load_human_adjudications())
     for path, text in outputs.items():
         if path.resolve() != path.absolute():
             raise ValueError("candidate outputs cannot traverse symlinks/junctions")

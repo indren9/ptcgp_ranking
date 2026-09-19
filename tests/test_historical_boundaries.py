@@ -10,6 +10,7 @@ from historical_boundaries.catalog import (
     LEDGER, CANDIDATE, PREVIEW, REQUIRED_EXPANSIONS, REQUIRED_ROTATIONS,
     C0_EXPECTATIONS, artifacts, assess, compile_catalog, compatibility_preview,
     project_observation, verify_observation,
+    load_human_adjudications,
 )
 from historical_rebuild.model import NotReady, load_windows
 from historical_boundaries.adjudication import statement
@@ -213,8 +214,9 @@ def test_independent_c0_regressions(ledger, code, expected):
 
 def test_committed_artifacts_deterministic_unreviewed_no_cutoff(ledger):
     before = deepcopy(ledger)
-    outputs = artifacts(ledger)
-    assert outputs == artifacts(ledger)
+    approval = load_human_adjudications()
+    outputs = artifacts(ledger, approval)
+    assert outputs == artifacts(ledger, approval)
     for path, text in outputs.items():
         assert path.read_text(encoding="utf-8") == text
     candidate = json.loads(outputs[CANDIDATE])
