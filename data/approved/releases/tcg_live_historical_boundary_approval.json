@@ -1,0 +1,13 @@
+{
+  "approval_policy_version": "tcg-live-frozen-catalog-1",
+  "approval_source": "Chat Madre/user",
+  "approval_statement": "Approvo il catalogo storico completo TCG Live.",
+  "evidence_ledger_sha256": "390c8cd91b14a7ad2a908578ad7eb15d3668fbc618356c422339e2207c802d00",
+  "frozen": true,
+  "gate": "GATE_1_11_D2_FINAL_CATALOG_REVIEW",
+  "hash_policy": "SHA-256 of exact UTF-8 file bytes; no normalization",
+  "human_adjudications_sha256": "e519d2f08ac8a885b5adfcb99f646929504a41b22800e3010b6418b284e3da70",
+  "source_candidate_sha256": "57df7f1a25fee938569f9c1792ebd344913bfcaf2e4ec1d394c31cf17906bb7f",
+  "source_revision": "a7de0ca47ed42ed14a6f00557bbb3ff3c0c95e31",
+  "status": "HUMAN_APPROVED"
+}

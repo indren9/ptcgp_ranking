@@ -1,0 +1,417 @@
+{
+  "schema_version": 1,
+  "gate": "1.11-D2-R2",
+  "reviewed": false,
+  "research": {
+    "reviewed": false,
+    "ledger_sha256": "d7319a6feb79029395add607df6f590465b4cd65616255bf806ad97bae7b3931",
+    "baseline_head": "6b53e689141f63808664f05c6abca86651a6bdf5",
+    "baseline_main": "742cb24eb3f888d92f214b9fc5363b9d39f72da5",
+    "sources": [
+      {
+        "url": "https://community.pokemon.com/en-us/discussion/8969/scarlet-violet-paldean-fates-release",
+        "status": 200,
+        "retrieved_at": "2026-09-18T20:30:54.556369+00:00",
+        "raw_sha256": "09cfade1c3d942689c1ea0ac650f51bcb7a786c64de5412eadcbfbea07e73bf7",
+        "outcome": "OK",
+        "raw_path": ".cache/gate111-d2-r2/ddf6ba6e62862c230f818aa49be7c951cdeda5a916caf61a6d70b70a4152af2f.body",
+        "evidence_id": "r2-source-806e450fe1387b7187b2eab7f0cf59657f84a6460f2d08d89434298d189060d3",
+        "time_authority": false,
+        "authority": "PASS",
+        "c1_state": "INVALID_LOCAL_TIME",
+        "source_content_digest": "db5336a0011bd1a0a4dcf6a1436d13b188fa2d4d9d3699dfb9bcfde81125780a",
+        "prior_observation_ids": [
+          "f07f521cc8a6d3745d0148ee11c0fe9b0fbb53f1631bb38458ac270daad8dbdd",
+          "e4079cbc3480a4fe692cb6e4368a0f84b819b6366876e807b517e6d42ab0fcd6"
+        ],
+        "content_unchanged_from_r1": true
+      },
+      {
+        "url": "https://community.pokemon.com/en-us/discussion/13953/scarlet-violet-surging-sparks-release",
+        "status": 200,
+        "retrieved_at": "2026-09-18T20:30:55.228315+00:00",
+        "raw_sha256": "b4c0e289bbe4142b0ae3289472aef59a131a70ea48f250a2e8668fdbfb7b0abb",
+        "outcome": "OK",
+        "raw_path": ".cache/gate111-d2-r2/f822c56fda4a5c87284aa20eb66d5809dd1b222ebeb05978f14c20033a31ca4c.body",
+        "evidence_id": "r2-source-42d1ed9ad77dff6cabe7fb77d0543420eea7cfdb9e64dc7d59bf109935859c46",
+        "time_authority": false,
+        "authority": "PASS",
+        "c1_state": "OFFICIAL_CONFLICT",
+        "source_content_digest": "a1bca4e8ab8b6abf97d6eb02473b35f2d50b395cf2cb01a3d2121ca6d771765f",
+        "prior_observation_ids": [
+          "702c15fc20ed75eb634c4455a3e14048e09afbafeeca659212115a1ab9fb00cd",
+          "78964ea277cdabb04fe9ade58cca76ddbfcf6a043efe3754a1c8a994cc467f64"
+        ],
+        "content_unchanged_from_r1": true
+      },
+      {
+        "url": "https://community.pokemon.com/en-us/discussion/15414/scarlet-violet-prismatic-evolutions-release",
+        "status": 200,
+        "retrieved_at": "2026-09-18T20:30:55.891317+00:00",
+        "raw_sha256": "75b73fec83db9851ef3b5d051c72f97ba89e8ffde68a520213525134f2ad9be1",
+        "outcome": "OK",
+        "raw_path": ".cache/gate111-d2-r2/d9ce612c4de9d14702dfed62192f12d8b604abe839f5c6812fcfff71805a3f2f.body",
+        "evidence_id": "r2-source-a5c4e2c4a4e5565b922f4c7766a875252e136c767706ea0aa3632132de7fb136",
+        "time_authority": false,
+        "authority": "PASS",
+        "c1_state": "OFFICIAL_CONFLICT",
+        "source_content_digest": "830c84692c88dbf8fd16b1437c1c4eee51682fc2d391e7af250f61b018de8c33",
+        "prior_observation_ids": [
+          "ebb2b2b062852d926c4fd35fe2b79db204743163e049388893190789887c2eec",
+          "fb251e1498b11c67631503940f100bc89590d85e11f12758e63c2049484ae4b9"
+        ],
+        "content_unchanged_from_r1": true
+      },
+      {
+        "url": "https://community.pokemon.com/en-us/discussion/13604/letter-to-the-community-december-3-2024",
+        "status": 200,
+        "retrieved_at": "2026-09-18T20:30:56.620848+00:00",
+        "raw_sha256": "73ac3c3f6a2e2ac03589282ab8fa7afe2317a7ea5ee5263e49c283504d8d3c09",
+        "outcome": "OK",
+        "raw_path": ".cache/gate111-d2-r2/d353cf000ceaca8a4f05b1368ecfb6bbf41fa70ea75c85838926b71d7dd11d23.body",
+        "evidence_id": "r2-source-9bf71b9160871d33f056241914a43bb81f0b14b55693e193c0a423493d93797d",
+        "time_authority": false,
+        "authority": "PASS",
+        "c1_state": "EVENT_AMBIGUOUS",
+        "source_content_digest": "654a6af4c12a1979100de395c03d760eb3211d365e25a34ae848618a2c033c4a",
+        "prior_observation_ids": [
+          "56f830692a9ce2f4b8bb51ac1f3802d0be382149afa82fef6b8e37fa86528ccd"
+        ],
+        "content_unchanged_from_r1": true
+      },
+      {
+        "url": "https://community.pokemon.com/en-us/discussion/13239/letter-to-the-community-november-5-2024",
+        "status": 200,
+        "retrieved_at": "2026-09-18T20:30:57.327018+00:00",
+        "raw_sha256": "c4d78e2b6261383a885fd50632fd4db91a183939415bf25900fc4d20c04d9c9f",
+        "outcome": "OK",
+        "raw_path": ".cache/gate111-d2-r2/9fa656243a92acd12c6248402b601201c128707cf95f5ad9a49f6e81d328208f.body",
+        "evidence_id": "r2-source-5a9c3bda24f99d80080e8d9ba9fba89968f16cc64e958066c3d856d7f5820c13",
+        "time_authority": false,
+        "authority": "PASS",
+        "c1_state": "EVENT_AMBIGUOUS",
+        "source_content_digest": "89ace85fc8e141e0f7b1a52b5a6159b87512e60ce434b8d85a50bfa6451ce35f",
+        "prior_observation_ids": [
+          "c730a92064a23e17c91a307da09903c33764cc4bb9a71ecfcc15d7b47e0ef473"
+        ],
+        "content_unchanged_from_r1": true
+      },
+      {
+        "url": "https://www.pokemon.com/uk/news/scarlet-violet-paldean-fates-now-playable-in-pokemon-tcg-live",
+        "status": 200,
+        "retrieved_at": "2026-09-18T20:30:57.623777+00:00",
+        "raw_sha256": "fe6b9665670d7b48e04fec6eed252edd9a86f507bee47095ce86fde6be22cec7",
+        "outcome": "CHALLENGE",
+        "raw_path": ".cache/gate111-d2-r2/6e67cd71325a812c7d640ee936b675791a31934bcddc0c401f4d521a350dfe85.body",
+        "evidence_id": "r2-source-8d5d962fe4ba6864fb4e9f9829dfba91fd2727d02424398cff7e967b7a19731d",
+        "time_authority": false
+      },
+      {
+        "url": "https://www.pokemon.com/uk/news/scarlet-violet-surging-sparks-now-playable-in-pokemon-tcg-live",
+        "status": 200,
+        "retrieved_at": "2026-09-19T07:59:04.411494+00:00",
+        "raw_sha256": "a4597fcd438ba5aa01c81adfd57c7f2ca21a3b8f9d73dc04f47c72a18c7eb86d",
+        "outcome": "CHALLENGE",
+        "raw_path": ".cache/gate111-d2-r2/0c5c163244960343d68fb2609f7aa236e890f55a90e3b07eca0377e69fd01cc1.body",
+        "evidence_id": "r2-source-4fd409d6f8d8b28a5553d29c1f4223365b99ad8779065a6a80bd1a6ff0ab21ad",
+        "time_authority": false
+      },
+      {
+        "url": "https://www.pokemon.com/uk/news/eevees-prismatic-parade-event-in-pokemon-trading-card-game-live",
+        "status": 200,
+        "retrieved_at": "2026-09-18T20:30:58.065355+00:00",
+        "raw_sha256": "117909c404b15e1d1410ccd2420c7ee60b2b8f59af97a0fa08d3757d9906e463",
+        "outcome": "CHALLENGE",
+        "raw_path": ".cache/gate111-d2-r2/67bd83a26570c081aaf7c5183a1830b552d0d5e19f879f010cf4afea209bdaab.body",
+        "evidence_id": "r2-source-bc08ed9c26f54dcc58f6937c23522cbb9c39b1f23823232ec9e33177a4b303b7",
+        "time_authority": false
+      },
+      {
+        "url": "https://docs.limitlesstcg.com/developer/tournaments",
+        "status": 200,
+        "retrieved_at": "2026-09-18T20:30:58.637139+00:00",
+        "raw_sha256": "7ec409dc16d47fbac58b2c885d81585533fd192cd9f0d28a0bc5dc73b262fd84",
+        "outcome": "OK",
+        "raw_path": ".cache/gate111-d2-r2/4b1143f3f4452b61f28297274cbec3532e27e72c4ad1340c9ba1a6646d79ebd3.body",
+        "evidence_id": "r2-source-98e795bea49662051cf283539c4346084065c2582f6bdc120fb31713593110a8",
+        "time_authority": false
+      },
+      {
+        "url": "https://docs.limitlesstcg.com/player/decklists",
+        "status": 200,
+        "retrieved_at": "2026-09-18T20:30:59.281124+00:00",
+        "raw_sha256": "a9f76e72b6b355102df2de7c4c887baf480cdc44c6fbe5f55875c4706d23a522",
+        "outcome": "OK",
+        "raw_path": ".cache/gate111-d2-r2/943843b336a53a5865e7ebff0540c6ec1200bb3bda342875c3dc0ede4c57acc2.body",
+        "evidence_id": "r2-source-c62c33f34f2f76aaf40fe5283b5b000d8d83b170f1d9c7d963308773549fda64",
+        "time_authority": false
+      },
+      {
+        "url": "https://docs.limitlesstcg.com/organizer/reference",
+        "status": 200,
+        "retrieved_at": "2026-09-18T20:30:59.779177+00:00",
+        "raw_sha256": "bf98dfce60de9388e1256078f6cda71b4a41d05f3cb6d08b01f76508b60cf4a5",
+        "outcome": "OK",
+        "raw_path": ".cache/gate111-d2-r2/82672aeee5df3c7485146c2107e5be651bdadc207db467a576454351d8900106.body",
+        "evidence_id": "r2-source-37097a4d032fa38e5352e710c71527df6311c35e5abd62f4e2ffd69b016c31ad",
+        "time_authority": false
+      },
+      {
+        "url": "https://docs.limitlesstcg.com/organizer/schedule",
+        "status": 200,
+        "retrieved_at": "2026-09-18T20:31:00.289229+00:00",
+        "raw_sha256": "3f14680cbbfb2694508af91652089ed2f587d68986b791548ed2a1c90b1f8095",
+        "outcome": "OK",
+        "raw_path": ".cache/gate111-d2-r2/3941677b52512d2c7288132a65e4e8b206c196fc4dae3bbef994951d4bd4cba2.body",
+        "evidence_id": "r2-source-ce6c65de5e50e28a2a798aff1b4ec9adb78400f29a634db4dba2a6795a6be696",
+        "time_authority": false
+      },
+      {
+        "url": "https://docs.limitlesstcg.com/organizer/players",
+        "status": 200,
+        "retrieved_at": "2026-09-18T20:31:00.789538+00:00",
+        "raw_sha256": "b7a33ee33fde92d860ba3e39924a56685e127cef655f0bbfe93d8b834b097657",
+        "outcome": "OK",
+        "raw_path": ".cache/gate111-d2-r2/7b6760048aa33fb4fa034a96a44d663f0d9956d59406b21323b20cc976447875.body",
+        "evidence_id": "r2-source-0e0862831d619a8014dc79903e9183f1433aa2c49a4e5a566c63f48514f07c5e",
+        "time_authority": false
+      },
+      {
+        "url": "https://docs.limitlesstcg.com/organizer/procedures",
+        "status": 200,
+        "retrieved_at": "2026-09-18T20:31:01.221648+00:00",
+        "raw_sha256": "f3f483855cb70d83930b46eb715569906058ff223ba7974bf0e1c5f5b39cd090",
+        "outcome": "OK",
+        "raw_path": ".cache/gate111-d2-r2/c23ca22cd144ecb90c20cc62fcd4f4be070a5cc9281845e46a758021d550dff4.body",
+        "evidence_id": "r2-source-013b2620a4a34db014e53322b00a221b5455b33342a6688c5fc951263803e800",
+        "time_authority": false
+      }
+    ],
+    "first_party_outcomes": {
+      "PAF": {
+        "status": "CANONICAL_PENDING",
+        "full_expansion_exact_time_resolved": false,
+        "finding": "Forum release retains January PDT and explicit 17:00 UTC. Newly discovered UK Pokemon.com now-playable article confirms January 25, 2024 in search-indexed content, without an exact clock. Direct capture is CHALLENGE, not usable C1 evidence. Patch support/maintenance does not supply a release clock."
+      },
+      "SSP": {
+        "status": "OFFICIAL_CONFLICT",
+        "full_expansion_exact_time_resolved": false,
+        "finding": "Forum release retains 10:00 PT and 17:00 UTC on November 7, 2024. Independent November 5 letter confirms the date only. UK now-playable article also supplies no resolving clock in indexed content; direct capture is CHALLENGE."
+      },
+      "PRE": {
+        "status": "OFFICIAL_CONFLICT",
+        "full_expansion_exact_time_resolved": false,
+        "finding": "December 3 first-party letter independently confirms January 16, 2025. The release post retains literal 2024 and conflicting 10:00 PT/17:00 UTC fields. The UK Parade article concerns event tracking, not full-expansion availability; direct capture is CHALLENGE. Its 18:00 event clock is excluded from candidate derivation."
+      }
+    },
+    "searches": [
+      {
+        "scope": "Pokemon first-party domains only",
+        "queries": [
+          "Paldean Fates January 25 UTC / PST / now playable Live",
+          "Surging Sparks November 7 UTC / 17:00 / 10:00 / now playable Live",
+          "Prismatic Evolutions January 16 UTC / 18:00 / 9:00 / 10:00 available Live"
+        ],
+        "outcome": "No independent full-expansion exact-time resolution found. This is bounded research, not proof that no additional first-party source exists."
+      },
+      {
+        "scope": "docs.limitlesstcg.com only",
+        "queries": [
+          "Tournament API date semantics",
+          "organizer decklist edit after tournament / judge change",
+          "tournament schedule / late players / decklist submission"
+        ],
+        "outcome": "Documented scheduled time, late submissions and editable schedules cannot establish historical presence by API date; archive/revision guarantees were not established."
+      }
+    ],
+    "feasibility_findings": [
+      {
+        "id": "API_DATE",
+        "source": "https://docs.limitlesstcg.com/developer/tournaments",
+        "finding": "date is organizer-scheduled tournament start. It is not actual start, registration close, deck submission time, creation time, or a card-use timestamp. Documented standings and pairings contain no deck submission/version/immutable historical-use timestamp."
+      },
+      {
+        "id": "DELAY_AND_LATE",
+        "source": "https://docs.limitlesstcg.com/organizer/reference",
+        "finding": "Configured start prevents an earlier start but does not guarantee an on-time start. Late registration and deck submission can be enabled for the first two Swiss rounds. Current player decklists do not establish contents by the scheduled start."
+      },
+      {
+        "id": "PLAYER_EDITS",
+        "source": "https://docs.limitlesstcg.com/player/decklists",
+        "finding": "Players may resubmit while submission is open; prior submissions are discarded. This does not establish post-tournament editing. Historical immutability, organizer/admin correction restrictions and a public revision trail were not established."
+      },
+      {
+        "id": "ACTIVE_PLAYER_LOCK",
+        "source": "https://docs.limitlesstcg.com/organizer/reference",
+        "finding": "Already-playing participants cannot update their decklist under the late-submission option. This documented lock is retained; it does not prove a scheduled-start deadline or immutable post-event history for the API response."
+      },
+      {
+        "id": "SCHEDULE_EDITS",
+        "source": "https://docs.limitlesstcg.com/organizer/schedule",
+        "finding": "Round schedules can be manually edited, including a round in progress. The public schedule is not an immutable audit log or a safe replacement timestamp."
+      },
+      {
+        "id": "BOUNDED_QUERY",
+        "source": "https://docs.limitlesstcg.com/developer/tournaments",
+        "finding": "Documented list filters cover game, format, organizer, limit and page; no timestamp interval filter is documented. Do not invent from/to parameters or paginate all history."
+      },
+      {
+        "id": "STOP",
+        "source": "https://docs.limitlesstcg.com/developer/tournaments",
+        "finding": "Fallback INCONCLUSIVE at preflight. No actual retroactive post-event edit capability was proved, so actual audit is NOT_ESTABLISHED, not a claim of proven UNSAFE. Independently, timestamp semantics already prohibit empirical upper bounds."
+      }
+    ],
+    "card_mapping_method": "Require actual decklist pokemon/trainer/energy card record with positive count, exact target set code, nonempty name and numeric card number; retain set-number ID, canonical card URL, tournament/player binding, deck/raw SHA256 and separately audited temporal provenance. Archetype names, titles and metadata are never substitutes. No actual historical card observation was acquired in R2.",
+    "adapter_limitation": "No live API adapter is enabled. The resumable engine is exercised with explicitly synthetic bounded evidence providers. Enabling a real provider requires new evidence proving historical presence and edit safety; a boolean assumption cannot repair scheduled API dates.",
+    "completeness_limitation": "Search-indexed editorial material is discovery/context only. Direct raw requests returned Incapsula challenge bodies with HTTP 200. No challenge was bypassed and no indexed clock was promoted. Existing R1 primary official authority and original C1 parser states remain unchanged.",
+    "sha256": "cc5ec53b9975dd6bb16ad1920fe6dd10f181b00d4db3cbaa1a2e2d59a1b8b0ff"
+  },
+  "feasibility_audit": {
+    "timestamp_semantics": "ORGANIZER_SCHEDULED_START",
+    "historical_edits": "NOT_ESTABLISHED",
+    "bounded_query": false,
+    "evidence_ids": [
+      "r2-source-98e795bea49662051cf283539c4346084065c2582f6bdc120fb31713593110a8",
+      "r2-source-c62c33f34f2f76aaf40fe5283b5b000d8d83b170f1d9c7d963308773549fda64",
+      "r2-source-37097a4d032fa38e5352e710c71527df6311c35e5abd62f4e2ffd69b016c31ad",
+      "r2-source-ce6c65de5e50e28a2a798aff1b4ec9adb78400f29a634db4dba2a6795a6be696",
+      "r2-source-0e0862831d619a8014dc79903e9183f1433aa2c49a4e5a566c63f48514f07c5e",
+      "r2-source-013b2620a4a34db014e53322b00a221b5455b33342a6688c5fc951263803e800"
+    ]
+  },
+  "results": [
+    {
+      "expansion": "PAF",
+      "plan": {
+        "code": "PAF",
+        "official_status": "CANONICAL_PENDING",
+        "candidates": [
+          "2024-01-25T17:00:00Z",
+          "2024-01-25T18:00:00Z"
+        ],
+        "evidence_ids": [
+          "6efaf93ae03fb4f42b244ff1eba6ce00ed64b54c8520c187928bbee5449aaca2"
+        ],
+        "derivation": [
+          "Explicit 17:00 UTC and local 10:00 are competing source fields; neither wins automatically.",
+          "17:00 follows the literal UTC/PDT offset; 18:00 is conditional on intended Pacific civil time (PST). The seasonally invalid PDT declaration is not repaired or accepted by C1."
+        ],
+        "first_party_exhausted": true
+      },
+      "status": "CANONICAL_PENDING",
+      "authority_class": null,
+      "fallback_outcome": "INCONCLUSIVE_PREFLIGHT",
+      "official_candidates": [
+        "2024-01-25T17:00:00Z",
+        "2024-01-25T18:00:00Z"
+      ],
+      "candidates_eliminated": [],
+      "candidates_remaining": [
+        "2024-01-25T17:00:00Z",
+        "2024-01-25T18:00:00Z"
+      ],
+      "proposed_start_utc": null,
+      "earliest_positive": null,
+      "empirical_upper_bound_utc": null,
+      "evidence_ids": [
+        "6efaf93ae03fb4f42b244ff1eba6ce00ed64b54c8520c187928bbee5449aaca2"
+      ],
+      "reviewed": false,
+      "reasoning": "No discriminating positive evidence; absence or a late observation cannot select a candidate.",
+      "tournaments_inspected": 0,
+      "decklists_inspected": 0
+    },
+    {
+      "expansion": "SSP",
+      "plan": {
+        "code": "SSP",
+        "official_status": "OFFICIAL_CONFLICT",
+        "candidates": [
+          "2024-11-07T17:00:00Z",
+          "2024-11-07T18:00:00Z"
+        ],
+        "evidence_ids": [
+          "311cb58f4391269bf48bf294ce5dfeeb52179235207af7de225898c9bacc0675"
+        ],
+        "derivation": [
+          "Explicit 17:00 UTC and local 10:00 are competing source fields; neither wins automatically."
+        ],
+        "first_party_exhausted": true
+      },
+      "status": "OFFICIAL_CONFLICT",
+      "authority_class": null,
+      "fallback_outcome": "INCONCLUSIVE_PREFLIGHT",
+      "official_candidates": [
+        "2024-11-07T17:00:00Z",
+        "2024-11-07T18:00:00Z"
+      ],
+      "candidates_eliminated": [],
+      "candidates_remaining": [
+        "2024-11-07T17:00:00Z",
+        "2024-11-07T18:00:00Z"
+      ],
+      "proposed_start_utc": null,
+      "earliest_positive": null,
+      "empirical_upper_bound_utc": null,
+      "evidence_ids": [
+        "311cb58f4391269bf48bf294ce5dfeeb52179235207af7de225898c9bacc0675"
+      ],
+      "reviewed": false,
+      "reasoning": "No discriminating positive evidence; absence or a late observation cannot select a candidate.",
+      "tournaments_inspected": 0,
+      "decklists_inspected": 0
+    },
+    {
+      "expansion": "PRE",
+      "plan": {
+        "code": "PRE",
+        "official_status": "OFFICIAL_CONFLICT",
+        "candidates": [
+          "2025-01-16T17:00:00Z",
+          "2025-01-16T18:00:00Z"
+        ],
+        "evidence_ids": [
+          "25ddc8ae537fe7c20b1eda54089b23b256a2a9f3080cdd5a851bb022b355a9b9",
+          "a294e02b47e258166172a342d2cbf1af91b128ae1ebd6b50f60d2525c021220b"
+        ],
+        "derivation": [
+          "Explicit 17:00 UTC and local 10:00 are competing source fields; neither wins automatically.",
+          "2025-01-16 comes from the December 3 letter. The release post's literal 2024 remains conflicting. Both clocks are hypotheses on the independently confirmed date; the Parade clock is excluded."
+        ],
+        "first_party_exhausted": true
+      },
+      "status": "OFFICIAL_CONFLICT",
+      "authority_class": null,
+      "fallback_outcome": "INCONCLUSIVE_PREFLIGHT",
+      "official_candidates": [
+        "2025-01-16T17:00:00Z",
+        "2025-01-16T18:00:00Z"
+      ],
+      "candidates_eliminated": [],
+      "candidates_remaining": [
+        "2025-01-16T17:00:00Z",
+        "2025-01-16T18:00:00Z"
+      ],
+      "proposed_start_utc": null,
+      "earliest_positive": null,
+      "empirical_upper_bound_utc": null,
+      "evidence_ids": [
+        "25ddc8ae537fe7c20b1eda54089b23b256a2a9f3080cdd5a851bb022b355a9b9",
+        "a294e02b47e258166172a342d2cbf1af91b128ae1ebd6b50f60d2525c021220b"
+      ],
+      "reviewed": false,
+      "reasoning": "No discriminating positive evidence; absence or a late observation cannot select a candidate.",
+      "tournaments_inspected": 0,
+      "decklists_inspected": 0
+    }
+  ],
+  "authority_classes": {
+    "MACHINE_VERIFIED_SOURCE": "Coherent first-party source only",
+    "HUMAN_ADJUDICATED": "Requires explicit human approval; none granted in R2",
+    "LIMITLESS_CORROBORATED": "An empirical bound only; never release-time authority"
+  },
+  "preview_status": "NOT_READY",
+  "historical_rebuild_executed": false,
+  "tournament_api_requests": 0,
+  "verdict": "NOT_READY"
+}

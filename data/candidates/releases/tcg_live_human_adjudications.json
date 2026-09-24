@@ -1,0 +1,186 @@
+{
+  "catalog_reviewed": false,
+  "decisions": [
+    {
+      "adjudication_id": "c4c987d54751c274d0df359b73b9c33040370da68c10918214620f3c2a9dbb2a",
+      "adjudication_reviewed": true,
+      "approval_gate": "GATE_1_11_D2_R3",
+      "approval_request_sha256": "39839143c09588fb8af4a85ae2dbffc1ecb1b24b8aa47684341907d0f9868675",
+      "approval_source": "Chat Madre/user",
+      "approved_canonical_utc": "2024-01-25T17:00:00Z",
+      "authority_class": "HUMAN_ADJUDICATED",
+      "authorization_basis": "EXPLICIT_USER_DECISION_ON_FIRST_PARTY_UTC",
+      "c1_machine_state": "INVALID_LOCAL_TIME",
+      "competing_first_party_exact_utc_found": false,
+      "conflicting_fields": [
+        "January date versus PDT seasonal label"
+      ],
+      "corroborating_official_sources": [],
+      "event_id": "PAF",
+      "explicit_utc": "17:00 UTC",
+      "historical_pattern_used": false,
+      "hypothetical_pacific_diagnostic": {
+        "authority": false,
+        "note": "Diagnostic only on the approved date; original PDT/calendar fields are not repaired.",
+        "parser_input": "January 25, 2024 - 10:00 AM PT",
+        "result": {
+          "calculated_utc": "2024-01-25T18:00:00Z",
+          "date": "2024-01-25",
+          "explicit_utc": null,
+          "local": "2024-01-25T10:00:00-08:00",
+          "raw_local": "January 25, 2024 - 10:00 AM PT",
+          "raw_zone": "PT",
+          "state": "EXACT",
+          "tzdb_version": "tzdata:2026.3"
+        }
+      },
+      "limitless_used_for_time": false,
+      "local_clock_diagnostic": {
+        "calculated_utc": null,
+        "date": "2024-01-25",
+        "explicit_utc": null,
+        "local": null,
+        "raw_local": "Thursday, January 25th, 2024 - 10:00 AM PDT",
+        "raw_zone": "PDT",
+        "state": "INVALID_LOCAL_TIME",
+        "tzdb_version": "tzdata:2026.3"
+      },
+      "machine_catalog_status": "CANONICAL_PENDING",
+      "original_source_expression": "Thursday, January 25th, 2024 - 10:00 AM PDT (17:00 UTC)",
+      "original_source_url": "https://community.pokemon.com/en-us/discussion/8969/scarlet-violet-paldean-fates-release",
+      "policy_version": "pokemon-explicit-utc-human-1",
+      "rationale": "The full-expansion announcement publishes 17:00 UTC with a seasonally inconsistent PDT label. No competing first-party exact UTC was found in the bounded research. The human reviewer explicitly selects the published UTC.",
+      "research_ledger_sha256": "d7319a6feb79029395add607df6f590465b4cd65616255bf806ad97bae7b3931",
+      "research_scope": "Bounded R1/R2 research; blocked editorial sources remain a coverage limitation.",
+      "source_content_digest": "db5336a0011bd1a0a4dcf6a1436d13b188fa2d4d9d3699dfb9bcfde81125780a",
+      "source_observation_id": "e4079cbc3480a4fe692cb6e4368a0f84b819b6366876e807b517e6d42ab0fcd6",
+      "source_statement_id": "6efaf93ae03fb4f42b244ff1eba6ce00ed64b54c8520c187928bbee5449aaca2",
+      "status": "HUMAN_ADJUDICATED"
+    },
+    {
+      "adjudication_id": "680430ac71bd13bf9fc5857fcb3ecbb8cd2a2a8df2ef7ddeac5b30b4e6bf8388",
+      "adjudication_reviewed": true,
+      "approval_gate": "GATE_1_11_D2_R3",
+      "approval_request_sha256": "39839143c09588fb8af4a85ae2dbffc1ecb1b24b8aa47684341907d0f9868675",
+      "approval_source": "Chat Madre/user",
+      "approved_canonical_utc": "2024-11-07T17:00:00Z",
+      "authority_class": "HUMAN_ADJUDICATED",
+      "authorization_basis": "EXPLICIT_USER_DECISION_ON_FIRST_PARTY_UTC",
+      "c1_machine_state": "OFFICIAL_CONFLICT",
+      "competing_first_party_exact_utc_found": false,
+      "conflicting_fields": [
+        "10:00 PT converts to 18:00 UTC, versus published 17:00 UTC"
+      ],
+      "corroborating_official_sources": [],
+      "event_id": "SSP",
+      "explicit_utc": "17:00 UTC",
+      "historical_pattern_used": false,
+      "hypothetical_pacific_diagnostic": {
+        "authority": false,
+        "note": "Diagnostic only on the approved date; original PDT/calendar fields are not repaired.",
+        "parser_input": "November 07, 2024 - 10:00 AM PT",
+        "result": {
+          "calculated_utc": "2024-11-07T18:00:00Z",
+          "date": "2024-11-07",
+          "explicit_utc": null,
+          "local": "2024-11-07T10:00:00-08:00",
+          "raw_local": "November 07, 2024 - 10:00 AM PT",
+          "raw_zone": "PT",
+          "state": "EXACT",
+          "tzdb_version": "tzdata:2026.3"
+        }
+      },
+      "limitless_used_for_time": false,
+      "local_clock_diagnostic": {
+        "calculated_utc": "2024-11-07T18:00:00Z",
+        "date": "2024-11-07",
+        "explicit_utc": null,
+        "local": "2024-11-07T10:00:00-08:00",
+        "raw_local": "Thursday, November 7th, 2024 - 10:00 AM PT",
+        "raw_zone": "PT",
+        "state": "EXACT",
+        "tzdb_version": "tzdata:2026.3"
+      },
+      "machine_catalog_status": "OFFICIAL_CONFLICT",
+      "original_source_expression": "Thursday, November 7th, 2024 - 10:00 AM PT (17:00 UTC)",
+      "original_source_url": "https://community.pokemon.com/en-us/discussion/13953/scarlet-violet-surging-sparks-release",
+      "policy_version": "pokemon-explicit-utc-human-1",
+      "rationale": "The full-expansion announcement publishes 17:00 UTC while local 10:00 PT corresponds to 18:00 UTC. No competing first-party exact UTC was found in the bounded research. The human reviewer explicitly selects the published UTC.",
+      "research_ledger_sha256": "d7319a6feb79029395add607df6f590465b4cd65616255bf806ad97bae7b3931",
+      "research_scope": "Bounded R1/R2 research; blocked editorial sources remain a coverage limitation.",
+      "source_content_digest": "a1bca4e8ab8b6abf97d6eb02473b35f2d50b395cf2cb01a3d2121ca6d771765f",
+      "source_observation_id": "78964ea277cdabb04fe9ade58cca76ddbfcf6a043efe3754a1c8a994cc467f64",
+      "source_statement_id": "311cb58f4391269bf48bf294ce5dfeeb52179235207af7de225898c9bacc0675",
+      "status": "HUMAN_ADJUDICATED"
+    },
+    {
+      "adjudication_id": "03879a290335e28e326bb8c77b672e54b8e27c7345d2a41555a24a73658b41b6",
+      "adjudication_reviewed": true,
+      "approval_gate": "GATE_1_11_D2_R3",
+      "approval_request_sha256": "39839143c09588fb8af4a85ae2dbffc1ecb1b24b8aa47684341907d0f9868675",
+      "approval_source": "Chat Madre/user",
+      "approved_canonical_utc": "2025-01-16T17:00:00Z",
+      "authority_class": "HUMAN_ADJUDICATED",
+      "authorization_basis": "EXPLICIT_USER_DECISION_ON_FIRST_PARTY_UTC",
+      "c1_machine_state": "OFFICIAL_CONFLICT",
+      "competing_first_party_exact_utc_found": false,
+      "conflicting_fields": [
+        "Literal January 16, 2024 is Tuesday, not Thursday",
+        "Independent release date is 2025-01-16, not literal 2024",
+        "10:00 Pacific in winter converts to 18:00 UTC, versus published 17:00 UTC"
+      ],
+      "corroborating_official_sources": [
+        {
+          "confirmed_date": "2025-01-16",
+          "observation_id": "56f830692a9ce2f4b8bb51ac1f3802d0be382149afa82fef6b8e37fa86528ccd",
+          "proposition": "Expansion officially launches in PTCGL; date only",
+          "source_expression": "January 16th, 2025",
+          "statement_id": "a294e02b47e258166172a342d2cbf1af91b128ae1ebd6b50f60d2525c021220b",
+          "url": "https://community.pokemon.com/en-us/discussion/13604/letter-to-the-community-december-3-2024"
+        }
+      ],
+      "event_id": "PRE",
+      "explicit_utc": "17:00 UTC",
+      "historical_pattern_used": false,
+      "hypothetical_pacific_diagnostic": {
+        "authority": false,
+        "note": "Diagnostic only on the approved date; original PDT/calendar fields are not repaired.",
+        "parser_input": "January 16, 2025 - 10:00 AM PT",
+        "result": {
+          "calculated_utc": "2025-01-16T18:00:00Z",
+          "date": "2025-01-16",
+          "explicit_utc": null,
+          "local": "2025-01-16T10:00:00-08:00",
+          "raw_local": "January 16, 2025 - 10:00 AM PT",
+          "raw_zone": "PT",
+          "state": "EXACT",
+          "tzdb_version": "tzdata:2026.3"
+        }
+      },
+      "limitless_used_for_time": false,
+      "local_clock_diagnostic": {
+        "calculated_utc": null,
+        "date": "2024-01-16",
+        "explicit_utc": null,
+        "local": null,
+        "raw_local": "Thursday, January 16th, 2024 - 10:00 AM PT",
+        "raw_zone": null,
+        "state": "OFFICIAL_CONFLICT",
+        "tzdb_version": null
+      },
+      "machine_catalog_status": "OFFICIAL_CONFLICT",
+      "original_source_expression": "Thursday, January 16th, 2024 - 10:00 AM PT (17:00 UTC)",
+      "original_source_url": "https://community.pokemon.com/en-us/discussion/15414/scarlet-violet-prismatic-evolutions-release",
+      "policy_version": "pokemon-explicit-utc-human-1",
+      "rationale": "The independent December 3 Pokemon letter confirms January 16, 2025. The human reviewer explicitly combines that date with the full-expansion release post's 17:00 UTC, preserving its calendar/local-clock contradictions. The Parade 18:00 event clock is not full-expansion availability. No competing first-party exact UTC was found in the bounded research.",
+      "research_ledger_sha256": "d7319a6feb79029395add607df6f590465b4cd65616255bf806ad97bae7b3931",
+      "research_scope": "Bounded R1/R2 research; blocked editorial sources remain a coverage limitation.",
+      "source_content_digest": "830c84692c88dbf8fd16b1437c1c4eee51682fc2d391e7af250f61b018de8c33",
+      "source_observation_id": "fb251e1498b11c67631503940f100bc89590d85e11f12758e63c2049484ae4b9",
+      "source_statement_id": "25ddc8ae537fe7c20b1eda54089b23b256a2a9f3080cdd5a851bb022b355a9b9",
+      "status": "HUMAN_ADJUDICATED"
+    }
+  ],
+  "policy_version": "pokemon-explicit-utc-human-1",
+  "schema_version": 1
+}

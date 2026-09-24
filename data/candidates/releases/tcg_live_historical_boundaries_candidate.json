@@ -1,0 +1,454 @@
+{
+  "boundaries": [
+    {
+      "event_id": "SVI",
+      "evidence": {
+        "authority_class": "MACHINE_VERIFIED_SOURCE",
+        "c1_machine_states": [
+          "EXACT"
+        ],
+        "exact_time": true,
+        "reviewed": false,
+        "status": "MACHINE_VERIFIED",
+        "url": "https://community.pokemon.com/en-us/discussion/2897/scarlet-violet-expansion-release"
+      },
+      "kind": "expansion",
+      "name": "Scarlet & Violet",
+      "reasons": [
+        "expansion"
+      ],
+      "start_utc": "2023-03-30T17:00:00Z"
+    },
+    {
+      "event_id": "PAL",
+      "evidence": {
+        "authority_class": "MACHINE_VERIFIED_SOURCE",
+        "c1_machine_states": [
+          "EXACT"
+        ],
+        "exact_time": true,
+        "reviewed": false,
+        "status": "MACHINE_VERIFIED",
+        "url": "https://community.pokemon.com/en-us/discussion/4196/scarlet-violet-paldea-evolved-expansion-release"
+      },
+      "kind": "expansion",
+      "name": "Paldea Evolved",
+      "reasons": [
+        "expansion"
+      ],
+      "start_utc": "2023-06-08T17:00:00Z"
+    },
+    {
+      "event_id": "OBF",
+      "evidence": {
+        "authority_class": "MACHINE_VERIFIED_SOURCE",
+        "c1_machine_states": [
+          "EXACT"
+        ],
+        "exact_time": true,
+        "reviewed": false,
+        "status": "MACHINE_VERIFIED",
+        "url": "https://community.pokemon.com/en-us/discussion/6312/scarlet-violet-obsidian-flames-expansion-release"
+      },
+      "kind": "expansion",
+      "name": "Obsidian Flames",
+      "reasons": [
+        "expansion"
+      ],
+      "start_utc": "2023-08-10T17:00:00Z"
+    },
+    {
+      "event_id": "MEW",
+      "evidence": {
+        "authority_class": "MACHINE_VERIFIED_SOURCE",
+        "c1_machine_states": [
+          "EXACT"
+        ],
+        "exact_time": true,
+        "reviewed": false,
+        "status": "MACHINE_VERIFIED",
+        "url": "https://community.pokemon.com/en-us/discussion/7194/scarlet-violet-151-expansion-release"
+      },
+      "kind": "expansion",
+      "name": "151",
+      "reasons": [
+        "expansion"
+      ],
+      "start_utc": "2023-09-21T17:00:00Z"
+    },
+    {
+      "event_id": "PAR",
+      "evidence": {
+        "authority_class": "MACHINE_VERIFIED_SOURCE",
+        "c1_machine_states": [
+          "EXACT"
+        ],
+        "exact_time": true,
+        "reviewed": false,
+        "status": "MACHINE_VERIFIED",
+        "url": "https://community.pokemon.com/en-us/discussion/7784/scarlet-violet-paradox-rift-release"
+      },
+      "kind": "expansion",
+      "name": "Paradox Rift",
+      "reasons": [
+        "expansion"
+      ],
+      "start_utc": "2023-11-02T17:00:00Z"
+    },
+    {
+      "event_id": "PAF",
+      "evidence": {
+        "adjudication_id": "c4c987d54751c274d0df359b73b9c33040370da68c10918214620f3c2a9dbb2a",
+        "adjudication_reviewed": true,
+        "authority_class": "HUMAN_ADJUDICATED",
+        "c1_machine_states": [
+          "INVALID_LOCAL_TIME"
+        ],
+        "exact_time": true,
+        "machine_status": "CANONICAL_PENDING",
+        "reviewed": false,
+        "status": "HUMAN_ADJUDICATED",
+        "url": "https://community.pokemon.com/en-us/discussion/8969/scarlet-violet-paldean-fates-release"
+      },
+      "kind": "expansion",
+      "name": "Paldean Fates",
+      "reasons": [
+        "expansion"
+      ],
+      "start_utc": "2024-01-25T17:00:00Z"
+    },
+    {
+      "event_id": "TEF",
+      "evidence": {
+        "authority_class": "MACHINE_VERIFIED_SOURCE",
+        "c1_machine_states": [
+          "EXACT"
+        ],
+        "exact_time": true,
+        "reviewed": false,
+        "status": "MACHINE_VERIFIED",
+        "url": "https://community.pokemon.com/en-us/discussion/10068/scarlet-violet-temporal-forces-release"
+      },
+      "kind": "expansion",
+      "name": "Temporal Forces",
+      "reasons": [
+        "expansion"
+      ],
+      "start_utc": "2024-03-21T17:00:00Z"
+    },
+    {
+      "event_id": "TWM",
+      "evidence": {
+        "authority_class": "MACHINE_VERIFIED_SOURCE",
+        "c1_machine_states": [
+          "EXACT"
+        ],
+        "exact_time": true,
+        "reviewed": false,
+        "status": "MACHINE_VERIFIED",
+        "url": "https://community.pokemon.com/en-us/discussion/11151/scarlet-violet-twilight-masquerade-release"
+      },
+      "kind": "expansion",
+      "name": "Twilight Masquerade",
+      "reasons": [
+        "expansion"
+      ],
+      "start_utc": "2024-05-22T17:00:00Z"
+    },
+    {
+      "event_id": "SFA",
+      "evidence": {
+        "authority_class": "MACHINE_VERIFIED_SOURCE",
+        "c1_machine_states": [
+          "EXACT"
+        ],
+        "exact_time": true,
+        "reviewed": false,
+        "status": "MACHINE_VERIFIED",
+        "url": "https://community.pokemon.com/en-us/discussion/12241/scarlet-violet-shrouded-fable-release"
+      },
+      "kind": "expansion",
+      "name": "Shrouded Fable",
+      "reasons": [
+        "expansion"
+      ],
+      "start_utc": "2024-08-01T17:00:00Z"
+    },
+    {
+      "event_id": "SCR",
+      "evidence": {
+        "authority_class": "MACHINE_VERIFIED_SOURCE",
+        "c1_machine_states": [
+          "EXACT"
+        ],
+        "exact_time": true,
+        "reviewed": false,
+        "status": "MACHINE_VERIFIED",
+        "url": "https://community.pokemon.com/en-us/discussion/12937/scarlet-violet-stellar-crown-release"
+      },
+      "kind": "expansion",
+      "name": "Stellar Crown",
+      "reasons": [
+        "expansion"
+      ],
+      "start_utc": "2024-09-12T17:00:00Z"
+    },
+    {
+      "event_id": "SSP",
+      "evidence": {
+        "adjudication_id": "680430ac71bd13bf9fc5857fcb3ecbb8cd2a2a8df2ef7ddeac5b30b4e6bf8388",
+        "adjudication_reviewed": true,
+        "authority_class": "HUMAN_ADJUDICATED",
+        "c1_machine_states": [
+          "OFFICIAL_CONFLICT"
+        ],
+        "exact_time": true,
+        "machine_status": "OFFICIAL_CONFLICT",
+        "reviewed": false,
+        "status": "HUMAN_ADJUDICATED",
+        "url": "https://community.pokemon.com/en-us/discussion/13953/scarlet-violet-surging-sparks-release"
+      },
+      "kind": "expansion",
+      "name": "Surging Sparks",
+      "reasons": [
+        "expansion"
+      ],
+      "start_utc": "2024-11-07T17:00:00Z"
+    },
+    {
+      "event_id": "PRE",
+      "evidence": {
+        "adjudication_id": "03879a290335e28e326bb8c77b672e54b8e27c7345d2a41555a24a73658b41b6",
+        "adjudication_reviewed": true,
+        "authority_class": "HUMAN_ADJUDICATED",
+        "c1_machine_states": [
+          "OFFICIAL_CONFLICT"
+        ],
+        "exact_time": true,
+        "machine_status": "OFFICIAL_CONFLICT",
+        "reviewed": false,
+        "status": "HUMAN_ADJUDICATED",
+        "url": "https://community.pokemon.com/en-us/discussion/15414/scarlet-violet-prismatic-evolutions-release"
+      },
+      "kind": "expansion",
+      "name": "Prismatic Evolutions",
+      "reasons": [
+        "expansion"
+      ],
+      "start_utc": "2025-01-16T17:00:00Z"
+    },
+    {
+      "event_id": "JTG",
+      "evidence": {
+        "authority_class": "MACHINE_VERIFIED_SOURCE",
+        "c1_machine_states": [
+          "EXACT"
+        ],
+        "exact_time": true,
+        "reviewed": false,
+        "status": "MACHINE_VERIFIED",
+        "url": "https://community.pokemon.com/en-us/discussion/17428/scarlet-violet-journey-together-release"
+      },
+      "kind": "expansion",
+      "name": "Journey Together",
+      "reasons": [
+        "expansion"
+      ],
+      "start_utc": "2025-03-27T17:00:00Z"
+    },
+    {
+      "event_id": "DRI",
+      "evidence": {
+        "authority_class": "MACHINE_VERIFIED_SOURCE",
+        "c1_machine_states": [
+          "EXACT"
+        ],
+        "exact_time": true,
+        "reviewed": false,
+        "status": "MACHINE_VERIFIED",
+        "url": "https://community.pokemon.com/en-us/discussion/18640/scarlet-violet-destined-rivals-release"
+      },
+      "kind": "expansion",
+      "name": "Destined Rivals",
+      "reasons": [
+        "expansion"
+      ],
+      "start_utc": "2025-05-29T17:00:00Z"
+    },
+    {
+      "event_id": "BLK",
+      "evidence": {
+        "authority_class": "MACHINE_VERIFIED_SOURCE",
+        "c1_machine_states": [
+          "EXACT"
+        ],
+        "exact_time": true,
+        "reviewed": false,
+        "status": "MACHINE_VERIFIED",
+        "url": "https://community.pokemon.com/en-us/discussion/19243/scarlet-violet-black-bolt-and-scarlet-violet-white-flare-release"
+      },
+      "kind": "expansion",
+      "name": "Black Bolt",
+      "reasons": [
+        "expansion"
+      ],
+      "start_utc": "2025-07-17T17:00:00Z"
+    },
+    {
+      "event_id": "WHT",
+      "evidence": {
+        "authority_class": "MACHINE_VERIFIED_SOURCE",
+        "c1_machine_states": [
+          "EXACT"
+        ],
+        "exact_time": true,
+        "reviewed": false,
+        "status": "MACHINE_VERIFIED",
+        "url": "https://community.pokemon.com/en-us/discussion/19243/scarlet-violet-black-bolt-and-scarlet-violet-white-flare-release"
+      },
+      "kind": "expansion",
+      "name": "White Flare",
+      "reasons": [
+        "expansion"
+      ],
+      "start_utc": "2025-07-17T17:00:00Z"
+    },
+    {
+      "event_id": "MEG",
+      "evidence": {
+        "authority_class": "MACHINE_VERIFIED_SOURCE",
+        "c1_machine_states": [
+          "EXACT"
+        ],
+        "exact_time": true,
+        "reviewed": false,
+        "status": "MACHINE_VERIFIED",
+        "url": "https://community.pokemon.com/en-us/discussion/20181/mega-evolution-expansion-release"
+      },
+      "kind": "expansion",
+      "name": "Mega Evolution",
+      "reasons": [
+        "expansion"
+      ],
+      "start_utc": "2025-09-25T17:00:00Z"
+    },
+    {
+      "event_id": "PFL",
+      "evidence": {
+        "authority_class": "MACHINE_VERIFIED_SOURCE",
+        "c1_machine_states": [
+          "EXACT"
+        ],
+        "exact_time": true,
+        "reviewed": false,
+        "status": "MACHINE_VERIFIED",
+        "url": "https://community.pokemon.com/en-us/discussion/20899/mega-evolution-phantasmal-flames-expansion-release"
+      },
+      "kind": "expansion",
+      "name": "Phantasmal Flames",
+      "reasons": [
+        "expansion"
+      ],
+      "start_utc": "2025-11-13T17:00:00Z"
+    },
+    {
+      "event_id": "ASC",
+      "evidence": {
+        "authority_class": "MACHINE_VERIFIED_SOURCE",
+        "c1_machine_states": [
+          "EXACT"
+        ],
+        "exact_time": true,
+        "reviewed": false,
+        "status": "MACHINE_VERIFIED",
+        "url": "https://community.pokemon.com/en-us/discussion/22091/mega-evolution-ascended-heroes-expansion-release"
+      },
+      "kind": "expansion",
+      "name": "Ascended Heroes",
+      "reasons": [
+        "expansion"
+      ],
+      "start_utc": "2026-01-29T17:00:00Z"
+    },
+    {
+      "event_id": "POR",
+      "evidence": {
+        "authority_class": "MACHINE_VERIFIED_SOURCE",
+        "c1_machine_states": [
+          "EXACT"
+        ],
+        "exact_time": true,
+        "reviewed": false,
+        "status": "MACHINE_VERIFIED",
+        "url": "https://community.pokemon.com/en-us/discussion/23169/mega-evolution-perfect-order-expansion-release"
+      },
+      "kind": "expansion",
+      "name": "Perfect Order",
+      "reasons": [
+        "expansion"
+      ],
+      "start_utc": "2026-03-26T17:00:00Z"
+    },
+    {
+      "event_id": "CRI",
+      "evidence": {
+        "authority_class": "MACHINE_VERIFIED_SOURCE",
+        "c1_machine_states": [
+          "EXACT"
+        ],
+        "exact_time": true,
+        "reviewed": false,
+        "status": "MACHINE_VERIFIED",
+        "url": "https://community.pokemon.com/en-us/discussion/24085/mega-evolution-chaos-rising-expansion-release"
+      },
+      "kind": "expansion",
+      "name": "Chaos Rising",
+      "reasons": [
+        "expansion"
+      ],
+      "start_utc": "2026-05-21T17:00:00Z"
+    },
+    {
+      "event_id": "PBL",
+      "evidence": {
+        "authority_class": "MACHINE_VERIFIED_SOURCE",
+        "c1_machine_states": [
+          "EXACT"
+        ],
+        "exact_time": true,
+        "reviewed": false,
+        "status": "MACHINE_VERIFIED",
+        "url": "https://community.pokemon.com/en-us/discussion/24856/mega-evolution-pitch-black-expansion-release"
+      },
+      "kind": "expansion",
+      "name": "Pitch Black",
+      "reasons": [
+        "expansion"
+      ],
+      "start_utc": "2026-07-16T17:00:00Z"
+    },
+    {
+      "event_id": "30C",
+      "evidence": {
+        "authority_class": "MACHINE_VERIFIED_SOURCE",
+        "c1_machine_states": [
+          "EXACT"
+        ],
+        "exact_time": true,
+        "reviewed": false,
+        "status": "MACHINE_VERIFIED",
+        "url": "https://community.pokemon.com/en-us/discussion/26004/pokemon-tcg-30th-celebration-expansion-release"
+      },
+      "kind": "expansion",
+      "name": "30th Celebration",
+      "reasons": [
+        "expansion"
+      ],
+      "start_utc": "2026-09-15T17:00:00Z"
+    }
+  ],
+  "catalog_status": "COMPLETE_UNREVIEWED",
+  "reviewed": false,
+  "schema_version": 1,
+  "window_unit": "expansion"
+}
