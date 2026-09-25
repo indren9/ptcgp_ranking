@@ -161,6 +161,28 @@ class ProductionBackend:
                 "functions": {f: function_semantics(f, names) for f, names in functions.items()},
                 "packages": {p: version(p) for p in packages}}
 
+    @staticmethod
+    def can_reuse_semantics(stage, previous, current):
+        """Ignore only the legacy unused selector file dependency in DISCOVERY.
+
+        _discover does not call the selector. Keep the original semantic record
+        and input fingerprint as provenance, rather than rewriting checkpoints.
+        Every actual dependency, adapter, config and runtime field must match.
+        FREEZE never receives this exception.
+        """
+        if stage != "DISCOVERY" or not isinstance(previous, dict):
+            return False
+        files = previous.get("files")
+        key = "acquisition/selection.py"
+        if (previous.get("contract") != 1 or not isinstance(files, dict)
+                or not isinstance(files.get(key), str)
+                or not re.fullmatch(r"[a-f0-9]{64}", files[key])):
+            return False
+        comparable = deepcopy(previous)
+        comparable["files"][key] = current["files"][key]
+        # Persisted JSON arrays correspond to in-memory policy tuples.
+        return digest(comparable) == digest(current)
+
     def _client(self):
         if self.client is None:
             from sources.limitless.tournament_api.client import LimitlessTournamentApiClient

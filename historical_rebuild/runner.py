@@ -86,7 +86,13 @@ class Runner:
         upstream = {s: {"input": state["stages"][s]["input_fingerprint"],
                         "output": state["stages"][s]["output_fingerprint"]}
                     for s in STAGES[:index]}
-        value = {"stage": stage, "semantics": self.semantics[stage], "upstream": upstream}
+        semantics = self.semantics[stage]
+        previous = state["stages"][stage].get("semantics")
+        compatible = getattr(self.backend, "can_reuse_semantics", None)
+        if (state["stages"][stage]["status"] == "VALID" and previous != semantics
+                and compatible is not None and compatible(stage, previous, semantics)):
+            semantics = previous
+        value = {"stage": stage, "semantics": semantics, "upstream": upstream}
         if stage == "WINDOW_READY":
             value["window"] = window.definition()
         if stage == "RAW_ACQUISITION":
@@ -125,7 +131,9 @@ class Runner:
             if not valid:
                 invalid = True
                 first = first or stage
-                if entry["status"] in {"VALID", "RUNNING"}:
+                if (entry["status"] in {"VALID", "RUNNING"}
+                        or entry["status"] == "FAILED"
+                        and entry["input_fingerprint"] != self._input(window, state, stage)):
                     entry["status"] = "STALE"
         state["counts"] = {"total": len(state["tournament_ids"]),
                            "valid": sum(self._raw_valid(root, state["raw"].get(tid, {})) for tid in state["tournament_ids"])}
