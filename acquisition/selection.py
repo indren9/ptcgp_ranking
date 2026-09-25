@@ -84,7 +84,7 @@ def select_tournaments(
     eligibility: EligibilityPolicy,
     acquisition_failures: Mapping[str, str] | None = None,
 ) -> TournamentSelection:
-    """Apply the frozen Pocket eligibility policy with one deterministic exclusion reason per record."""
+    """Validate fields in exclusion order; stop at the first definitive exclusion."""
     if scope.game != eligibility.game:
         raise ValueError("scope.game and eligibility.game must match")
 
@@ -110,55 +110,53 @@ def select_tournaments(
             continue
 
         try:
+            if not isinstance(record["game"], str) or not record["game"].strip():
+                raise ValueError("game must be a non-empty string")
             game = str(record["game"]).strip().upper()
             raw_format = record.get("format")
+            if raw_format is not None and not isinstance(raw_format, str):
+                raise ValueError("format must be a string or null")
             fmt = None if raw_format is None else str(raw_format).strip().upper() or None
             date = _parse_date(record["date"])
+
+            if game != eligibility.game:
+                counts["wrong_game"] += 1
+                continue
+            if fmt not in eligibility.allowed_formats:
+                counts["wrong_format"] += 1
+                continue
+            if not (scope.start_datetime <= date < scope.end_datetime):
+                counts["outside_window"] += 1
+                continue
+
+            # Later evidence cannot invalidate an already definitive exclusion.
+            # Surviving records retain the existing strict boolean checks.
             is_public = _bool_field(record, "is_public")
-            is_online = (
-                _bool_field(record, "is_online")
-                if eligibility.require_online is not None
-                else None
-            )
-            raw_platform = (
-                record["platform"]
-                if eligibility.allowed_platforms is not None
-                else None
-            )
-            platform = (
-                str(raw_platform).strip().upper()
-                if raw_platform is not None
-                else None
-            )
-            if eligibility.allowed_platforms is not None and not platform:
-                raise ValueError("platform must be non-empty when required")
+            if eligibility.require_public and not is_public:
+                counts["not_public"] += 1
+                continue
+            if eligibility.require_online is not None:
+                is_online = _bool_field(record, "is_online")
+                if is_online != eligibility.require_online:
+                    counts["wrong_channel"] += 1
+                    continue
+            if eligibility.allowed_platforms is not None:
+                raw_platform = record["platform"]
+                if not isinstance(raw_platform, str) or not raw_platform.strip():
+                    raise ValueError("platform must be a non-empty string when required")
+                platform = raw_platform.strip().upper()
+                if platform not in eligibility.allowed_platforms:
+                    counts["wrong_platform"] += 1
+                    continue
             decklists = _bool_field(record, "decklists")
+            if eligibility.require_decklists and not decklists:
+                counts["decklists_disabled"] += 1
+                continue
         except (KeyError, TypeError, ValueError):
             counts["invalid_record"] += 1
             continue
 
-        if game != eligibility.game:
-            counts["wrong_game"] += 1
-        elif fmt not in eligibility.allowed_formats:
-            counts["wrong_format"] += 1
-        elif not (scope.start_datetime <= date < scope.end_datetime):
-            counts["outside_window"] += 1
-        elif eligibility.require_public and not is_public:
-            counts["not_public"] += 1
-        elif (
-            eligibility.require_online is not None
-            and is_online != eligibility.require_online
-        ):
-            counts["wrong_channel"] += 1
-        elif (
-            eligibility.allowed_platforms is not None
-            and platform not in eligibility.allowed_platforms
-        ):
-            counts["wrong_platform"] += 1
-        elif eligibility.require_decklists and not decklists:
-            counts["decklists_disabled"] += 1
-        else:
-            included.append(tid)
+        included.append(tid)
 
     failure_rows = tuple(f"{tid}: {failures_map[tid]}" for tid in sorted(failures_map))
     return TournamentSelection(

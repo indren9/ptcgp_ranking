@@ -162,6 +162,37 @@ DISCOVERY as the first stale stage without rewriting the recorded failure.
 No manual checkpoint reset, source substitution or real rebuild is part of this
 fix.
 
+### Eligibility selection order — Gate 1.11-D3-R2
+
+The shared selector validates core scope evidence first, then follows the existing
+exclusion priority: game, format, window, public visibility, channel, platform,
+decklists. Once a definitive exclusion applies, later fields are not evaluated.
+An offline tournament with no platform is `wrong_channel`, not `invalid_record`.
+An otherwise eligible online tournament with no valid platform remains
+`invalid_record`, and an online tournament on another platform is
+`wrong_platform`. Required booleans remain strict; no missing evidence can make a
+potentially eligible record eligible. Existing well-formed membership and policy
+values are unchanged. Historical FREEZE still rejects genuine invalid records.
+
+D1 previously included the entire selector file in both DISCOVERY and FREEZE
+fingerprints, although DISCOVERY does not call the selector. A narrow semantic
+compatibility check permits reuse of a VALID discovery generation when only that
+unused selector-file digest differs. All actual dependency hashes, discovery
+adapter, configuration, runtime and package versions must match. The original
+stored semantic record and input fingerprint remain intact as provenance, and
+normal upstream fingerprints and artifact integrity checks still apply. Missing
+provenance, corrupted artifacts, changed discovery settings or changed windows do
+not gain reuse through this exception. Recomputed discoveries record current
+semantics. No exception applies to FREEZE or any downstream stage.
+
+Consequently, after this selector fix, read-only STATUS retains WINDOW_READY and
+the valid D3-R1 DISCOVERY generation, marks the failed FREEZE checkpoint STALE
+because its input semantics changed, and leaves downstream stages pending. A
+later authorized execution recomputes FREEZE. This is an in-memory status view:
+the persisted SVI error and all generations from both real failed attempts remain
+untouched until that execution. The selector fix itself is shared by historical
+and live acquisition; there is no historical eligibility bypass.
+
 Normalization reuses existing snapshot normalization, aggregation and Part-1
 contracts/bridge. Canonical deck IDs remain the computation axis, as in production;
 legacy display-name aliases are intentionally bypassed. Core calls the existing
