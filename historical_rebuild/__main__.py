@@ -16,7 +16,7 @@ OUTPUT_ROOT = BASE / "outputs" / "TCG" / "Rebuild"
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Isolated TCG historical rebuild. Never publishes outputs.")
     parser.add_argument("--boundaries", required=True, type=Path, help="separately reviewed ordered canonical boundary JSON")
-    parser.add_argument("--config", type=Path, default=BASE / "config" / "tcg.yaml")
+    parser.add_argument("--config", type=Path, default=BASE / "config" / "tcg_historical_rebuild.yaml")
     sub = parser.add_subparsers(dest="operation", required=True)
     sub.add_parser("status", help="offline integrity/status view; no network or recomputation")
     sub.add_parser("next", help="resume exactly one next incomplete window")

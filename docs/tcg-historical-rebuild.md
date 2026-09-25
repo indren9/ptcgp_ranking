@@ -16,7 +16,9 @@ From the integrated TCG repository, using Python **3.14.7**:
 .\.venv\Scripts\python.exe -m historical_rebuild --boundaries reviewed-boundaries.json window WINDOW_ID
 ```
 
-`--config` optionally selects a TCG configuration; the default is `config/tcg.yaml`.
+`--config` optionally selects a TCG configuration; the historical CLI defaults to
+`config/tcg_historical_rebuild.yaml`. Normal production commands continue to use
+the unchanged `config/tcg.yaml`.
 The configured production paths and publication settings are **never invoked**.
 The CLI deliberately has no output-root or publication override: its workspace is
 `outputs/TCG/Rebuild/`. Keep the reviewed boundary input outside that directory.
@@ -127,6 +129,38 @@ and pairings for each missing tournament, with the frozen details. The existing
 production request pacing/retry client is used without a shared production cache.
 An interruption during discovery/selection can repeat that stage; the per-tournament
 resume guarantee applies to RAW acquisition.
+
+### Historical discovery completeness — Gate 1.11-D3-R1
+
+The dedicated historical configuration preserves production TCG settings except
+for `discovery_page_size=100000` and `discovery_max_pages=2`. Request pacing remains
+4 seconds; no new rate-limit assumption is introduced. These are bounded
+operational settings, not changes to selection or ranking methodology. The client
+stops on a short page and can continue to page 2 when page 1 is full. Current live
+row counts and candidate IDs are not configuration inputs.
+
+Both historical and shared live acquisition retain the raw fetched row count
+before canonicalization. The completeness helper uses that count, never the
+deduplicated count, to infer a short final page. For example, 5000 raw rows at
+50 per page remain non-exhausted even if only 4996 unique rows remain. If the
+oldest fetched date is newer than the scope start, this raises
+`DiscoveryWindowIncompleteError` before any candidate details or RAW acquisition.
+A genuinely short raw page can prove exhaustion; reaching the scope start also
+preserves the existing completeness behavior. An exact multiple remains
+conservatively non-exhausted, even if followed by an empty page, because the
+current list-returning client does not expose that separate termination signal.
+This policy relies on the existing client's untruncated page concatenation;
+neither acquisition caller uses `max_items`.
+
+The original blocked SVI checkpoint and its immutable discovery generation must
+remain intact. D1 already fingerprints the discovery helper, backend adapter and
+page configuration. On a later authorized resume, changed semantics invalidate
+DISCOVERY and downstream stages while retaining WINDOW_READY and audit files.
+The persisted incident remains `BLOCKED / TOURNAMENT_IDS_FROZEN / no eligible
+tournaments` until that execution. A read-only status inspection can identify
+DISCOVERY as the first stale stage without rewriting the recorded failure.
+No manual checkpoint reset, source substitution or real rebuild is part of this
+fix.
 
 Normalization reuses existing snapshot normalization, aggregation and Part-1
 contracts/bridge. Canonical deck IDs remain the computation axis, as in production;

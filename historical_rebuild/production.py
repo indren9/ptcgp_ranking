@@ -191,8 +191,10 @@ class ProductionBackend:
         rows = self._network("list_tournaments", game="PTCG", format="STANDARD",
                              page_size=self.api.get("discovery_page_size", 50),
                              max_pages=self.api.get("discovery_max_pages", 100))
+        raw_record_count = len(rows)
         rows, _ = _canonical_discovery_records(rows)
-        ids, diagnostics = _discovery_candidates(rows, scope=self._scope(window), page_size=self.api.get("discovery_page_size", 50))
+        ids, diagnostics = _discovery_candidates(rows, scope=self._scope(window),
+            page_size=self.api.get("discovery_page_size", 50), raw_record_count=raw_record_count)
         return {"candidate_ids": list(ids), "diagnostics": diagnostics}
 
     def _freeze(self, window, inputs, directory):

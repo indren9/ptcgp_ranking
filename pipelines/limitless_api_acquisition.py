@@ -171,7 +171,13 @@ def _discovery_candidates(
     *,
     scope: ScopePolicy,
     page_size: int,
+    raw_record_count: int,
 ) -> tuple[tuple[str, ...], dict[str, Any]]:
+    # The client concatenates raw pages before canonicalization. Duplicate
+    # removal is not pagination termination evidence. Callers must preserve
+    # the fetched cardinality; never infer it from the unique records here.
+    if page_size <= 0 or raw_record_count < len(records):
+        raise ValueError("invalid raw discovery pagination cardinality")
     valid_dates: list[datetime] = []
     candidate_ids: list[str] = []
     conservative_candidate_ids: list[str] = []
@@ -215,8 +221,8 @@ def _discovery_candidates(
             candidate_ids.append(tid)
 
     exhausted = (
-        len(records) < page_size
-        or (len(records) % page_size) != 0
+        raw_record_count < page_size
+        or (raw_record_count % page_size) != 0
     )
 
     if valid_dates:
@@ -887,6 +893,7 @@ def _live_run(
         discovery,
         scope=scope,
         page_size=discovery_page_size,
+        raw_record_count=len(discovery_raw),
     )
     discovery_ref = raw_store.save_catalog_snapshot(
         "tournament-discovery",
