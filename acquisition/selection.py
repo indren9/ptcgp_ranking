@@ -70,11 +70,29 @@ def _parse_date(value: Any) -> datetime:
     return require_utc(parsed, field_name="date")
 
 
-def _bool_field(record: Mapping[str, Any], key: str) -> bool:
+def _boolean_criterion(
+    record: Mapping[str, Any], key: str, expected: bool | None
+) -> bool | None:
+    """Return PASS/EXCLUDE/UNKNOWN as True/False/None, without coercion.
+
+    expected=None accepts either boolean, retaining the existing requirement
+    for well-formed public/decklists evidence even with that filter disabled.
+    """
     value = record.get(key)
-    if isinstance(value, bool):
-        return value
-    raise ValueError(f"{key} must be boolean")
+    if not isinstance(value, bool):
+        return None
+    return expected is None or value == expected
+
+
+def _platform_criterion(
+    record: Mapping[str, Any], allowed: tuple[str, ...] | None
+) -> bool | None:
+    if allowed is None:
+        return True
+    value = record.get("platform")
+    if not isinstance(value, str) or not value.strip():
+        return None
+    return value.strip().upper() in allowed
 
 
 def select_tournaments(
@@ -84,7 +102,7 @@ def select_tournaments(
     eligibility: EligibilityPolicy,
     acquisition_failures: Mapping[str, str] | None = None,
 ) -> TournamentSelection:
-    """Validate fields in exclusion order; stop at the first definitive exclusion."""
+    """Validate scope, then prefer certain exclusions to unknown evidence."""
     if scope.game != eligibility.game:
         raise ValueError("scope.game and eligibility.game must match")
 
@@ -97,7 +115,11 @@ def select_tournaments(
         if not isinstance(record, Mapping):
             counts["invalid_record"] += 1
             continue
-        tid = str(record.get("tournament_id") or record.get("id") or "").strip()
+        raw_id = record.get("tournament_id") or record.get("id") or ""
+        if not isinstance(raw_id, (str, int)) or isinstance(raw_id, bool):
+            counts["invalid_record"] += 1
+            continue
+        tid = str(raw_id).strip()
         if not tid:
             counts["invalid_record"] += 1
             continue
@@ -129,34 +151,48 @@ def select_tournaments(
                 counts["outside_window"] += 1
                 continue
 
-            # Later evidence cannot invalidate an already definitive exclusion.
-            # Surviving records retain the existing strict boolean checks.
-            is_public = _bool_field(record, "is_public")
-            if eligibility.require_public and not is_public:
-                counts["not_public"] += 1
-                continue
-            if eligibility.require_online is not None:
-                is_online = _bool_field(record, "is_online")
-                if is_online != eligibility.require_online:
-                    counts["wrong_channel"] += 1
-                    continue
-            if eligibility.allowed_platforms is not None:
-                raw_platform = record["platform"]
-                if not isinstance(raw_platform, str) or not raw_platform.strip():
-                    raise ValueError("platform must be a non-empty string when required")
-                platform = raw_platform.strip().upper()
-                if platform not in eligibility.allowed_platforms:
-                    counts["wrong_platform"] += 1
-                    continue
-            decklists = _bool_field(record, "decklists")
-            if eligibility.require_decklists and not decklists:
-                counts["decklists_disabled"] += 1
-                continue
         except (KeyError, TypeError, ValueError):
             counts["invalid_record"] += 1
             continue
 
-        included.append(tid)
+        # Preserve canonical exclusion priority for well-formed records.
+        # UNKNOWN never proves inclusion and cannot erase a certain exclusion.
+        criteria = (
+            (
+                "not_public",
+                _boolean_criterion(
+                    record, "is_public",
+                    True if eligibility.require_public else None,
+                ),
+            ),
+            (
+                "wrong_channel",
+                True if eligibility.require_online is None
+                else _boolean_criterion(
+                    record, "is_online", eligibility.require_online
+                ),
+            ),
+            (
+                "wrong_platform",
+                _platform_criterion(record, eligibility.allowed_platforms),
+            ),
+            (
+                "decklists_disabled",
+                _boolean_criterion(
+                    record, "decklists",
+                    True if eligibility.require_decklists else None,
+                ),
+            ),
+        )
+        reason = next(
+            (name for name, outcome in criteria if outcome is False), None
+        )
+        if reason is not None:
+            counts[reason] += 1
+        elif any(outcome is None for _, outcome in criteria):
+            counts["invalid_record"] += 1
+        else:
+            included.append(tid)
 
     failure_rows = tuple(f"{tid}: {failures_map[tid]}" for tid in sorted(failures_map))
     return TournamentSelection(

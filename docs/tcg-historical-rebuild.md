@@ -164,7 +164,7 @@ fix.
 
 ### Eligibility selection order — Gate 1.11-D3-R2
 
-The shared selector validates core scope evidence first, then follows the existing
+The D3-R2 selector validates core scope evidence first, then follows the existing
 exclusion priority: game, format, window, public visibility, channel, platform,
 decklists. Once a definitive exclusion applies, later fields are not evaluated.
 An offline tournament with no platform is `wrong_channel`, not `invalid_record`.
@@ -192,6 +192,46 @@ later authorized execution recomputes FREEZE. This is an in-memory status view:
 the persisted SVI error and all generations from both real failed attempts remain
 untouched until that execution. The selector fix itself is shared by historical
 and live acquisition; there is no historical eligibility bypass.
+
+### Definitive exclusions versus incomplete evidence — Gate 1.11-D3-R3
+
+Design audit: a simple decklists/platform reorder is unsafe. A fully formed
+online record with `platform=CAM` and `decklists=false` must retain
+`wrong_platform`, whereas reordering would report `decklists_disabled`. The
+general solution distinguishes satisfied requirements, certain exclusions and
+unknown/invalid evidence without changing the canonical exclusion order.
+
+Core/scope validation remains first: invalid identity, game, format or UTC date
+cannot be hidden by a later eligibility exclusion. Existing valid null-format
+semantics and scope exclusion priority are preserved. Non-scalar/boolean IDs
+are rejected as malformed; existing string/integer identity normalization is
+retained. For records surviving scope checks, each eligibility criterion yields
+PASS, EXCLUDE or UNKNOWN. The first certain exclusion in the existing priority
+(public, channel, platform, decklists) determines the reason, even if another
+criterion is unknown. With no certain exclusion, any unknown required evidence
+produces `invalid_record`; inclusion requires all criteria to pass. Booleans
+remain strict, and disabled filters retain their existing evidence requirements.
+
+Thus online + missing platform + `decklists=false` is `decklists_disabled`;
+online + missing platform + `decklists=true` remains `invalid_record`. Offline
+records retain `wrong_channel` ahead of platform/decklists. Fully formed
+membership and exclusion priority remain identical to D3-R2. There is no
+expansion-, date- or tournament-specific exception, and no historical-only
+selection path. Historical FREEZE still rejects genuinely incomplete evidence
+when no certain exclusion resolves non-membership.
+
+The existing scoped checkpoint reuse mechanism is unchanged: DISCOVERY may be
+reused when only the unused selector digest differs; FREEZE and dependent stages
+are invalidated by the selector change. This affects only effective in-memory
+status until a separately authorized run. Persisted completed SVI/PAL results,
+the blocked OBF checkpoint, all prior generations and real RAW remain untouched.
+No real rebuild or live API request is part of this gate's implementation.
+
+Offline verification extends all D3-R2 tests with the required incident patterns,
+all 256 combinations of four eligibility outcomes, malformed core evidence,
+optional policy configurations and synthetic historical freeze regressions.
+This technical result is submitted for Chat Madre review; gate ratification and
+any real rerun remain separate decisions.
 
 Normalization reuses existing snapshot normalization, aggregation and Part-1
 contracts/bridge. Canonical deck IDs remain the computation axis, as in production;
