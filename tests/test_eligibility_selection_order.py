@@ -271,3 +271,177 @@ def test_resume_reuses_only_safe_discovery_and_preserves_generations(context, tm
     assert [row["id"] for row in frozen["tournaments"]] == ["synthetic-valid"]
     assert resumed["raw"] == {}
     assert all(p.read_bytes() == value for p, value in audit.items())
+
+
+# D3-R3 extends the contract above; all D3-R2 regressions remain unchanged.
+@pytest.mark.parametrize("fields,missing,reason", [
+    ({"is_online": False}, ("platform",), "wrong_channel"),
+    ({"is_online": True}, ("platform",), "invalid_record"),
+    ({"is_online": True, "decklists": False},
+     ("platform",), "decklists_disabled"),
+    ({"is_online": True, "platform": "CAM", "decklists": False},
+     (), "wrong_platform"),
+    ({"is_online": False, "decklists": False},
+     ("platform",), "wrong_channel"),
+    ({"is_online": "unknown"}, (), "invalid_record"),
+    ({}, ("is_online",), "invalid_record"),
+    ({"is_online": "unknown", "decklists": False},
+     (), "decklists_disabled"),
+    ({"decklists": False}, ("is_online",), "decklists_disabled"),
+    ({"is_public": False, "is_online": "unknown", "decklists": "bad"},
+     ("platform",), "not_public"),
+    ({"is_public": "unknown"}, (), "invalid_record"),
+    ({}, ("is_public",), "invalid_record"),
+    ({}, ("platform", "decklists"), "invalid_record"),
+    ({"decklists": "false"}, ("platform",), "invalid_record"),
+    ({"game": [], "decklists": False}, (), "invalid_record"),
+    ({"date": "bad", "decklists": False}, (), "invalid_record"),
+])
+def test_definitive_exclusion_required_cases(context, fields, missing, reason):
+    row = record(context[1], **fields)
+    for key in missing:
+        row.pop(key)
+    result = classify(context, [row])
+    assert result.tournament_ids == ()
+    assert {k: v for k, v in result.exclusion_counts.items() if v} == {
+        reason: 1
+    }
+
+
+def test_simple_reorder_would_change_well_formed_priority(context):
+    row = record(context[1], platform="CAM", decklists=False)
+    result = classify(context, [row])
+    assert result.exclusion_counts["wrong_platform"] == 1
+    assert result.exclusion_counts["decklists_disabled"] == 0
+    # A decklists-first chain would choose the latter, violating D3-R2.
+
+
+def test_all_eligibility_outcome_combinations_preserve_positive_proof(context):
+    fields = ("is_public", "is_online", "platform", "decklists")
+    reasons = (
+        "not_public", "wrong_channel", "wrong_platform", "decklists_disabled"
+    )
+    # PASS / EXCLUDE / missing / malformed, independently for every criterion.
+    # Includes every fully formed combination and all uncertain mixtures.
+    for states in product(range(4), repeat=4):
+        row = record(context[1])
+        for key, state in zip(fields, states):
+            if state == 1:
+                row[key] = "CAM" if key == "platform" else False
+            elif state == 2:
+                row.pop(key)
+            elif state == 3:
+                row[key] = {"malformed": True}
+        result = classify(context, [row])
+        if 1 in states:
+            reason = reasons[states.index(1)]
+        elif any(state >= 2 for state in states):
+            reason = "invalid_record"
+        else:
+            reason = None
+        assert result.tournament_ids == (
+            (row["id"],) if reason is None else ()
+        ), states
+        assert {k: v for k, v in result.exclusion_counts.items() if v} == (
+            {} if reason is None else {reason: 1}
+        ), states
+
+
+@pytest.mark.parametrize("field,value", [
+    ("id", None), ("id", " "), ("id", ["bad"]),
+    ("id", {"bad": "identity"}), ("id", True),
+    ("game", None), ("game", []), ("game", ""),
+    ("format", []), ("format", {}),
+    ("date", None), ("date", "bad"), ("date", "2023-09-07T23:00:00"),
+])
+def test_malformed_core_cannot_be_hidden_by_decklists_false(
+    context, field, value
+):
+    row = record(context[1], decklists=False, **{field: value})
+    result = classify(context, [row])
+    assert result.tournament_ids == ()
+    assert result.exclusion_counts["invalid_record"] == 1
+    assert result.exclusion_counts["decklists_disabled"] == 0
+
+
+@pytest.mark.parametrize("game", ["POCKET", "PTCG"])
+def test_scope_exclusion_still_requires_valid_core_date(context, game):
+    row = record(context[1], game=game, date="bad", decklists=False)
+    result = classify(context, [row])
+    assert result.exclusion_counts["invalid_record"] == 1
+
+
+@pytest.mark.parametrize("require_online", [None, False, True])
+@pytest.mark.parametrize("require_public,require_decklists", [
+    (False, False), (False, True), (True, False), (True, True)
+])
+def test_disabled_filters_and_reverse_channel_policy_keep_membership(
+    context, require_online, require_public, require_decklists
+):
+    backend, window = context
+    policy = replace(
+        backend.eligibility, require_online=require_online,
+        require_public=require_public, require_decklists=require_decklists,
+        allowed_platforms=None,
+    )
+    for public, online, decks in product((False, True), repeat=3):
+        row = record(
+            window, is_public=public, is_online=online,
+            decklists=decks, platform=None,
+        )
+        result = select_tournaments(
+            [row], scope=backend._scope(window), eligibility=policy
+        )
+        expected = (
+            (not require_public or public)
+            and (require_online is None or online == require_online)
+            and (not require_decklists or decks)
+        )
+        assert result.tournament_ids == ((row["id"],) if expected else ())
+
+
+@pytest.mark.parametrize("field", ["is_public", "decklists"])
+def test_disabled_boolean_filters_keep_existing_evidence_requirement(
+    context, field
+):
+    backend, window = context
+    policy = replace(
+        backend.eligibility, require_public=False, require_decklists=False
+    )
+    row = record(window)
+    row.pop(field)
+    result = select_tournaments(
+        [row], scope=backend._scope(window), eligibility=policy
+    )
+    assert result.exclusion_counts["invalid_record"] == 1
+    assert result.tournament_ids == ()
+
+
+@pytest.mark.parametrize("decklists,reason", [
+    (False, "decklists_disabled"), (True, "invalid_record"),
+    (None, "invalid_record"), ("false", "invalid_record"),
+])
+def test_historical_freeze_obf_pattern_is_general_and_fail_closed(
+    context, tmp_path, decklists, reason
+):
+    backend, window = context
+    # Synthetic details with the verified OBF field pattern, without any real
+    # ID, special window handling, API request or real checkpoint modification.
+    backend.client = DetailsClient(window, invalid=True)
+    backend.client.rows[1]["platform"] = None
+    backend.client.rows[1]["decklists"] = decklists
+    inputs = {
+        "DISCOVERY": {
+            "candidate_ids": [row["id"] for row in backend.client.rows]
+        }
+    }
+    if reason == "invalid_record":
+        with pytest.raises(RebuildError, match="invalid eligibility evidence"):
+            backend._freeze(window, inputs, tmp_path)
+    else:
+        result = backend._freeze(window, inputs, tmp_path)
+        assert [row["id"] for row in result["tournaments"]] == [
+            "synthetic-valid"
+        ]
+        assert result["exclusion_counts"][reason] == 1
+        assert result["exclusion_counts"]["invalid_record"] == 0
