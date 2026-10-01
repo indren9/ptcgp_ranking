@@ -89,9 +89,13 @@ class Runner:
         semantics = self.semantics[stage]
         previous = state["stages"][stage].get("semantics")
         compatible = getattr(self.backend, "can_reuse_semantics", None)
+        checkpoint_compatible = getattr(self.backend, "can_reuse_checkpoint", None)
         if (state["stages"][stage]["status"] == "VALID" and previous != semantics
                 and compatible is not None and compatible(stage, previous, semantics)):
-            semantics = previous
+            allowed = (checkpoint_compatible is None
+                       or checkpoint_compatible(stage, self._root(window), state["stages"][stage]))
+            if allowed:
+                semantics = previous
         value = {"stage": stage, "semantics": semantics, "upstream": upstream}
         if stage == "WINDOW_READY":
             value["window"] = window.definition()

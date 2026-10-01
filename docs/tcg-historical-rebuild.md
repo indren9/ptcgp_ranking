@@ -217,8 +217,8 @@ online + missing platform + `decklists=true` remains `invalid_record`. Offline
 records retain `wrong_channel` ahead of platform/decklists. Fully formed
 membership and exclusion priority remain identical to D3-R2. There is no
 expansion-, date- or tournament-specific exception, and no historical-only
-selection path. Historical FREEZE still rejects genuinely incomplete evidence
-when no certain exclusion resolves non-membership.
+selection path. D3-R3 defines the record-level classification only; D3-R4 below
+changes the window-level treatment of already-classified `invalid_record` rows.
 
 The existing scoped checkpoint reuse mechanism is unchanged: DISCOVERY may be
 reused when only the unused selector digest differs; FREEZE and dependent stages
@@ -232,6 +232,35 @@ all 256 combinations of four eligibility outcomes, malformed core evidence,
 optional policy configurations and synthetic historical freeze regressions.
 This technical result is submitted for Chat Madre review; gate ratification and
 any real rerun remain separate decisions.
+
+### Historical positive-proof freeze — Gate 1.11-D3-R4
+
+D3-R4 does not change `select_tournaments()`. `invalid_record` remains non-eligible
+and UNKNOWN evidence never becomes PASS. The historical FREEZE now excludes such
+rows and may continue when at least one eligible tournament remains. Acquisition
+failure, discovery/details identity mismatch, incomplete discovery and zero eligible
+tournaments remain blocking. There is no invalid-share threshold, whitelist or
+tournament-specific inference.
+
+Every new FREEZE result records deterministic `candidate_count`, `eligible_count`,
+full `exclusion_counts`, `invalid_record_count`, sorted `invalid_record_ids`, the
+selector-shaped evidence for each invalid row, and selector/policy/scope provenance.
+The classification ledger is reconciled against the aggregate selector result before
+FREEZE is accepted. `Eligibility Evidence Coverage` is defined as
+`100 * (candidate_count - invalid_record_count) / candidate_count`: eligible rows and
+rows with a definitive exclusion are covered; `invalid_record` rows are uncovered.
+This is a quality diagnostic only and has no automatic pass/fail threshold.
+
+FREEZE semantics are versioned as contract 2. A narrow compatibility rule can keep
+a pre-D3-R4 contract-1 FREEZE current only when its semantic adapter fingerprint is
+recognized, the stage is already `VALID`, artifact integrity passes,
+`exclusion_counts["invalid_record"] == 0`, and the normal upstream dependency chain
+still matches. The legacy semantic record and immutable generation are reused as-is;
+no checkpoint is rewritten. A prior `FAILED` FREEZE can never enter compatibility.
+Consequently the six completed historical windows can remain current when those
+conditions hold, while the 30/09/2026 TEF failure becomes stale only in the
+read-only effective status under D3-R4 until a separately authorized rerun creates
+a new immutable FREEZE generation. No TEF/TWM execution is part of this gate.
 
 Normalization reuses existing snapshot normalization, aggregation and Part-1
 contracts/bridge. Canonical deck IDs remain the computation axis, as in production;
