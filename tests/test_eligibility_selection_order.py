@@ -168,16 +168,18 @@ class DetailsClient:
 
 
 @pytest.mark.parametrize("invalid", [False, True])
-def test_historical_freeze_uses_shared_selector_and_remains_fail_closed(context, tmp_path, invalid):
+def test_historical_freeze_uses_shared_selector_and_excludes_noneligible(context, tmp_path, invalid):
     backend, window = context
     backend.client = DetailsClient(window, invalid=invalid)
     inputs = {"DISCOVERY": {"candidate_ids": [row["id"] for row in backend.client.rows]}}
+    frozen = backend._freeze(window, inputs, tmp_path)
+    assert [row["id"] for row in frozen["tournaments"]] == ["synthetic-valid"]
+    assert "synthetic-offline" not in [row["id"] for row in frozen["tournaments"]]
     if invalid:
-        with pytest.raises(RebuildError, match="invalid eligibility evidence"):
-            backend._freeze(window, inputs, tmp_path)
+        assert frozen["exclusion_counts"]["invalid_record"] == 1
+        assert frozen["invalid_record_ids"] == ["synthetic-offline"]
+        assert frozen["eligibility_evidence_coverage"]["percent"] == 50.0
     else:
-        frozen = backend._freeze(window, inputs, tmp_path)
-        assert [row["id"] for row in frozen["tournaments"]] == ["synthetic-valid"]
         assert frozen["exclusion_counts"]["wrong_channel"] == 1
         assert frozen["exclusion_counts"]["invalid_record"] == 0
 
@@ -421,7 +423,7 @@ def test_disabled_boolean_filters_keep_existing_evidence_requirement(
     (False, "decklists_disabled"), (True, "invalid_record"),
     (None, "invalid_record"), ("false", "invalid_record"),
 ])
-def test_historical_freeze_obf_pattern_is_general_and_fail_closed(
+def test_historical_freeze_obf_pattern_is_general_and_excluded(
     context, tmp_path, decklists, reason
 ):
     backend, window = context
@@ -435,13 +437,127 @@ def test_historical_freeze_obf_pattern_is_general_and_fail_closed(
             "candidate_ids": [row["id"] for row in backend.client.rows]
         }
     }
+    result = backend._freeze(window, inputs, tmp_path)
+    assert [row["id"] for row in result["tournaments"]] == ["synthetic-valid"]
+    assert result["exclusion_counts"][reason] == 1
     if reason == "invalid_record":
-        with pytest.raises(RebuildError, match="invalid eligibility evidence"):
-            backend._freeze(window, inputs, tmp_path)
+        assert result["invalid_record_count"] == 1
+        assert result["invalid_record_ids"] == ["synthetic-offline"]
     else:
-        result = backend._freeze(window, inputs, tmp_path)
-        assert [row["id"] for row in result["tournaments"]] == [
-            "synthetic-valid"
-        ]
-        assert result["exclusion_counts"][reason] == 1
+        assert result["invalid_record_count"] == 0
         assert result["exclusion_counts"]["invalid_record"] == 0
+
+# D3-R4: invalid evidence remains excluded but is no longer a window-wide blocker.
+def test_d3r4_acquisition_failure_identity_mismatch_and_zero_eligible_block(context, tmp_path):
+    backend, window = context
+
+    failing = DetailsClient(window, invalid=True)
+    original_get = failing.get_tournament_details
+    def fail_one(tid, **kwargs):
+        if tid == "synthetic-offline":
+            raise requests.Timeout("synthetic detail failure")
+        return original_get(tid, **kwargs)
+    failing.get_tournament_details = fail_one
+    backend.client = failing
+    inputs = {"DISCOVERY": {"candidate_ids": [row["id"] for row in failing.rows]}}
+    with pytest.raises(RebuildError, match="synthetic detail failure"):
+        backend._freeze(window, inputs, tmp_path)
+
+    mismatch = DetailsClient(window, invalid=True)
+    mismatch_get = mismatch.get_tournament_details
+    def wrong_identity(tid, **kwargs):
+        row = mismatch_get(tid, **kwargs)
+        return ({**row, "id": "wrong-detail-id"}
+                if tid == "synthetic-offline" else row)
+    mismatch.get_tournament_details = wrong_identity
+    backend.client = mismatch
+    with pytest.raises(RebuildError, match="identity mismatch"):
+        backend._freeze(window, {"DISCOVERY": {"candidate_ids": ["synthetic-valid", "synthetic-offline"]}}, tmp_path)
+
+    zero = DetailsClient(window, invalid=True)
+    zero.rows = [zero.rows[1]]
+    backend.client = zero
+    with pytest.raises(RebuildError, match="no eligible tournaments"):
+        backend._freeze(
+            window,
+            {"DISCOVERY": {"candidate_ids": ["synthetic-offline"]}},
+            tmp_path,
+        )
+
+
+def test_d3r4_freeze_audit_is_deterministic_and_reconciled(context, tmp_path):
+    backend, window = context
+    backend.client = DetailsClient(window, invalid=True)
+    backend.client.rows = [
+        record(window, id="z-valid") | {"isPublic": True, "isOnline": True},
+        record(window, id="b-invalid") | {"isPublic": True, "isOnline": True},
+        record(window, id="a-offline") | {"isPublic": True, "isOnline": False},
+        record(window, id="c-nodecks") | {"isPublic": True, "isOnline": True, "decklists": False},
+    ]
+    for row in backend.client.rows:
+        row.pop("is_public", None); row.pop("is_online", None)
+        if row["id"] in {"b-invalid", "a-offline", "c-nodecks"}:
+            row.pop("platform", None)
+    ids = [row["id"] for row in backend.client.rows]
+    first = backend._freeze(window, {"DISCOVERY": {"candidate_ids": ids}}, tmp_path)
+    second = backend._freeze(window, {"DISCOVERY": {"candidate_ids": list(reversed(ids))}}, tmp_path)
+    for key in (
+        "candidate_count", "eligible_count", "exclusion_counts",
+        "invalid_record_count", "invalid_record_ids", "invalid_record_evidence",
+        "classifications", "eligibility_evidence_coverage",
+        "classification_provenance",
+    ):
+        assert first[key] == second[key]
+    assert first["candidate_count"] == 4
+    assert first["eligible_count"] == 1
+    assert [row["id"] for row in first["tournaments"]] == ["z-valid"]
+    assert first["invalid_record_ids"] == ["b-invalid"]
+    assert first["invalid_record_count"] == 1
+    assert first["exclusion_counts"]["wrong_channel"] == 1
+    assert first["exclusion_counts"]["decklists_disabled"] == 1
+    assert first["eligibility_evidence_coverage"]["covered_count"] == 3
+    assert first["eligibility_evidence_coverage"]["candidate_count"] == 4
+    assert first["eligibility_evidence_coverage"]["percent"] == 75.0
+    assert first["eligible_count"] + sum(first["exclusion_counts"].values()) == 4
+    evidence = first["invalid_record_evidence"][0]
+    assert evidence["id"] == "b-invalid"
+    assert evidence["selection_record"]["platform"] is None
+    assert first["classification_provenance"]["eligibility_policy"]["policy_id"] == backend.eligibility.policy_id
+
+def test_d3r4_pre_freeze_compatibility_is_narrow_and_fail_closed(context, tmp_path):
+    from historical_rebuild.production import PRE_D3_R4_FREEZE_ADAPTER
+    from historical_rebuild.store import artifact, write_json
+
+    backend, _ = context
+    current = backend.semantics("TOURNAMENT_IDS_FROZEN")
+    previous = deepcopy(current)
+    previous["contract"] = 1
+    previous["adapter"] = PRE_D3_R4_FREEZE_ADAPTER
+    assert backend.can_reuse_semantics("TOURNAMENT_IDS_FROZEN", previous, current)
+
+    unknown = deepcopy(previous)
+    unknown["adapter"] = "0" * 64
+    assert not backend.can_reuse_semantics("TOURNAMENT_IDS_FROZEN", unknown, current)
+
+    root = tmp_path / "window"
+    generation = root / "state" / "tournament_ids_frozen" / "legacy"
+    generation.mkdir(parents=True)
+    result_path = generation / "result.json"
+    write_json(result_path, {"tournaments": [], "exclusion_counts": {"invalid_record": 0}})
+    ref = artifact(root, generation)
+    valid = {"status": "VALID", "artifact": ref}
+    assert backend.can_reuse_checkpoint("TOURNAMENT_IDS_FROZEN", root, valid)
+    assert not backend.can_reuse_checkpoint(
+        "TOURNAMENT_IDS_FROZEN", root, {"status": "FAILED", "artifact": ref}
+    )
+    generation_bad = root / "state" / "tournament_ids_frozen" / "legacy-invalid"
+    generation_bad.mkdir(parents=True)
+    write_json(
+        generation_bad / "result.json",
+        {"tournaments": [], "exclusion_counts": {"invalid_record": 1}},
+    )
+    bad_ref = artifact(root, generation_bad)
+    assert not backend.can_reuse_checkpoint(
+        "TOURNAMENT_IDS_FROZEN", root,
+        {"status": "VALID", "artifact": bad_ref},
+    )

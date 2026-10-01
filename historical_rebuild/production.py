@@ -18,9 +18,10 @@ import requests
 
 from acquisition.scope import EligibilityPolicy, ScopePolicy
 from .model import RebuildError, RetryableError, ValidationError, digest, utc
-from .store import atomic_write, file_digest
+from .store import atomic_write, check_artifact, file_digest, read_result
 
 BASE = Path(__file__).resolve().parents[1]
+PRE_D3_R4_FREEZE_ADAPTER = "99a03500bbc1fd769b3a4c8676f6c98d42e343453cd7ac190bd7621c5edbb113"
 
 
 def function_semantics(filename: str, names: list[str]) -> str:
@@ -156,32 +157,50 @@ class ProductionBackend:
             functions["core/normalize.py"] = ["apply_alias_series"]
         if stage in {"NORMALIZATION", "CORE", "MARS", "VALIDATION", "REPORT"}:
             own.update(pack=inspect.getsource(pack), unpack=inspect.getsource(unpack))
-        return {"contract": 1, "python": platform.python_version(), "adapter": digest(own), "config": config,
+        contract = 2 if stage == "TOURNAMENT_IDS_FROZEN" else 1
+        return {"contract": contract, "python": platform.python_version(), "adapter": digest(own), "config": config,
                 "files": {f: file_digest(BASE / f) for f in files},
                 "functions": {f: function_semantics(f, names) for f, names in functions.items()},
                 "packages": {p: version(p) for p in packages}}
 
     @staticmethod
     def can_reuse_semantics(stage, previous, current):
-        """Ignore only the legacy unused selector file dependency in DISCOVERY.
+        """Recognize only the two explicit historical compatibility cases."""
+        if not isinstance(previous, dict):
+            return False
+        if stage == "DISCOVERY":
+            files = previous.get("files")
+            key = "acquisition/selection.py"
+            if (previous.get("contract") != 1 or not isinstance(files, dict)
+                    or not isinstance(files.get(key), str)
+                    or not re.fullmatch(r"[a-f0-9]{64}", files[key])):
+                return False
+            comparable = deepcopy(previous)
+            comparable["files"][key] = current["files"][key]
+            return digest(comparable) == digest(current)
+        if stage == "TOURNAMENT_IDS_FROZEN":
+            if (previous.get("contract") != 1 or current.get("contract") != 2
+                    or previous.get("adapter") != PRE_D3_R4_FREEZE_ADAPTER):
+                return False
+            comparable = deepcopy(previous)
+            comparable["contract"] = current["contract"]
+            comparable["adapter"] = current["adapter"]
+            return digest(comparable) == digest(current)
+        return False
 
-        _discover does not call the selector. Keep the original semantic record
-        and input fingerprint as provenance, rather than rewriting checkpoints.
-        Every actual dependency, adapter, config and runtime field must match.
-        FREEZE never receives this exception.
-        """
-        if stage != "DISCOVERY" or not isinstance(previous, dict):
+    @staticmethod
+    def can_reuse_checkpoint(stage, root, entry):
+        """D3-R4 old FREEZE reuse additionally requires verified zero invalids."""
+        if stage == "DISCOVERY":
+            return True
+        if stage != "TOURNAMENT_IDS_FROZEN" or entry.get("status") != "VALID":
             return False
-        files = previous.get("files")
-        key = "acquisition/selection.py"
-        if (previous.get("contract") != 1 or not isinstance(files, dict)
-                or not isinstance(files.get(key), str)
-                or not re.fullmatch(r"[a-f0-9]{64}", files[key])):
+        ref = entry.get("artifact", {})
+        if not check_artifact(root, ref):
             return False
-        comparable = deepcopy(previous)
-        comparable["files"][key] = current["files"][key]
-        # Persisted JSON arrays correspond to in-memory policy tuples.
-        return digest(comparable) == digest(current)
+        result = read_result(root, ref)
+        counts = result.get("exclusion_counts")
+        return isinstance(counts, dict) and counts.get("invalid_record") == 0
 
     def _client(self):
         if self.client is None:
@@ -222,17 +241,86 @@ class ProductionBackend:
     def _freeze(self, window, inputs, directory):
         from acquisition.selection import select_tournaments
         from pipelines.limitless_api_acquisition import _selection_record
-        details = {tid: self._network("get_tournament_details", tid) for tid in inputs["DISCOVERY"]["candidate_ids"]}
+
+        raw_candidate_ids = list(inputs["DISCOVERY"]["candidate_ids"])
+        candidate_ids = tuple(sorted({str(tid).strip() for tid in raw_candidate_ids}))
+        if (any(not tid for tid in candidate_ids)
+                or len(candidate_ids) != len(raw_candidate_ids)):
+            raise RebuildError("discovery candidate IDs must be unique non-empty identities")
+        details = {tid: self._network("get_tournament_details", tid) for tid in candidate_ids}
         if any(str(row.get("id")) != tid for tid, row in details.items()):
             raise RebuildError("discovery/details identity mismatch")
-        selection = select_tournaments([_selection_record(d) for d in details.values()],
-                                      scope=self._scope(window), eligibility=self.eligibility)
-        if selection.exclusion_counts.get("invalid_record") or selection.failures:
-            raise RebuildError("invalid eligibility evidence; cannot freeze a complete selection")
+
+        scope = self._scope(window)
+        records = {tid: _selection_record(details[tid]) for tid in candidate_ids}
+        selection = select_tournaments(
+            [records[tid] for tid in candidate_ids], scope=scope,
+            eligibility=self.eligibility,
+        )
+        if selection.failures:
+            raise RebuildError("tournament details acquisition failure; cannot freeze selection")
+
+        reconciled = {reason: 0 for reason in selection.exclusion_counts}
+        classifications = []
+        invalid_records = []
+        eligible_ids = []
+        for tid in candidate_ids:
+            one = select_tournaments([records[tid]], scope=scope, eligibility=self.eligibility)
+            reasons = [reason for reason, count in one.exclusion_counts.items() if count]
+            if one.tournament_ids:
+                if one.tournament_ids != (tid,) or reasons:
+                    raise RebuildError("eligibility classification reconciliation failed")
+                eligible_ids.append(tid)
+                classifications.append({"id": tid, "classification": "eligible", "reason": None})
+            else:
+                if len(reasons) != 1:
+                    raise RebuildError("eligibility classification reconciliation failed")
+                reason = reasons[0]
+                reconciled[reason] += 1
+                classifications.append({"id": tid, "classification": "excluded", "reason": reason})
+                if reason == "invalid_record":
+                    invalid_records.append({"id": tid, "selection_record": records[tid]})
+
+        if (tuple(eligible_ids) != selection.tournament_ids
+                or reconciled != dict(selection.exclusion_counts)):
+            raise RebuildError("eligibility classification reconciliation failed")
         if not selection.tournament_ids:
             raise RebuildError("no eligible tournaments; no historical ranking can be validated")
-        return {"tournaments": [{"id": tid, "details": details[tid]} for tid in selection.tournament_ids],
-                "exclusion_counts": dict(selection.exclusion_counts)}
+
+        invalid_ids = [row["id"] for row in invalid_records]
+        candidate_count = len(candidate_ids)
+        invalid_count = len(invalid_ids)
+        covered_count = candidate_count - invalid_count
+        coverage_pct = 100.0 * covered_count / candidate_count if candidate_count else 0.0
+        return {
+            "tournaments": [{"id": tid, "details": details[tid]} for tid in selection.tournament_ids],
+            "candidate_count": candidate_count,
+            "eligible_count": len(selection.tournament_ids),
+            "exclusion_counts": dict(selection.exclusion_counts),
+            "invalid_record_count": invalid_count,
+            "invalid_record_ids": invalid_ids,
+            "invalid_record_evidence": invalid_records,
+            "classifications": classifications,
+            "eligibility_evidence_coverage": {
+                "covered_count": covered_count,
+                "candidate_count": candidate_count,
+                "percent": round(coverage_pct, 6),
+                "definition": "100 * (candidate_count - invalid_record_count) / candidate_count; invalid_record is uncovered evidence, while eligible or definitively excluded candidates are covered",
+            },
+            "classification_provenance": {
+                "selector": "acquisition.selection.select_tournaments",
+                "selection_record_adapter": "pipelines.limitless_api_acquisition._selection_record",
+                "eligibility_policy": asdict(self.eligibility),
+                "scope": {
+                    "policy_id": scope.policy_id, "game": scope.game,
+                    "format": scope.format, "set_code": scope.set_code,
+                    "set_name": scope.set_name,
+                    "start_datetime": scope.start_datetime.isoformat().replace("+00:00", "Z"),
+                    "end_datetime": scope.end_datetime.isoformat().replace("+00:00", "Z"),
+                    "catalog_version": scope.catalog_version,
+                },
+            },
+        }
 
     def acquire(self, window, item):
         # Details are already frozen, validated eligibility evidence. Acquire the
