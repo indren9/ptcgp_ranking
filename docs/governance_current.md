@@ -1,7 +1,7 @@
 # MARS — CURRENT VIEW
 
 **Status:** CURRENT
-**Reviewed:** 2026-10-05
+**Reviewed:** 2026-10-06
 
 ## Authority
 
@@ -9,6 +9,8 @@
 - For changing technical facts, use the live GitHub repository.
 - Effective run parameters come from the selected YAML profile.
 - FROZEN decisions and artifacts remain frozen unless Andrea explicitly reopens them.
+- A technical PASS is not an approval of a methodological or structural change; Andrea's explicit approval is required where governance requires it.
+- Silence or absence of an answer is never approval.
 - Static Project copies must never override a newer authoritative live source.
 
 ## Current technical baseline
@@ -63,7 +65,30 @@ Normally read only:
 4. Only the task-specific decisions/FROZEN items that alter its baseline.
 5. Task inputs and required output.
 
+If the new chat is replacing the Chat Madre, also read `docs/chat_madre_succession_protocol.md`
+and complete its read-only readiness gate before opening new work.
+
 Do not reconstruct the whole project history by default.
+
+## New-chat setup discipline
+
+Every Chat Madre dispatch must include a recommended setup, the reason, and a fallback Chat setup.
+
+- Prefer Work when autonomous multi-step execution materially helps and Work is available.
+- Otherwise prefer GPT-5.6 Sol — High for governance, audit, methodology, complex refactor, difficult debugging, or cross-source verification.
+- Prefer GPT-5.6 Sol — Medium for bounded operational tasks with clear inputs and acceptance criteria.
+- Do not default to the maximum reasoning level when a lower level is sufficient.
+- If available model/mode options change, verify the current product availability before recommending a setup.
+
+## Desktop Commander discipline
+
+Use Desktop Commander only for genuinely local work and follow `DESKTOP_COMMANDER_PLAYBOOK_v02`.
+
+For long processes: start once, retain the PID/process handle, monitor the same process,
+do not create repeated `start_process + Start-Sleep` polling shells, verify an existing job
+after timeout/disconnection before relaunching it, and verify final logs/artifacts rather than trusting a printed PASS alone.
+
+The full Chat Madre succession rules live in `docs/chat_madre_succession_protocol.md`.
 
 ## History
 
