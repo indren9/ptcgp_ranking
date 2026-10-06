@@ -24,7 +24,7 @@ Generate project_tree.txt as an ASCII tree.
 
 Features:
 - Always excludes: .git/, .venv/, __pycache__/, .vscode/, .pytest_cache/,
-  .pytest_tmp/, .agents/, .codex/, cache/, outputs/
+  .pytest_tmp*/, .agents/, .codex/, .cache/, cache/, outputs/
 - Excludes files: .gitignore, __init__.py, make_project_tree.py
 - Also excludes project_tree.txt and project_tree_*.txt
 - Hides timestamped version files (_YYYYMMDD_HHMMSS.*) and keeps only *_latest.*
@@ -53,6 +53,7 @@ DEFAULT_EXCLUDE_DIRS = {
     ".pytest_cache",
     ".pytest_tmp",
     ".pytest_tmp_verify",
+    ".cache",
     ".venv",
     ".vscode",
     "__pycache__",
@@ -133,6 +134,8 @@ def _filtered_children(
             continue
 
         if child.is_dir():
+            if name.lower().startswith(".pytest_tmp") and name.lower() not in force_include_ci:
+                continue
             if name.lower() in exclude_dirs_ci and name.lower() not in force_include_ci:
                 continue
             dirs.append(child)
@@ -225,7 +228,11 @@ def main():
     exclude_files_exact.update(args.extra_exclude_files)
     force_include = set(args.force_include)
 
-    lines: list[str] = []
+    lines: list[str] = [
+        "# GENERATED / NON-AUTHORITATIVE",
+        "# Convenience snapshot only. For CURRENT state, use the live GitHub repository.",
+        "",
+    ]
     if args.include_root:
         lines.append(f".{args.dir_suffix}")
 

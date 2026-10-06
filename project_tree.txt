@@ -1,9 +1,20 @@
+# GENERATED / NON-AUTHORITATIVE
+# Convenience snapshot only. For CURRENT state, use the live GitHub repository.
+
 |-- .github\
 |   |-- workflows\
 |   |   |-- latest-completed-meta.yml
 |   |   |-- tests.yml
 |   |   `-- update-expansion-catalog.yml
-|   `-- latest-completed-meta-state.json
+|   |-- latest-completed-meta-state.json
+|   `-- tcg-live-latest-completed-meta-state.json
+|-- acquisition\
+|   |-- aggregation.py
+|   |-- contracts.py
+|   |-- manifest.py
+|   |-- production_bridge.py
+|   |-- scope.py
+|   `-- selection.py
 |-- cli\
 |   `-- deck_ranking.py
 |-- config\
@@ -13,6 +24,7 @@
 |   |-- pocket.yaml
 |   |-- pocket_wildcard.yaml
 |   |-- tcg.yaml
+|   |-- tcg_historical_rebuild.yaml
 |   `-- tcg_wildcard.yaml
 |-- core\
 |   |-- consolidate.py
@@ -20,17 +32,62 @@
 |   |-- nan_diagnostics.py
 |   |-- nan_filter.py
 |   `-- normalize.py
+|-- data\
+|   |-- approved\
+|   |   `-- releases\
+|   |       |-- .gitattributes
+|   |       |-- tcg_live_historical_boundaries_reviewed.json
+|   |       `-- tcg_live_historical_boundary_approval.json
+|   |-- candidates\
+|   |   `-- releases\
+|   |       |-- tcg_live_historical_boundaries_candidate.json
+|   |       |-- tcg_live_historical_boundary_evidence.json
+|   |       |-- tcg_live_historical_window_preview.json
+|   |       |-- tcg_live_human_adjudications.json
+|   |       `-- tcg_live_r2_adjudication.json
+|   |-- raw\
+|   `-- reference\
+|       |-- pocket_releases.json
+|       `-- ptcg_live_windows.json
 |-- docs\
 |   |-- assets\
 |   |   |-- github-social-preview-final.jpg
 |   |   `-- github-social-preview.jpg
+|   |-- releases\
+|   |   |-- v1.0.0.md
+|   |   `-- v1.0.1.md
+|   |-- automatic_catalog_refresh.md
+|   |-- canonical_release_candidates.md
+|   |-- chat_madre_succession_protocol.md
 |   |-- google_sheets_expansions.md
+|   |-- governance_current.md
 |   |-- latest_completed_meta.md
+|   |-- official_release_observer.md
 |   |-- output_contract.md
+|   |-- ptcg_live_production.md
 |   |-- refactor_roadmap.md
-|   `-- run_observations.md
+|   |-- run_observations.md
+|   |-- tcg-historical-rebuild.md
+|   |-- tcg-live-historical-boundary-review.md
+|   |-- tcg-live-historical-boundary-reviewed.md
+|   `-- tcg-live-r2-adjudication.md
 |-- domain\
-|   `-- expansions.py
+|   |-- expansions.py
+|   `-- releases.py
+|-- historical_boundaries\
+|   |-- __main__.py
+|   |-- adjudication.py
+|   |-- catalog.py
+|   |-- human_adjudication.py
+|   |-- r2.py
+|   |-- reviewed.py
+|   `-- targeted_fallback.py
+|-- historical_rebuild\
+|   |-- __main__.py
+|   |-- model.py
+|   |-- production.py
+|   |-- runner.py
+|   `-- store.py
 |-- logs\
 |-- mars\
 |   |-- auto_k_cv.py
@@ -45,16 +102,35 @@
 |   |-- report.py
 |   `-- validate_io.py
 |-- notebooks\
-|   |-- deck_ranking_run_all.ipynb
-|   `-- deck_ranking_run_all_dev.ipynb
+|   `-- live_ranking.ipynb
+|-- official_release_observer\
+|   |-- __main__.py
+|   |-- discovery.py
+|   |-- network.py
+|   |-- parsing.py
+|   |-- reconcile.py
+|   |-- storage.py
+|   `-- timeparse.py
 |-- pipelines\
-|   `-- deck_ranking.py
+|   |-- deck_ranking.py
+|   `-- limitless_api_acquisition.py
 |-- public\
 |   |-- latest-meta\
 |   |   |-- heatmap.png
 |   |   |-- manifest.json
 |   |   `-- ranking.csv
+|   |-- tcg-live\
+|   |   `-- latest-meta\
+|   |       |-- heatmap.png
+|   |       |-- manifest.json
+|   |       `-- ranking.csv
 |   `-- expansions_pocket_standard.csv
+|-- release_candidates\
+|   |-- __main__.py
+|   |-- model.py
+|   |-- observer_bridge.py
+|   |-- reporting.py
+|   `-- validation.py
 |-- reporting\
 |   |-- excel.py
 |   |-- logs.py
@@ -75,49 +151,108 @@
 |   |-- matchups.py
 |   `-- session.py
 |-- scripts\
+|   |-- automatic_completed_meta_rollover.py
+|   |-- automatic_completed_meta_rollover_job.py
+|   |-- d2b_shadow_rollover.py
 |   |-- export_expansions_catalog.py
 |   |-- latest_completed_meta.py
 |   |-- latest_completed_meta_producer.py
+|   |-- raw_object_store.py
 |   |-- run_all_sets.py
-|   `-- run_pocket_all_sets.py
+|   |-- run_pocket_all_sets.py
+|   |-- tcg_live_latest_completed.py
+|   |-- tcg_live_latest_completed_job.py
+|   `-- tcg_live_publication.py
 |-- sources\
 |   `-- limitless\
 |       |-- pages\
 |       |   |-- decks.py
 |       |   `-- sets.py
+|       |-- tournament_api\
+|       |   |-- client.py
+|       |   |-- normalize.py
+|       |   |-- object_store.py
+|       |   |-- raw_store.py
+|       |   `-- release_catalog.py
 |       |-- browser.py
+|       |-- catalog_refresh.py
 |       |-- client.py
 |       `-- constants.py
 |-- storage\
+|   |-- acquisition.py
+|   |-- onedrive_publisher.py
 |   |-- paths.py
 |   |-- routing.py
 |   `-- writers.py
 |-- tests\
+|   |-- fixtures\
+|   |   |-- limitless_api\
+|   |   |   |-- details.json
+|   |   |   |-- pairings.json
+|   |   |   `-- standings.json
+|   |   `-- official_release_observer\
+|   |       `-- official_excerpts.json
+|   |-- test_acquisition_aggregation.py
+|   |-- test_acquisition_contract_adapter.py
+|   |-- test_acquisition_domain_contracts.py
+|   |-- test_b11_default_cutover.py
+|   |-- test_b11_rf1_live_freshness.py
+|   |-- test_b12_offline_performance.py
+|   |-- test_b9_pre1_dense_runtime.py
+|   |-- test_b9_production_bridge.py
+|   |-- test_b9_production_integration.py
+|   |-- test_catalog_refresh.py
 |   |-- test_cli_deck_ranking.py
 |   |-- test_core_matrices.py
+|   |-- test_d2b_rollover_contract.py
+|   |-- test_d2b_workflow_contract.py
+|   |-- test_eligibility_selection_order.py
 |   |-- test_expansion_auto_fallback.py
 |   |-- test_export_expansions_catalog.py
+|   |-- test_historical_boundaries.py
+|   |-- test_historical_discovery_completeness.py
+|   |-- test_historical_rebuild.py
+|   |-- test_human_adjudication.py
 |   |-- test_latest_completed_meta.py
 |   |-- test_latest_completed_meta_producer.py
+|   |-- test_limitless_api_acquisition_pipeline.py
 |   |-- test_limitless_browser.py
 |   |-- test_limitless_client.py
+|   |-- test_live_catalog_integration.py
+|   |-- test_live_notebook.py
 |   |-- test_logging_noise.py
 |   |-- test_nan_diagnostics.py
 |   |-- test_nan_filter.py
+|   |-- test_object_store.py
+|   |-- test_official_release_observer.py
+|   |-- test_onedrive_publisher.py
 |   |-- test_pipeline_deck_ranking.py
+|   |-- test_pocket_release_catalog.py
+|   |-- test_release_candidates.py
+|   |-- test_release_catalog_and_selection.py
 |   |-- test_reporting_imports.py
 |   |-- test_reporting_logs.py
 |   |-- test_reporting_plots.py
 |   |-- test_reporting_tables.py
+|   |-- test_reviewed_historical_boundaries.py
 |   |-- test_run_pocket_all_sets.py
 |   |-- test_sources_limitless.py
-|   `-- test_storage_routing.py
+|   |-- test_storage_routing.py
+|   |-- test_targeted_fallback.py
+|   |-- test_tcg_live_latest_completed.py
+|   |-- test_tcg_live_latest_completed_job.py
+|   |-- test_tcg_live_production_config.py
+|   |-- test_tcg_live_publication.py
+|   |-- test_tournament_api_client.py
+|   |-- test_tournament_api_normalize.py
+|   `-- test_tournament_api_raw_store.py
 |-- utils\
 |   |-- clean_outputs.py
 |   |-- config.py
 |   |-- display.py
 |   |-- expansion_routing.py
 |   `-- io.py
+|-- CHANGELOG.md
 |-- CITATION.cff
 |-- CONTRIBUTING.md
 |-- LICENSE
