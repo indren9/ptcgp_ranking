@@ -121,6 +121,7 @@ class ProductionBackend:
             config = {"alias_policy": "canonical_deck_ids_no_legacy_aliases_v1"}
             files = ["sources/limitless/tournament_api/normalize.py", "acquisition/aggregation.py",
                      "acquisition/contracts.py", "acquisition/production_bridge.py",
+                     "acquisition/deck_labels.py",
                      "sources/limitless/tournament_api/release_catalog.py"]
             functions["pipelines/limitless_api_acquisition.py"] = ["_concat_or_empty"]
             packages = ["pandas", "numpy"]
@@ -343,27 +344,30 @@ class ProductionBackend:
             raise ValidationError("RAW pairing structure incomplete")
 
     def _normalize(self, window, inputs, directory):
-        from sources.limitless.tournament_api.normalize import normalize_snapshot, PARTICIPANT_COLUMNS, PAIRING_COLUMNS
+        from sources.limitless.tournament_api.normalize import normalize_snapshot, TOURNAMENT_COLUMNS, PARTICIPANT_COLUMNS, PAIRING_COLUMNS
         from pipelines.limitless_api_acquisition import _concat_or_empty
         from acquisition.aggregation import aggregate_meta, aggregate_matchups
         from acquisition.contracts import adapt_top_meta_decklist, adapt_matchup_raw, materialize_dense_score, AcquisitionFrames
         from acquisition.production_bridge import bridge_tournament_api_frames
-        participants, pairings = [], []
+        tournaments, participants, pairings = [], [], []
         for item in inputs["RAW_ACQUISITION"]["tournaments"]:
             raw = inputs["load_raw"](item["id"])
-            _, players, pairs = normalize_snapshot(tournament_id=item["id"], raw_snapshot_id=item["sha256"], **raw)
+            tournament, players, pairs = normalize_snapshot(tournament_id=item["id"], raw_snapshot_id=item["sha256"], **raw)
+            tournaments.append(tournament)
             participants.append(players)
             pairings.append(pairs)
         players = _concat_or_empty(participants, PARTICIPANT_COLUMNS)
         pairs = _concat_or_empty(pairings, PAIRING_COLUMNS)
-        meta = aggregate_meta(players)
-        matches = aggregate_matchups(players, pairs)
+        dates = _concat_or_empty(tournaments, TOURNAMENT_COLUMNS)
+        meta = aggregate_meta(players, dates)
+        matches = aggregate_matchups(players, pairs, dates)
         top = adapt_top_meta_decklist(meta.meta)
         match = adapt_matchup_raw(matches.matchups)
         dense = materialize_dense_score(match, tuple(zip(top["Deck ID"], top["Deck"])))
         bridge = bridge_tournament_api_frames(AcquisitionFrames(top, match, dense))
         return {"top": pack(bridge.top_meta_decklist), "dense": pack(bridge.dense_score),
-                "identities": pack(bridge.deck_identity_map)}
+                "identities": pack(bridge.deck_identity_map),
+                "label_resolution": meta.label_resolution}
 
     def _core(self, window, inputs, directory):
         from pipelines.deck_ranking import _build_core_matrices

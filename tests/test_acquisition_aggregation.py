@@ -4,6 +4,7 @@ import pandas as pd
 import pytest
 
 from acquisition.aggregation import AggregationConflictError, aggregate_matchups, aggregate_meta
+from acquisition.deck_labels import DeckLabelResolutionError
 
 
 def participants(rows):
@@ -177,14 +178,14 @@ def test_duplicate_display_names_across_tournaments_aggregate_by_id_not_name():
     assert ("dragon-1", "dragon-2") not in lookup.index
 
 
-def test_same_deck_id_multiple_names_fails_fast():
+def test_same_deck_id_multiple_names_without_dates_fails_closed():
     p = participants(
         [
             ("t1", "p1", "dragon-1", "Dragonair Altaria"),
             ("t2", "p2", "dragon-1", "Different Label"),
         ]
     )
-    with pytest.raises(AggregationConflictError, match="deck_id maps to multiple deck names"):
+    with pytest.raises(DeckLabelResolutionError, match="missing, invalid or conflicting tournament date UTC"):
         aggregate_meta(p)
 
 def test_cross_tournament_results_are_summed_never_maxed():

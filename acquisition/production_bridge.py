@@ -45,6 +45,8 @@ def _identity_map(frames: AcquisitionFrames) -> pd.DataFrame:
         ),
     ]
     mapping = pd.concat(parts, ignore_index=True).drop_duplicates()
+    if mapping[["Deck ID", "Deck"]].isna().any().any():
+        raise ValueError("deck identity mapping must contain non-empty IDs and display names")
     mapping["Deck ID"] = mapping["Deck ID"].astype(str).str.strip()
     mapping["Deck"] = mapping["Deck"].astype(str).str.strip()
     if (mapping["Deck ID"] == "").any() or (mapping["Deck"] == "").any():
@@ -55,7 +57,7 @@ def _identity_map(frames: AcquisitionFrames) -> pd.DataFrame:
     if not ambiguous.empty:
         raise ValueError(f"deck ID maps to multiple display names: {ambiguous.index[0]}")
 
-    return mapping.sort_values(["Deck ID", "Deck"], kind="mergesort").reset_index(drop=True)
+    return mapping.drop_duplicates().sort_values(["Deck ID", "Deck"], kind="mergesort").reset_index(drop=True)
 
 
 def _technical_top_meta(df: pd.DataFrame) -> pd.DataFrame:

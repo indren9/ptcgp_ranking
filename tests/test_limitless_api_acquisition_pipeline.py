@@ -1123,3 +1123,51 @@ def test_ptcg_live_platform_policy_v2_live_offline_replay(tmp_path):
     assert replay.manifest.eligibility == policy
     assert replay.manifest.selection == live.manifest.selection
     assert replay.diagnostics["contract_hashes"] == live.diagnostics["contract_hashes"]
+
+
+def test_label_drift_live_replay_and_historical_normalization_share_policy(tmp_path):
+    """All inputs are synthetic; never invoke the historical runner or network."""
+    from copy import deepcopy
+    import pandas as pd
+    import yaml
+    from acquisition.production_bridge import bridge_tournament_api_frames
+    from historical_rebuild.production import BASE, ProductionBackend, unpack
+
+    client = FakeClient()
+    client.standings["t1"][0]["deck"]["name"] = "Earlier label"
+    client.standings["t2"][0]["deck"]["name"] = "Later label"
+    original = deepcopy(client.standings)
+    live = _run_live(tmp_path, client=client)
+    exploding = ExplodingClient()
+    # A later source change cannot affect replay of the frozen run.
+    client.standings["t2"][0]["deck"]["name"] = "Outside replay scope"
+    replay = run_limitless_api_acquisition(
+        game="POCKET", set_code="B3b", acquisition_started_at=STARTED,
+        execution_mode="offline", raw_store_root=tmp_path / "store",
+        release_catalog=CATALOG_PATH, client=exploding,
+        replay_run_id="live-b3b", run_id="replay-drift",
+        software_git_revision="fixture", now_fn=lambda: NOW,
+    )
+    assert exploding.calls == 0
+    assert live.diagnostics["contract_hashes"] == replay.diagnostics["contract_hashes"]
+    assert live.manifest.normalized.hashes == replay.manifest.normalized.hashes
+    evidence = live.diagnostics["deck_identity_diagnostics"]["label_resolution"]
+    assert evidence == replay.diagnostics["deck_identity_diagnostics"]["label_resolution"]
+    assert live.manifest.to_dict()["aggregation"]["deck_identity_diagnostics"]["label_resolution"] == evidence
+    assert evidence["drift"][0]["selected_label"] == "Later label"
+    assert [r["label"] for r in evidence["drift"][0]["observed_labels"]] == ["Earlier label", "Later label"]
+
+    backend = ProductionBackend(yaml.safe_load((BASE / "config/tcg.yaml").read_text(encoding="utf-8")),
+                                client=exploding)
+    inputs = {
+        "RAW_ACQUISITION": {"tournaments": [{"id": tid, "sha256": "fixture"} for tid in ("t2", "t1")]},
+        "load_raw": lambda tid: {"details": client.details[tid], "standings": original[tid],
+                                "pairings": client.pairings[tid]},
+    }
+    historical = backend._normalize(None, inputs, tmp_path)
+    assert historical["label_resolution"] == evidence
+    bridged = bridge_tournament_api_frames(live.frames)
+    pd.testing.assert_frame_equal(unpack(historical["identities"]), bridged.deck_identity_map, check_dtype=False)
+    pd.testing.assert_frame_equal(unpack(historical["dense"]), bridged.dense_score, check_dtype=False)
+    inputs["RAW_ACQUISITION"]["tournaments"].reverse()
+    assert backend._normalize(None, inputs, tmp_path) == historical
