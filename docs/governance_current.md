@@ -21,7 +21,6 @@
 - Pokémon TCG Pocket and Pokémon TCG Live Standard are supported production targets.
 
 Observed during the 2026-10-05 governance review:
-- `main` HEAD: `9715e46d8cbbdcdbaa50aa6d8e5196fee62ba9e0`
 - latest merged technical work: D3-R4 historical positive-proof freeze
 - Pocket published completed set: B4 — Ruler of the Skies
 - Pocket observed current set: B4a — Team Rocket's Ambition
@@ -44,7 +43,8 @@ Methodology changes must be explicit, isolated from bugfix/refactor/acquisition/
 
 ## Governance workstream
 
-Current workstream: MARS Governance VNEXT.
+MARS Governance VNEXT is **OPERATIVE**.
+Cutover completed: 2026-10-05.
 
 Purpose:
 - reduce bootstrap overhead;
