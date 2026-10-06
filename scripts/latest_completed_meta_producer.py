@@ -203,6 +203,8 @@ def _load_public_deck_labels(
         deck_name = str(item.get("deck_name") or "").strip()
 
         if deck_id and deck_name:
+            if deck_id in mapping and mapping[deck_id] != deck_name:
+                raise ValueError(f"Conflicting public deck labels for canonical ID: {deck_id}")
             mapping[deck_id] = deck_name
 
     requested = [str(deck_id) for deck_id in deck_ids]

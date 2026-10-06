@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
 from acquisition.contracts import MATCHUP_COLUMNS
+from acquisition.deck_labels import resolve_deck_labels
 
 META_COLUMNS = ("Deck ID", "Deck", "Count", "Share_%", "Rank")
 PAIRING_DIAGNOSTIC_KEYS = (
@@ -32,6 +33,7 @@ class MetaAggregationResult:
     unclassified_participants: int
     classification_coverage: float
     duplicate_display_names: dict[str, tuple[str, ...]]
+    label_resolution: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -48,39 +50,8 @@ def _clean_text(value: Any) -> str | None:
     return text or None
 
 
-def _deck_label_map(participants: pd.DataFrame) -> dict[str, str]:
-    required = {"deck_id", "deck_name"}
-    if not required.issubset(participants.columns):
-        raise KeyError(
-            f"participants missing columns: {sorted(required - set(participants.columns))}"
-        )
-
-    identified = participants.copy()
-    identified["_deck_id"] = identified["deck_id"].map(_clean_text)
-    identified["_deck_name"] = identified["deck_name"].map(_clean_text)
-    identified = identified[identified["_deck_id"].notna()].copy()
-    if identified.empty:
-        return {}
-
-    named = identified[identified["_deck_name"].notna()]
-    if not named.empty:
-        by_id = named.groupby("_deck_id")["_deck_name"].nunique(dropna=True)
-        bad_ids = by_id[by_id > 1]
-        if not bad_ids.empty:
-            raise AggregationConflictError(
-                f"deck_id maps to multiple deck names: {bad_ids.index[0]}"
-            )
-
-    labels: dict[str, str] = {}
-    for deck_id, group in identified.groupby("_deck_id", sort=True):
-        names = tuple(sorted(set(group["_deck_name"].dropna().astype(str))))
-        labels[str(deck_id)] = names[0] if names else str(deck_id)
-    return labels
-
-
-def _validate_deck_identity(participants: pd.DataFrame) -> dict[str, tuple[str, ...]]:
+def _validate_deck_identity(labels: dict[str, str]) -> dict[str, tuple[str, ...]]:
     """Validate canonical deck_id identity and diagnose duplicate display labels."""
-    labels = _deck_label_map(participants)
     by_label: dict[str, list[str]] = {}
     for deck_id, deck_name in labels.items():
         by_label.setdefault(deck_name, []).append(deck_id)
@@ -92,7 +63,7 @@ def _validate_deck_identity(participants: pd.DataFrame) -> dict[str, tuple[str, 
     return duplicate_display_names
 
 
-def aggregate_meta(participants: pd.DataFrame) -> MetaAggregationResult:
+def aggregate_meta(participants: pd.DataFrame, tournaments: pd.DataFrame | None = None) -> MetaAggregationResult:
     required = {"tournament_id", "player_id", "deck_id", "deck_name"}
     missing = required - set(participants.columns)
     if missing:
@@ -100,8 +71,9 @@ def aggregate_meta(participants: pd.DataFrame) -> MetaAggregationResult:
 
     if participants.duplicated(["tournament_id", "player_id"]).any():
         raise AggregationConflictError("duplicate participant join key")
-    duplicate_display_names = _validate_deck_identity(participants)
-    deck_labels = _deck_label_map(participants)
+    resolution = resolve_deck_labels(participants, tournaments)
+    deck_labels = resolution.labels
+    duplicate_display_names = _validate_deck_identity(deck_labels)
 
     df = participants.copy()
     df["_deck_id"] = df["deck_id"].map(_clean_text)
@@ -140,17 +112,18 @@ def aggregate_meta(participants: pd.DataFrame) -> MetaAggregationResult:
         unclassified_participants=unclassified,
         classification_coverage=coverage,
         duplicate_display_names=duplicate_display_names,
+        label_resolution=resolution.diagnostics,
     )
 
 
-def _participant_lookup(participants: pd.DataFrame) -> dict[tuple[str, str], tuple[str | None, str | None]]:
+def _participant_lookup(participants: pd.DataFrame, tournaments: pd.DataFrame | None = None) -> dict[tuple[str, str], tuple[str | None, str | None]]:
     required = {"tournament_id", "player_id", "deck_id", "deck_name"}
     missing = required - set(participants.columns)
     if missing:
         raise KeyError(f"participants missing columns: {sorted(missing)}")
     if participants.duplicated(["tournament_id", "player_id"]).any():
         raise AggregationConflictError("duplicate participant join key")
-    deck_labels = _deck_label_map(participants)
+    deck_labels = resolve_deck_labels(participants, tournaments).labels
 
     out: dict[tuple[str, str], tuple[str | None, str | None]] = {}
     for row in participants.itertuples(index=False):
@@ -195,7 +168,9 @@ def _dedupe_pairings(pairings: pd.DataFrame) -> tuple[pd.DataFrame, int]:
     return out.reindex(columns=pairings.columns), duplicate_count
 
 
-def aggregate_matchups(participants: pd.DataFrame, pairings: pd.DataFrame) -> MatchAggregationResult:
+def aggregate_matchups(
+    participants: pd.DataFrame, pairings: pd.DataFrame, tournaments: pd.DataFrame | None = None,
+) -> MatchAggregationResult:
     required_pairings = {
         "tournament_id",
         "player1",
@@ -207,7 +182,7 @@ def aggregate_matchups(participants: pd.DataFrame, pairings: pd.DataFrame) -> Ma
     if missing:
         raise KeyError(f"pairings missing columns: {sorted(missing)}")
 
-    lookup = _participant_lookup(participants)
+    lookup = _participant_lookup(participants, tournaments)
     clean_pairings, duplicate_count = _dedupe_pairings(pairings)
     diagnostics = {key: 0 for key in PAIRING_DIAGNOSTIC_KEYS}
     diagnostics["duplicate_pairing"] = int(duplicate_count)

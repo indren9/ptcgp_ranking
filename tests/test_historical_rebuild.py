@@ -549,3 +549,22 @@ def test_mars_adapter_preserves_production_small_meta_share_units(tmp_path, monk
                      "NORMALIZATION": {"top": pack(top)}}, tmp_path)
     pd.testing.assert_frame_equal(seen[0], topmeta_post_alias(top, {}))
     assert seen[0]["Share_frac"].tolist() == pytest.approx([0.007, 0.006])
+
+
+def test_label_resolver_fingerprinted_only_at_normalization(tmp_path, monkeypatch):
+    import yaml
+    import historical_rebuild.production as production
+    backend = production.ProductionBackend(
+        yaml.safe_load((production.BASE / "config/tcg.yaml").read_text(encoding="utf-8")))
+    before = {s: backend.semantics(s) for s in STAGES}
+    original = production.file_digest
+
+    def changed(path):
+        if path == production.BASE / "acquisition/deck_labels.py":
+            return "0" * 64
+        return original(path)
+
+    monkeypatch.setattr(production, "file_digest", changed)
+    after = {s: backend.semantics(s) for s in STAGES}
+    assert {s for s in STAGES if before[s] != after[s]} == {"NORMALIZATION"}
+    assert not backend.can_reuse_semantics("NORMALIZATION", before["NORMALIZATION"], after["NORMALIZATION"])

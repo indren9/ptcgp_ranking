@@ -613,7 +613,7 @@ def _classification_by_tournament(
 
     for tournament_id in tournament_ids:
         subset = participants.loc[participant_ids == tournament_id].copy()
-        result = aggregate_meta(subset)
+        result = aggregate_meta(subset, tournaments)
         rows.append(
             {
                 "tournament_id": tournament_id,
@@ -665,7 +665,7 @@ def _build_derivatives(
             - progress_started_at,
         )
 
-    meta_result = aggregate_meta(participants)
+    meta_result = aggregate_meta(participants, tournaments)
     classification_by_tournament = _classification_by_tournament(tournaments, participants)
 
     if progress_label and progress_started_at is not None:
@@ -680,6 +680,7 @@ def _build_derivatives(
     match_result = aggregate_matchups(
         participants,
         pairings,
+        tournaments,
     )
 
     if progress_label and progress_started_at is not None:
@@ -1089,6 +1090,7 @@ def _live_run(
         comparable_matches=match_result.comparable_matches,
         pairing_exclusion_counts=match_result.pairing_exclusion_counts,
         deck_identity_diagnostics={
+            "label_resolution": meta_result.label_resolution,
             "duplicate_display_names": {
                 name: list(deck_ids)
                 for name, deck_ids in meta_result.duplicate_display_names.items()
@@ -1156,6 +1158,7 @@ def _live_run(
         "known_deck_matches": match_result.comparable_matches,
         "pairing_diagnostics": _pairing_diagnostics(match_result),
         "deck_identity_diagnostics": {
+            "label_resolution": meta_result.label_resolution,
             "duplicate_display_names": {
                 name: list(deck_ids)
                 for name, deck_ids in meta_result.duplicate_display_names.items()
@@ -1332,6 +1335,7 @@ def _offline_run(
         comparable_matches=match_result.comparable_matches,
         pairing_exclusion_counts=match_result.pairing_exclusion_counts,
         deck_identity_diagnostics={
+            "label_resolution": meta_result.label_resolution,
             "duplicate_display_names": {
                 name: list(deck_ids)
                 for name, deck_ids in meta_result.duplicate_display_names.items()
@@ -1382,6 +1386,7 @@ def _offline_run(
         "known_deck_matches": match_result.comparable_matches,
         "pairing_diagnostics": _pairing_diagnostics(match_result),
         "deck_identity_diagnostics": {
+            "label_resolution": meta_result.label_resolution,
             "duplicate_display_names": {
                 name: list(deck_ids)
                 for name, deck_ids in meta_result.duplicate_display_names.items()
