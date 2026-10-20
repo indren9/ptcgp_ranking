@@ -30,7 +30,8 @@ Possible outcomes:
   drained Job Object, no degraded observer state.
 - SYNTHETIC_FAILED or SYNTHETIC_TERMINATED: test-only terminal outcomes.
 - WORKER_ACTIVE: live PID, creation UTC and executable match persisted
-  identity. No process attachment or ownership takeover occurs.
+  identity, plus the synthetic fixture command line. This is a conservative
+  heuristic, not forensic authentication. No process attachment or takeover occurs.
 - RECOVERY_REQUIRED: absent intent, absent exit/worker, PID reuse or
   ambiguous state. No restart until independently reconciled.
 - EVIDENCE_DEGRADED: corrupt intent envelope, missing launch for exit,
