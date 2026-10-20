@@ -93,11 +93,16 @@ function Get-R35Recovery([string]$dir) {
    $live=Get-CimInstance Win32_Process -Filter ("ProcessId = "+$workerPid) -ErrorAction Stop
    if($null -ne $live){
     $created=([datetime]$live.CreationDate).ToUniversalTime().ToString('o')
+    $commandLine=[string]$live.CommandLine
+    $fixturePresent=($commandLine.IndexOf($fixture,[StringComparison]::OrdinalIgnoreCase) -ge 0)
+    $expectedCase='(?i)--case"?\s+"?'+[regex]::Escape([string]$intent.synthetic_case)+'(?:"|\s|$)'
+    $casePresent=[regex]::IsMatch($commandLine,$expectedCase)
     if($created -ceq [string]$start.root_creation_utc -and
-       [string]$live.ExecutablePath -ieq [string]$intent.python_exe){
-     return New-R35Result 'WORKER_ACTIVE' 'Matching PID, creation time and Python executable; no restart' $intent $workerPid
+       [string]$live.ExecutablePath -ieq [string]$intent.python_exe -and
+       $fixturePresent -and $casePresent){
+     return New-R35Result 'WORKER_ACTIVE' 'Matching PID, UTC creation, Python and synthetic command; no restart' $intent $workerPid
     }
-    return New-R35Result 'RECOVERY_REQUIRED' 'PID reused or executable/creation mismatch' $intent $workerPid
+    return New-R35Result 'RECOVERY_REQUIRED' 'PID reused or executable/creation/command mismatch' $intent $workerPid
    }
    return New-R35Result 'RECOVERY_REQUIRED' 'Worker absent and exit record missing' $intent $workerPid
   }
