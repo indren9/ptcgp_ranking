@@ -37,6 +37,25 @@ Possible outcomes:
 - EVIDENCE_DEGRADED: corrupt intent envelope, missing launch for exit,
   inconsistent worker evidence or observer error.
 
+## R35-A/B — reviewed fail-closed correction
+
+- UTC process identity is read from the original JSON text with exact UTC
+  fractional-second syntax and calendar validation. Intent creation must
+  precede worker launch; launch must precede process creation; launch and
+  exit must share start and creation timestamps, and exit may not precede
+  process creation. Missing/null/invalid/contradictory fields degrade evidence.
+- After the existing R3.3 synthetic observer returns, R3.5 writes a unique
+  `r35_attempt_link.json` with the immutable intent ID, absolute evidence
+  directory and SHA-256 digests of the exact intent, launch and exit files.
+  A missing, mismatched, relocated or altered receipt is `EVIDENCE_DEGRADED`,
+  not verified synthetic success. The receipt is never rewritten or replaced.
+- The receipt is a **post-observation consistency link**, not proof against
+  active forgery by a writer with filesystem access. The external root of
+  trust, crash durability and real worker execution remain outside this PR.
+- Offline negative tests cover absent/empty/invalid timestamps, impossible
+  chronology, replay of another intent or launch/exit pair, relocation of
+  evidence, and absence of the correlation receipt.
+
 ## Boundaries and unresolved problems
 
 - The SHA-256 intent envelope is an internal consistency check, not a
