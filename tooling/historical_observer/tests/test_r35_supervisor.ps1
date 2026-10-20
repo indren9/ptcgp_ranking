@@ -64,7 +64,19 @@ Check ((& $supervisor -Mode RecoverReadOnly -EvidenceDir $badExit).status -ceq '
 $liveDir=Join-Path $work 'live_process'
 [void][IO.Directory]::CreateDirectory($liveDir)
 foreach($n in @('r35_intent.json','worker_launch.json')){Copy-Item -LiteralPath (Join-Path $normal $n) -Destination $liveDir}
-$liveProcess=Start-Process -FilePath $python -ArgumentList '-u -c "import time;time.sleep(15)"' -PassThru -WindowStyle Hidden
+# Reconcile a real finite fixture process, not an unrelated Python command.
+$liveIntentPath=Join-Path $liveDir 'r35_intent.json'
+$intentEnvelope=Get-Content -LiteralPath $liveIntentPath -Raw|ConvertFrom-Json
+$intentValue=$intentEnvelope.payload_json|ConvertFrom-Json
+$intentValue.synthetic_case='inactivity'
+$intentEnvelope.payload_json=$intentValue|ConvertTo-Json -Depth 8 -Compress
+$hash=[Security.Cryptography.SHA256]::Create()
+try{
+ $intentEnvelope.sha256=[BitConverter]::ToString($hash.ComputeHash([Text.Encoding]::UTF8.GetBytes([string]$intentEnvelope.payload_json))).Replace('-','').ToLowerInvariant()
+}finally{$hash.Dispose()}
+[IO.File]::WriteAllText($liveIntentPath,($intentEnvelope|ConvertTo-Json -Depth 8 -Compress))
+$fixture=Join-Path $base 'tests\fixtures\synthetic_worker.py'
+$liveProcess=Start-Process -FilePath $python -ArgumentList @('-u',('"'+$fixture+'"'),'--case','inactivity') -PassThru -WindowStyle Hidden
 try {
  $ci=Get-CimInstance Win32_Process -Filter ("ProcessId = "+$liveProcess.Id) -ErrorAction Stop
  if($null -eq $ci){throw 'R35_TEST_NO_SYNTHETIC_LIVE_PROCESS'}
@@ -72,8 +84,10 @@ try {
  $liveLaunch=Get-Content -LiteralPath $liveLaunchPath -Raw|ConvertFrom-Json
  $liveLaunch.root_pid=[int]$liveProcess.Id
  $liveLaunch.root_creation_utc=([datetime]$ci.CreationDate).ToUniversalTime().ToString('o')
+ $liveLaunch.arguments[3]='inactivity'
  [IO.File]::WriteAllText($liveLaunchPath,($liveLaunch|ConvertTo-Json -Depth 16))
  $active=& $supervisor -Mode RecoverReadOnly -EvidenceDir $liveDir
+ Write-Output ('R35_LIVE_PROBE status='+$active.status+' detail='+$active.detail)
  Check ($active.status -ceq 'WORKER_ACTIVE' -and -not $active.can_execute -and -not $liveProcess.HasExited) 'LIVE_WORKER_IDENTITY_MATCHES_NO_ACTION'
  $liveLaunch.root_creation_utc=([datetime]$ci.CreationDate).ToUniversalTime().AddMinutes(-1).ToString('o')
  [IO.File]::WriteAllText($liveLaunchPath,($liveLaunch|ConvertTo-Json -Depth 16))
