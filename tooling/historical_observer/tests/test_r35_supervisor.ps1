@@ -94,7 +94,7 @@ try {
  Check ($active.status -ceq 'WORKER_ACTIVE' -and -not $active.can_execute -and -not $liveProcess.HasExited) 'LIVE_WORKER_IDENTITY_MATCHES_NO_ACTION'
  $liveLaunch.root_creation_utc=([datetime]$ci.CreationDate).ToUniversalTime().AddMinutes(-1).ToString('o')
  [IO.File]::WriteAllText($liveLaunchPath,($liveLaunch|ConvertTo-Json -Depth 16))
- Check ((& $supervisor -Mode RecoverReadOnly -EvidenceDir $liveDir).status -ceq 'RECOVERY_REQUIRED') 'PID_REUSE_OR_CREATION_DRIFT_DENIED'
+ Check ((& $supervisor -Mode RecoverReadOnly -EvidenceDir $liveDir).status -ceq 'EVIDENCE_DEGRADED') 'PID_REUSE_OR_CREATION_DRIFT_DENIED'
 } finally {
  if($null -ne $liveProcess -and -not $liveProcess.HasExited){Stop-Process -Id $liveProcess.Id -Force -ErrorAction SilentlyContinue}
  $liveProcess.Dispose()
