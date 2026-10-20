@@ -98,6 +98,7 @@ function Read-R35Intent([string]$path) {
     -not [IO.Path]::IsPathRooted([string]$rec.python_exe)){
   throw 'R35 INTENT CORRUPT: unsupported or malformed operation'
  }
+ [void](Get-R35UtcTicks ([string]$envl.payload_json) 'created_utc')
  $rec
 }
 function Assert-R35Evidence([string]$dir,[string]$repo) {
@@ -129,7 +130,10 @@ function Get-R35Recovery([string]$dir) {
   if(-not $hasLaunch){
    return New-R35Result 'EVIDENCE_DEGRADED' 'Worker exit exists without launch' $intent
   }
-  $start=Get-Content -LiteralPath $launchPath -Raw | ConvertFrom-Json -ErrorAction Stop
+  $intentEnvelope=Get-Content -LiteralPath $intentPath -Raw|ConvertFrom-Json -ErrorAction Stop
+  $intentTicks=Get-R35UtcTicks ([string]$intentEnvelope.payload_json) 'created_utc'
+  $launchRaw=Get-Content -LiteralPath $launchPath -Raw
+  $start=$launchRaw|ConvertFrom-Json -ErrorAction Stop
   $fixture=Join-Path $base 'tests\fixtures\synthetic_worker.py'
   $argsList=@($start.arguments)
   if($start.schema -cne 'mars-r3.3a-worker-v1' -or $start.mode -cne 'Synthetic' -or
@@ -140,22 +144,25 @@ function Get-R35Recovery([string]$dir) {
      [string]$argsList[3] -cne [string]$intent.synthetic_case -or $null -eq $start.root_pid){
    return New-R35Result 'EVIDENCE_DEGRADED' 'Worker launch contradicts intent' $intent
   }
+  # Chronology is required even if the observer is interrupted.
+  $startTicks=Get-R35UtcTicks $launchRaw 'start_utc'
+  $createdTicks=Get-R35UtcTicks $launchRaw 'root_creation_utc'
+  if($intentTicks -gt $startTicks -or $startTicks -gt $createdTicks){
+   return New-R35Result 'EVIDENCE_DEGRADED' 'Intent/launch/process chronology invalid' $intent
+  }
   $workerPid=[int]$start.root_pid
   if(-not $hasExit){
    # PID alone is insufficient; account for reuse and mismatched executables.
-   if([string]::IsNullOrWhiteSpace([string]$start.root_creation_utc)){
-    return New-R35Result 'RECOVERY_REQUIRED' 'Worker identity timestamp absent' $intent $workerPid
-   }
    $live=Get-CimInstance Win32_Process -Filter ("ProcessId = "+$workerPid) -ErrorAction Stop
    if($null -ne $live){
     $created=([datetime]$live.CreationDate).ToUniversalTime().ToString('o')
     # PS 7 ConvertFrom-Json turns ISO timestamps into DateTime; PS 5.1 keeps strings.
-    $expectedCreated=([datetime]$start.root_creation_utc).ToUniversalTime().ToString('o')
+    $expectedCreated=$createdTicks
     $commandLine=[string]$live.CommandLine
     $fixturePresent=($commandLine.IndexOf($fixture,[StringComparison]::OrdinalIgnoreCase) -ge 0)
     $expectedCase='(?i)--case"?\s+"?'+[regex]::Escape([string]$intent.synthetic_case)+'(?:"|\s|$)'
     $casePresent=[regex]::IsMatch($commandLine,$expectedCase)
-    if($created -ceq $expectedCreated -and
+    if(([datetime]$live.CreationDate).ToUniversalTime().Ticks -eq $expectedCreated -and
        [string]$live.ExecutablePath -ieq [string]$intent.python_exe -and
        $fixturePresent -and $casePresent){
      return New-R35Result 'WORKER_ACTIVE' 'Matching PID, UTC creation, Python and synthetic command; no restart' $intent $workerPid
@@ -164,7 +171,18 @@ function Get-R35Recovery([string]$dir) {
    }
    return New-R35Result 'RECOVERY_REQUIRED' 'Worker absent and exit record missing' $intent $workerPid
   }
-  $done=Get-Content -LiteralPath $exitPath -Raw | ConvertFrom-Json -ErrorAction Stop
+  $exitRaw=Get-Content -LiteralPath $exitPath -Raw
+  $done=$exitRaw|ConvertFrom-Json -ErrorAction Stop
+  $exitStartTicks=Get-R35UtcTicks $exitRaw 'start_utc'
+  $exitCreatedTicks=Get-R35UtcTicks $exitRaw 'root_creation_utc'
+  $exitEndTicks=Get-R35UtcTicks $exitRaw 'end_utc'
+  if($exitStartTicks -ne $startTicks -or $exitCreatedTicks -ne $createdTicks -or
+     $exitEndTicks -lt $createdTicks){
+   return New-R35Result 'EVIDENCE_DEGRADED' 'Launch/exit timestamps missing or contradictory' $intent $workerPid
+  }
+  if(-not (Test-R35Link $dir ([string]$intent.intent_id))){
+   return New-R35Result 'EVIDENCE_DEGRADED' 'Intent/launch/exit link absent or mismatched' $intent $workerPid
+  }
   if($done.schema -cne 'mars-r3.3a-worker-v1' -or $done.mode -cne 'Synthetic' -or
      [int]$done.root_pid -ne $workerPid -or
      [string]$done.cwd -ine [string]$intent.repo_root -or
@@ -237,6 +255,8 @@ $observerError=$null
 try {
  $null=& (Join-Path $base 'Invoke-WorkerObserved.ps1') -Mode Synthetic -RepoRoot $repo -PythonExe $python -EvidenceDir $evidence -SyntheticCase $SyntheticCase -SampleIntervalSec 1
 }catch{$observerError=$_.Exception.Message}
+# Persist a unique receipt only after the synthetic observer invocation.
+Write-R35Link $evidence ([string]$intent.intent_id)
 $result=Get-R35Recovery $evidence
 if($null -ne $observerError -and $result.status -ceq 'SYNTHETIC_SUCCESS_VERIFIED'){
  throw ('R35 unexpected observer error: '+$observerError)
