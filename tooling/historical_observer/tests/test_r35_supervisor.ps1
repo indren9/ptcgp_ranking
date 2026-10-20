@@ -60,6 +60,28 @@ $e=Get-Content -LiteralPath $path -Raw|ConvertFrom-Json
 $e.root_pid=[int]$e.root_pid+1000
 [IO.File]::WriteAllText($path,($e|ConvertTo-Json -Depth 16))
 Check ((& $supervisor -Mode RecoverReadOnly -EvidenceDir $badExit).status -ceq 'EVIDENCE_DEGRADED') 'MISMATCHED_PROCESS_ID_FAIL_CLOSED'
+# An independently running, owned synthetic Python process must never be relaunched or killed by recovery.
+$liveDir=Join-Path $work 'live_process'
+[void][IO.Directory]::CreateDirectory($liveDir)
+foreach($n in @('r35_intent.json','worker_launch.json')){Copy-Item -LiteralPath (Join-Path $normal $n) -Destination $liveDir}
+$liveProcess=Start-Process -FilePath $python -ArgumentList '-u -c "import time;time.sleep(15)"' -PassThru -WindowStyle Hidden
+try {
+ $ci=Get-CimInstance Win32_Process -Filter ("ProcessId = "+$liveProcess.Id) -ErrorAction Stop
+ if($null -eq $ci){throw 'R35_TEST_NO_SYNTHETIC_LIVE_PROCESS'}
+ $liveLaunchPath=Join-Path $liveDir 'worker_launch.json'
+ $liveLaunch=Get-Content -LiteralPath $liveLaunchPath -Raw|ConvertFrom-Json
+ $liveLaunch.root_pid=[int]$liveProcess.Id
+ $liveLaunch.root_creation_utc=([datetime]$ci.CreationDate).ToUniversalTime().ToString('o')
+ [IO.File]::WriteAllText($liveLaunchPath,($liveLaunch|ConvertTo-Json -Depth 16))
+ $active=& $supervisor -Mode RecoverReadOnly -EvidenceDir $liveDir
+ Check ($active.status -ceq 'WORKER_ACTIVE' -and -not $active.can_execute -and -not $liveProcess.HasExited) 'LIVE_WORKER_IDENTITY_MATCHES_NO_ACTION'
+ $liveLaunch.root_creation_utc=([datetime]$ci.CreationDate).ToUniversalTime().AddMinutes(-1).ToString('o')
+ [IO.File]::WriteAllText($liveLaunchPath,($liveLaunch|ConvertTo-Json -Depth 16))
+ Check ((& $supervisor -Mode RecoverReadOnly -EvidenceDir $liveDir).status -ceq 'RECOVERY_REQUIRED') 'PID_REUSE_OR_CREATION_DRIFT_DENIED'
+} finally {
+ if($null -ne $liveProcess -and -not $liveProcess.HasExited){Stop-Process -Id $liveProcess.Id -Force -ErrorAction SilentlyContinue}
+ $liveProcess.Dispose()
+}
 Check ((& $supervisor -Mode RecoverReadOnly -EvidenceDir (Join-Path $work 'does-not-exist')).status -ceq 'RECOVERY_REQUIRED') 'MISSING_EVIDENCE_UNKNOWN'
 ExpectFail {& $supervisor -Mode AuthorizedRun -EvidenceDir (Join-Path $work 'prod') -RepoRoot $repo -PythonExe $python} 'PRODUCTION_MODE_UNAVAILABLE'
 ExpectFail {& $supervisor -Mode StartSynthetic -EvidenceDir (Join-Path $repo 'outputs\fake') -RepoRoot $repo -PythonExe $python} 'REPO_WRITE_PATH_REJECTED'
