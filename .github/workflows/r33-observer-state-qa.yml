@@ -1,0 +1,23 @@
+name: R3.3 observer state QA
+
+on:
+  pull_request:
+    paths:
+      - "tooling/historical_observer/**"
+      - ".github/workflows/r33-observer-state-qa.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  state-persistence:
+    name: State persistence (17 checks)
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - name: Verify R3.3-A state persistence (synthetic only)
+        shell: pwsh
+        run: |
+          & "tooling/historical_observer/tests/test_state_persistence.ps1"
