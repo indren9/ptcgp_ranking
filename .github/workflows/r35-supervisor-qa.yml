@@ -1,0 +1,30 @@
+name: R3.5 synthetic supervisor recovery QA
+
+on:
+  pull_request:
+    paths:
+      - "tooling/historical_observer/**"
+      - ".github/workflows/r35-supervisor-qa.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  r35-windows:
+    name: R3.5 Windows synthetic recovery
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+      - name: Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          & "tooling/historical_observer/tests/test_r35_supervisor.ps1"
+      - name: PowerShell 7
+        shell: pwsh
+        run: |
+          & "tooling/historical_observer/tests/test_r35_supervisor.ps1"
