@@ -1,6 +1,7 @@
 # R3.3-C reusable run-scoped PREVIEW guard.
 # Does not launch, authorize, modify status, or write any evidence.
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'PathConfinement.ps1')
 function Test-R33CRunScope([string]$RunScopePath,[string]$RepoRoot,[string]$PythonExe) {
  if([string]::IsNullOrWhiteSpace($RunScopePath) -or -not [IO.Path]::IsPathRooted($RunScopePath)){throw 'R33C DENIED: absolute run-scope file required'}
  if(-not [IO.File]::Exists($RunScopePath)){throw 'R33C DENIED: missing run-scope file'}
@@ -18,12 +19,12 @@ function Test-R33CRunScope([string]$RunScopePath,[string]$RepoRoot,[string]$Pyth
   throw 'R33C DENIED: wrong digest size or uppercase digest'
  }
  if(-not [IO.Path]::IsPathRooted($RepoRoot) -or -not [IO.Directory]::Exists($RepoRoot)){throw 'R33C DENIED: repository root absent'}
- $repo=[IO.Path]::GetFullPath($RepoRoot).TrimEnd('\')
+ $repo=(Assert-R33NoReparsePath -Path $RepoRoot -Label 'RepoRoot').TrimEnd('\')
  $canonicalRepo=[IO.Path]::GetFullPath($repo).TrimEnd('\')+'\'
  $inputPaths=@([string]$s.boundaries_path,[string]$s.config_path)
  foreach($p in $inputPaths){
   if([string]::IsNullOrWhiteSpace($p) -or -not [IO.Path]::IsPathRooted($p)){throw 'R33C DENIED: absolute input paths required'}
-  $full=[IO.Path]::GetFullPath($p)
+  $full=Assert-R33NoReparsePath -Path $p -Label 'run-scope input'
   if(-not $full.StartsWith($canonicalRepo,[StringComparison]::OrdinalIgnoreCase) -or -not [IO.File]::Exists($full)){
    throw 'R33C DENIED: missing or outside-worktree input'
   }

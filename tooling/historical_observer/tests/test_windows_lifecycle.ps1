@@ -54,6 +54,15 @@ ExpectFail {& $obs -Mode AuthorizedRun -RepoRoot $repo -PythonExe $python -Evide
 ExpectFail {& $obs -Mode Synthetic -RepoRoot $repo -PythonExe $python -EvidenceDir (Join-Path $work 'not_created_2') -WorkerArguments @('-m','historical_rebuild')} 'ARBITRARY_WORKER_ARGS_REJECTED'
 ExpectFail {& $obs -Mode Synthetic -RepoRoot $repo -PythonExe $python -EvidenceDir (Join-Path $repo 'outputs\fake')} 'CANONICAL_REPO_EVIDENCE_REJECTED'
 ExpectFail {& $obs -Mode Synthetic -RepoRoot 'relative' -PythonExe $python -EvidenceDir (Join-Path $work 'bad_root')} 'NONABSOLUTE_REPO_REJECTED'
+$redirectTarget=Join-Path $repo 'junction_target'
+[void][IO.Directory]::CreateDirectory($redirectTarget)
+$junction=Join-Path $work 'evidence_junction'
+[void](New-Item -ItemType Junction -Path $junction -Target $redirectTarget -ErrorAction Stop)
+$junctionRejected=$false
+try{& $obs -Mode Synthetic -RepoRoot $repo -PythonExe $python -EvidenceDir (Join-Path $junction 'shadow')|Out-Null}
+catch{$junctionRejected=($_.Exception.Message -match 'REPARSE')}
+Check $junctionRejected 'JUNCTION_EVIDENCE_REJECTED'
+Check (-not [IO.Directory]::Exists((Join-Path $redirectTarget 'shadow'))) 'JUNCTION_TARGET_UNTOUCHED'
 Check (-not [IO.Directory]::Exists((Join-Path $repo 'outputs'))) 'NO_OUTPUTS_IN_WORKSPACE'
 $report=[ordered]@{schema='mars-r33-portable-lifecycle-v1';status='PASS';assertions=$checks.Count;labels=@($checks);productive_launches=0;root=$work}
 [IO.File]::WriteAllText((Join-Path $work 'test_report.json'),($report|ConvertTo-Json -Depth 8),[Text.UTF8Encoding]::new($false))

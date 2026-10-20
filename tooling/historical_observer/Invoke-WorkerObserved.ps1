@@ -13,8 +13,9 @@ param(
 )
 $ErrorActionPreference='Stop';Set-StrictMode -Version Latest
 $base=$PSScriptRoot
+. (Join-Path $base 'PathConfinement.ps1')
 if(-not [IO.Path]::IsPathRooted($RepoRoot) -or -not [IO.Directory]::Exists($RepoRoot)){throw 'R33 PORTABLE DENIED: absolute existing work directory required'}
-$repo=[IO.Path]::GetFullPath($RepoRoot).TrimEnd('\')
+$repo=(Assert-R33NoReparsePath -Path $RepoRoot -Label 'RepoRoot').TrimEnd('\')
 if(-not [IO.Path]::IsPathRooted($PythonExe) -or -not [IO.File]::Exists($PythonExe)){throw 'R33 PORTABLE DENIED: absolute existing Python executable required'}
 $python=[IO.Path]::GetFullPath($PythonExe)
 if(-not [IO.File]::Exists($python)){throw 'R3.2: pinned Python missing'}
@@ -32,11 +33,12 @@ if($null -ne $WorkerArguments -and @($WorkerArguments).Count -gt 0){throw 'R33 P
  $WorkerArguments=@('-u',$fixture,'--case',$SyntheticCase)
 if(-not [string]::IsNullOrWhiteSpace($RunScopePath)){throw 'R3.3-C: run scope not accepted for synthetic workers'}
 $rootWithSlash=$repo.TrimEnd('\')+'\'
-$fullEvidence=[IO.Path]::GetFullPath($EvidenceDir)
+$fullEvidence=Assert-R33NoReparsePath -Path $EvidenceDir -Label 'EvidenceDir'
 if($fullEvidence -ieq $repo -or $fullEvidence.StartsWith($rootWithSlash,[StringComparison]::OrdinalIgnoreCase)){
  throw 'R33 PORTABLE DENIED: evidence must remain outside the supplied repository root'
 }
 [void][IO.Directory]::CreateDirectory($fullEvidence)
+[void](Assert-R33NoReparsePath -Path $fullEvidence -Label 'EvidenceDir after creation')
 $EvidenceDir=$fullEvidence
 if(-not ('MarsR31Native' -as [type])){Add-Type -Path (Join-Path $base 'NativeNoPipe.cs')}
 . (Join-Path $base 'TreeWatch.ps1')

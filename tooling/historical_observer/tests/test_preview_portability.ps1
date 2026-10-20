@@ -66,6 +66,26 @@ $wrong=Get-Content -LiteralPath $scope -Raw|ConvertFrom-Json
 $wrong.boundaries_path=Join-Path $work 'scope.json'
 $corrupt=WriteScope $wrong 'outside_repo.json'
 MustReject {& $obs -Mode InspectRun -RepoRoot $repo -PythonExe $python -RunScopePath $corrupt} 'OUTSIDE_REPO_BOUNDARY_REJECTED'
+$fakeRepo=Join-Path $work 'preview_junction_repo'
+[void][IO.Directory]::CreateDirectory($fakeRepo)
+$external=Join-Path $work 'external_config'
+[void][IO.Directory]::CreateDirectory($external)
+$externalYaml=Join-Path $external 'external.yaml'
+[IO.File]::WriteAllText($externalYaml,'source: redirected',[Text.UTF8Encoding]::new($false))
+$fakeBound=Join-Path $fakeRepo 'boundaries.json'
+[IO.File]::WriteAllText($fakeBound,([IO.File]::ReadAllText($bound)),[Text.UTF8Encoding]::new($false))
+$junction=Join-Path $fakeRepo 'junction_inputs'
+[void](New-Item -ItemType Junction -Path $junction -Target $external -ErrorAction Stop)
+$wrong=Get-Content -LiteralPath $scope -Raw|ConvertFrom-Json
+$wrong.boundaries_path=$fakeBound
+$wrong.boundaries_sha256=Sha $fakeBound
+$wrong.config_path=Join-Path $junction 'external.yaml'
+$wrong.config_sha256=Sha $externalYaml
+$redirectedScope=WriteScope $wrong 'junction_input.json'
+$junctionRejected=$false
+try{& $obs -Mode InspectRun -RepoRoot $fakeRepo -PythonExe $python -RunScopePath $redirectedScope|Out-Null}
+catch{$junctionRejected=($_.Exception.Message -match 'REPARSE')}
+Check $junctionRejected 'JUNCTION_PREVIEW_INPUT_REJECTED'
 Check (-not [IO.Directory]::Exists((Join-Path $repo 'outputs'))) 'NO_HISTORICAL_OUTPUT_WRITTEN'
 Check (@(& git -C $repo status --porcelain=v1).Count -eq 0) 'GIT_REPO_REMAINS_CLEAN'
 $report=[ordered]@{schema='mars-r33-preview-portability-v1';status='PASS';assertions=$checks.Count;checks=@($checks);work=$work;production_runs=0}

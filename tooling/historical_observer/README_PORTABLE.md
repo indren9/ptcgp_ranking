@@ -19,7 +19,11 @@ cc917300be281810a5c162608c1a9bb767504c5c80b31eb8bd23221a697ec28f.
 - Synthetic mode executes only tests/fixtures/synthetic_worker.py with a
   constrained SyntheticCase. Caller-supplied WorkerArguments are rejected.
   AuthorizedRun and Authorized30C are not supported.
-- Synthetic evidence must remain outside RepoRoot.
+- Synthetic evidence must remain outside RepoRoot. All existing components
+  of repository, evidence and preview-input paths are rejected if they are
+  Windows reparse points (junction/symlink/mount); the evidence destination
+  is checked again after creation. This fail-closed rule may reject a worktree
+  or environment reached through a legitimate junction.
 - NativeNoPipe.cs observes the entire owned Windows Job Object, including
   descendants, and captures worker exit codes and evidence of process exit.
 - Preexisting state JSON generates explicit degraded-state recovery; it
@@ -27,13 +31,13 @@ cc917300be281810a5c162608c1a9bb767504c5c80b31eb8bd23221a697ec28f.
 
 ## Windows-only regression tests
 
-- test_windows_lifecycle.ps1: 19 assertions — normal exit, nonzero exit,
+- test_windows_lifecycle.ps1: 21 assertions — normal exit, nonzero exit,
   child process joined/drained, no orphan, state collision recovery,
   forbidden productive mode/argument injection, no worktree writes.
-- test_preview_portability.ps1: 10 assertions — temporary Git repository
+- test_preview_portability.ps1: 11 assertions — temporary Git repository
   with spaces in path, read-only inspection, SHA/head/window/intent rejection,
   input confinement and no output writes.
-- test_controlled_termination.ps1: 3 assertions — deliberate synthetic
+- test_controlled_termination.ps1: WCT result, nonempty minidump and file readback — deliberate synthetic
   termination, empty Job Object, diagnostic event and no canonical writes.
 
 All tests are offline and create uniquely named system temporary directories.
@@ -47,8 +51,8 @@ PowerShell 5.1 and PowerShell 7 with Python 3.14.
 - No change to MARS/Core science, YAML, FROZEN, historical outputs or pointers.
 - A hard observer crash can still lose the native worker exit status;
   this candidate does not implement independent OS exit capture.
-- Sudden power loss, genuinely concurrent writers and hostile filesystem
-  mutation are not proven safe.
+- Sudden power loss, genuinely concurrent writers, and filesystem races
+  (including reparse-point swaps between checks) are not proven safe.
 - Preview is NOT the Runner full semantic/artifact validation.
 - Git status commands can still block in an unhealthy Git environment.
 - Synthetic capture tests do not prove WCT/minidump behavior under a real

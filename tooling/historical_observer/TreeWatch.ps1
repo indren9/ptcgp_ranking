@@ -95,15 +95,16 @@ function Invoke-R32OwnedCapture($Native,[hashtable]$Registry,[string]$EvidenceDi
   if($known.Count -gt 0 -and @($known|Where-Object {$_.identity -eq $idn.key}).Count -eq 0){
    $results+=([pscustomobject]@{pid=$pidNow;success=$false;error='pid_reuse_identity_mismatch'});continue
   }
-  $res=[ordered]@{pid=$pidNow;identity=$idn.key;start_utc=$now;end_utc=$null;wct_count=0;dump_path=$null;dump_bytes=$null;dump_success=$false;success=$false;error=$null}
+  $res=[ordered]@{pid=$pidNow;identity=$idn.key;start_utc=$now;end_utc=$null;wct_count=0;wct_success_count=0;dump_path=$null;dump_bytes=$null;dump_success=$false;success=$false;error=$null}
   try {
    $cap= & (Join-Path $PSScriptRoot 'r2_capture.ps1') -TargetPid ([int]$pidNow) -EvidenceDir $EvidenceDir -RepoRoot $RepoRoot -WaitChain -MiniDump | ConvertFrom-Json
    $again=Get-R32Identity ([int]$pidNow)
    $same=($null -ne $again -and $again.key -ceq $idn.key)
    $res.wct_count=@($cap.wait_chains).Count
+   $res.wct_success_count=@($cap.wait_chains|Where-Object{[string]$_.result -match '^node_count=[1-9][0-9]*'}).Count
    if($null -ne $cap.dump){$res.dump_success=($cap.dump.success -eq $true);$res.dump_path=$cap.dump.path;$res.dump_bytes=$cap.dump.bytes}
-   $res.success=($same -and $cap.present -and $res.dump_success -and $res.wct_count -gt 0)
-   if(-not $res.success){$res.error='missing WCT/dump or identity changed'}
+   $res.success=($same -and $cap.present -and $res.dump_success -and [long]$res.dump_bytes -gt 0 -and $res.wct_success_count -gt 0)
+   if(-not $res.success){$res.error='missing valid WCT chain, nonempty dump or stable identity'}
   }catch{$res.error=$_.Exception.Message}
   $res.end_utc=[DateTime]::UtcNow.ToString('o')
   $results+=([pscustomobject]$res)
