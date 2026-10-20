@@ -20,7 +20,7 @@ function ExpectFail([scriptblock]$action,[string]$name){
 $normal=Join-Path $work 'normal evidence'
 $success=& $supervisor -Mode StartSynthetic -EvidenceDir $normal -RepoRoot $repo -PythonExe $python -SyntheticCase normal
 Check ($success.status -ceq 'SYNTHETIC_SUCCESS_VERIFIED' -and -not $success.production_success -and -not $success.can_execute) 'SYNTHETIC_ONLY_SUCCESS'
-Check ([IO.File]::Exists((Join-Path $normal 'r35_intent.json')) -and [IO.File]::Exists((Join-Path $normal 'worker_launch.json')) -and [IO.File]::Exists((Join-Path $normal 'worker_exit.json'))) 'DURABLE_INTENT_AND_WORKER_EVIDENCE'
+Check ([IO.File]::Exists((Join-Path $normal 'r35_intent.json')) -and [IO.File]::Exists((Join-Path $normal 'worker_launch.json')) -and [IO.File]::Exists((Join-Path $normal 'worker_exit.json')) -and [IO.File]::Exists((Join-Path $normal 'r35_attempt_link.json'))) 'DURABLE_INTENT_AND_WORKER_EVIDENCE'
 $envl=Get-Content -LiteralPath (Join-Path $normal 'r35_intent.json') -Raw | ConvertFrom-Json
 $intent=$envl.payload_json|ConvertFrom-Json
 $launch=Get-Content -LiteralPath (Join-Path $normal 'worker_launch.json') -Raw|ConvertFrom-Json
@@ -99,6 +99,87 @@ try {
  if($null -ne $liveProcess -and -not $liveProcess.HasExited){Stop-Process -Id $liveProcess.Id -Force -ErrorAction SilentlyContinue}
  $liveProcess.Dispose()
 }
+# R35-A: even when a link has correct hashes, missing/malformed/misordered
+# process timestamps must never be accepted as terminal success.
+function Copy-R35Bundle([string]$source,[string]$target) {
+ [void][IO.Directory]::CreateDirectory($target)
+ foreach($n in @('r35_intent.json','worker_launch.json','worker_exit.json','r35_attempt_link.json')){
+  Copy-Item -LiteralPath (Join-Path $source $n) -Destination $target -ErrorAction Stop
+ }
+}
+function Refresh-R35TestLink([string]$target) {
+ $path=Join-Path $target 'r35_attempt_link.json'
+ $link=Get-Content -LiteralPath $path -Raw|ConvertFrom-Json
+ $link.evidence_dir=$target
+ $link.intent_sha256=(Get-FileHash -LiteralPath (Join-Path $target 'r35_intent.json') -Algorithm SHA256).Hash.ToLowerInvariant()
+ $link.launch_sha256=(Get-FileHash -LiteralPath (Join-Path $target 'worker_launch.json') -Algorithm SHA256).Hash.ToLowerInvariant()
+ $link.exit_sha256=(Get-FileHash -LiteralPath (Join-Path $target 'worker_exit.json') -Algorithm SHA256).Hash.ToLowerInvariant()
+ [IO.File]::WriteAllText($path,($link|ConvertTo-Json -Compress))
+}
+$noCreated=Join-Path $work 'missing_creation'
+Copy-R35Bundle $normal $noCreated
+foreach($n in @('worker_launch.json','worker_exit.json')){
+ $p=Join-Path $noCreated $n
+ $v=Get-Content -LiteralPath $p -Raw|ConvertFrom-Json
+ $v.root_creation_utc=$null
+ [IO.File]::WriteAllText($p,($v|ConvertTo-Json -Depth 16))
+}
+Refresh-R35TestLink $noCreated
+Check ((& $supervisor -Mode RecoverReadOnly -EvidenceDir $noCreated).status -ceq 'EVIDENCE_DEGRADED') 'R35A_NULL_CREATION_TIMESTAMP_FAIL_CLOSED'
+$invalidCreated=Join-Path $work 'malformed_creation'
+Copy-R35Bundle $normal $invalidCreated
+foreach($n in @('worker_launch.json','worker_exit.json')){
+ $p=Join-Path $invalidCreated $n
+ $v=Get-Content -LiteralPath $p -Raw|ConvertFrom-Json
+ $v.root_creation_utc='not-a-timestamp'
+ [IO.File]::WriteAllText($p,($v|ConvertTo-Json -Depth 16))
+}
+Refresh-R35TestLink $invalidCreated
+Check ((& $supervisor -Mode RecoverReadOnly -EvidenceDir $invalidCreated).status -ceq 'EVIDENCE_DEGRADED') 'R35A_MALFORMED_CREATION_FAIL_CLOSED'
+$emptyCreated=Join-Path $work 'empty_creation'
+Copy-R35Bundle $normal $emptyCreated
+foreach($n in @('worker_launch.json','worker_exit.json')){
+ $p=Join-Path $emptyCreated $n
+ $v=Get-Content -LiteralPath $p -Raw|ConvertFrom-Json
+ $v.root_creation_utc=''
+ [IO.File]::WriteAllText($p,($v|ConvertTo-Json -Depth 16))
+}
+Refresh-R35TestLink $emptyCreated
+Check ((& $supervisor -Mode RecoverReadOnly -EvidenceDir $emptyCreated).status -ceq 'EVIDENCE_DEGRADED') 'R35A_EMPTY_CREATION_FAIL_CLOSED'
+$reversed=Join-Path $work 'reversed_intent_time'
+Copy-R35Bundle $normal $reversed
+$intentPath=Join-Path $reversed 'r35_intent.json'
+$envelope=Get-Content -LiteralPath $intentPath -Raw|ConvertFrom-Json
+$payload=$envelope.payload_json|ConvertFrom-Json
+$payload.created_utc=[DateTime]::UtcNow.AddDays(1).ToString('o')
+$envelope.payload_json=$payload|ConvertTo-Json -Depth 8 -Compress
+$hasher=[Security.Cryptography.SHA256]::Create()
+try{$envelope.sha256=[BitConverter]::ToString($hasher.ComputeHash([Text.Encoding]::UTF8.GetBytes([string]$envelope.payload_json))).Replace('-','').ToLowerInvariant()}
+finally{$hasher.Dispose()}
+[IO.File]::WriteAllText($intentPath,($envelope|ConvertTo-Json -Compress))
+Refresh-R35TestLink $reversed
+Check ((& $supervisor -Mode RecoverReadOnly -EvidenceDir $reversed).status -ceq 'EVIDENCE_DEGRADED') 'R35A_INTENT_AFTER_LAUNCH_REJECTED'
+# R35-B: replacing either source evidence or the intent must invalidate the
+# independent post-observation receipt (without accepting another run's files).
+$other=Join-Path $work 'second_normal'
+$otherOk=& $supervisor -Mode StartSynthetic -EvidenceDir $other -RepoRoot $repo -PythonExe $python -SyntheticCase normal
+Check ($otherOk.status -ceq 'SYNTHETIC_SUCCESS_VERIFIED' -and $otherOk.intent_id -cne $success.intent_id) 'R35B_DISTINCT_ATTEMPT_IDENTITIES'
+$otherIntent=Join-Path $work 'mixed_intent'
+Copy-R35Bundle $other $otherIntent
+Copy-Item -LiteralPath (Join-Path $normal 'r35_intent.json') -Destination (Join-Path $otherIntent 'r35_intent.json') -Force
+Check ((& $supervisor -Mode RecoverReadOnly -EvidenceDir $otherIntent).status -ceq 'EVIDENCE_DEGRADED') 'R35B_FOREIGN_INTENT_REPLAY_REJECTED'
+$otherWorkers=Join-Path $work 'mixed_workers'
+Copy-R35Bundle $other $otherWorkers
+Copy-Item -LiteralPath (Join-Path $normal 'worker_launch.json') -Destination (Join-Path $otherWorkers 'worker_launch.json') -Force
+Copy-Item -LiteralPath (Join-Path $normal 'worker_exit.json') -Destination (Join-Path $otherWorkers 'worker_exit.json') -Force
+Check ((& $supervisor -Mode RecoverReadOnly -EvidenceDir $otherWorkers).status -ceq 'EVIDENCE_DEGRADED') 'R35B_FOREIGN_LAUNCH_EXIT_REPLAY_REJECTED'
+$unlinked=Join-Path $work 'missing_link'
+Copy-R35Bundle $normal $unlinked
+Remove-Item -LiteralPath (Join-Path $unlinked 'r35_attempt_link.json')
+Check ((& $supervisor -Mode RecoverReadOnly -EvidenceDir $unlinked).status -ceq 'EVIDENCE_DEGRADED') 'R35B_MISSING_CORRELATION_REJECTED'
+$copyAll=Join-Path $work 'copied_bundle'
+Copy-R35Bundle $normal $copyAll
+Check ((& $supervisor -Mode RecoverReadOnly -EvidenceDir $copyAll).status -ceq 'EVIDENCE_DEGRADED') 'R35B_OTHER_EVIDENCE_DIRECTORY_REJECTED'
 Check ((& $supervisor -Mode RecoverReadOnly -EvidenceDir (Join-Path $work 'does-not-exist')).status -ceq 'RECOVERY_REQUIRED') 'MISSING_EVIDENCE_UNKNOWN'
 ExpectFail {& $supervisor -Mode AuthorizedRun -EvidenceDir (Join-Path $work 'prod') -RepoRoot $repo -PythonExe $python} 'PRODUCTION_MODE_UNAVAILABLE'
 ExpectFail {& $supervisor -Mode StartSynthetic -EvidenceDir (Join-Path $repo 'outputs\fake') -RepoRoot $repo -PythonExe $python} 'REPO_WRITE_PATH_REJECTED'
