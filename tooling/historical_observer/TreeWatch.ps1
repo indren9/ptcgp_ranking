@@ -112,4 +112,3 @@ function Invoke-R32OwnedCapture($Native,[hashtable]$Registry,[string]$EvidenceDi
  [void](Write-R32JsonLine (Join-Path $EvidenceDir 'capture_runs.jsonl') ($summary|ConvertTo-Json -Depth 9 -Compress))
  return [pscustomobject]$summary
 }
-
