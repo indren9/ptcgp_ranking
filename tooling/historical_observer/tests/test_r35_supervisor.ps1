@@ -87,6 +87,9 @@ try {
  $liveLaunch.arguments[3]='inactivity'
  [IO.File]::WriteAllText($liveLaunchPath,($liveLaunch|ConvertTo-Json -Depth 16))
  $active=& $supervisor -Mode RecoverReadOnly -EvidenceDir $liveDir
+ $probeLine=[string]$ci.CommandLine
+ $probePattern='(?i)--case"?\s+"?inactivity(?:"|\s|$)'
+ Write-Output ('R35_LIVE_FLAGS timestamp='+((([datetime]$ci.CreationDate).ToUniversalTime().ToString('o')) -ceq $liveLaunch.root_creation_utc)+' exe='+([string]$ci.ExecutablePath -ieq [string]$intentValue.python_exe)+' fixture='+($probeLine.IndexOf($fixture,[StringComparison]::OrdinalIgnoreCase) -ge 0)+' case='+[regex]::IsMatch($probeLine,$probePattern)+' hasExited='+$liveProcess.HasExited)
  Write-Output ('R35_LIVE_PROBE status='+$active.status+' detail='+$active.detail)
  Check ($active.status -ceq 'WORKER_ACTIVE' -and -not $active.can_execute -and -not $liveProcess.HasExited) 'LIVE_WORKER_IDENTITY_MATCHES_NO_ACTION'
  $liveLaunch.root_creation_utc=([datetime]$ci.CreationDate).ToUniversalTime().AddMinutes(-1).ToString('o')
