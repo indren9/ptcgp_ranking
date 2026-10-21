@@ -25,6 +25,11 @@ from scripts.tcg_live_latest_completed import (
     build_plan,
     read_json,
 )
+from scripts.tcg_live_candidate_receipt import (
+    candidate_identity,
+    load_verified_candidate,
+    save_verified_candidate,
+)
 from scripts.tcg_live_publication import (
     build_tcg_live_bundle,
     publish_tcg_live_bundle,
@@ -267,6 +272,19 @@ def run_job(
     replay_raw_root = work_root / "raw-replay"
 
     revision = _git_revision(repo_root)
+    identity = candidate_identity(
+        window=plan["latest_completed_window"],
+        config_path=config_path,
+        catalog_path=catalog_path,
+        revision=revision,
+    )
+    if not publish:
+        reusable = load_verified_candidate(
+            work_root=work_root,
+            identity=identity,
+        )
+        if reusable is not None:
+            return reusable
 
     live = run_limitless_api_acquisition(
         game="PTCG",
@@ -397,6 +415,26 @@ def run_job(
             "TCG Live OFFLINE replay used network"
         )
 
+    # Publication remains an intentional, separate operation. Only complete
+    # non-publishing candidates receive a reusable, verified local receipt.
+    candidate_receipt = None
+    if not publish:
+        candidate_receipt = save_verified_candidate(
+            work_root=work_root,
+            identity=identity,
+            live_manifest=live_manifest,
+            replay_manifest=replay.manifest_path,
+            outputs=production.outputs,
+            source_run=replay.source_run,
+            run_id=run_id,
+            object_manifest_key=str(persisted.manifest_key),
+            mars_rows=production.diagnostics.get("mars_rows"),
+        )
+        if load_verified_candidate(
+            work_root=work_root, identity=identity
+        ) is None:
+            raise RuntimeError("candidate receipt readback failed")
+
     bundle_dir = None
     publication_result = None
     onedrive_publication_result = None
@@ -470,6 +508,12 @@ def run_job(
         "candidate_source_run":
             str(replay.source_run),
         "candidate_ready": True,
+        "candidate_reused": False,
+        "candidate_receipt": (
+            str(candidate_receipt)
+            if candidate_receipt is not None
+            else None
+        ),
         "bundle_dir": (
             None
             if bundle_dir is None
