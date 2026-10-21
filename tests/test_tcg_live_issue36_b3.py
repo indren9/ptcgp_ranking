@@ -111,8 +111,20 @@ def test_candidate_latest_completed_and_half_open_release_boundaries():
     )
     catalog = load_release_catalog_snapshot(CANDIDATE)
     assert [x.code for x in catalog.releases] == ["CRI", "PBL", "30C"]
+    # Midnight is not a full TCG Live expansion-availability boundary.
+    for timestamp in (
+        datetime(2026, 5, 21, 0, 0, tzinfo=UTC),
+        datetime(2026, 7, 16, 0, 0, tzinfo=UTC),
+        datetime(2026, 7, 16, 16, 59, tzinfo=UTC),
+    ):
+        with pytest.raises(ValueError, match="no completed release"):
+            resolve_release(
+                catalog, mode="latest_completed",
+                acquisition_started_at=timestamp,
+            )
     for timestamp, expected in (
         (datetime(2026, 7, 16, 17, 0, tzinfo=UTC), "CRI"),
+        (datetime(2026, 9, 15, 0, 0, tzinfo=UTC), "CRI"),
         (datetime(2026, 9, 15, 16, 59, tzinfo=UTC), "CRI"),
         (datetime(2026, 9, 15, 17, 0, tzinfo=UTC), "PBL"),
     ):
