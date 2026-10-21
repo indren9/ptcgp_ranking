@@ -7,12 +7,13 @@ non-publishing acquisitions in the same persistent work root.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 import hashlib
 import json
 import os
 from pathlib import Path
 import tempfile
-from typing import Any, Mapping
+from typing import Any, Iterator, Mapping
 
 
 SCHEMA_VERSION = 1
@@ -64,6 +65,36 @@ def _receipt_path(work_root: Path, identity: Mapping[str, Any]) -> Path:
     )
     key = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
     return work_root / "candidate-receipts" / (key + ".json")
+
+
+@contextmanager
+def candidate_lock(
+    *, work_root: Path, identity: Mapping[str, Any]
+) -> Iterator[None]:
+    """Exclude concurrent acquisition/publication for a single candidate.
+
+    A crash may leave the lock in place: fail closed and require manual
+    inspection of the prior attempt before removing it. No time-based expiry.
+    """
+    receipt_path = _receipt_path(work_root, identity)
+    receipt_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = receipt_path.with_suffix(".lock")
+    try:
+        descriptor = os.open(
+            lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600
+        )
+    except FileExistsError as exc:
+        raise RuntimeError(
+            "TCG Live candidate locked; inspect existing attempt before retry"
+        ) from exc
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            stream.write(json.dumps({"pid": os.getpid()}, sort_keys=True) + "\\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        yield
+    finally:
+        lock_path.unlink(missing_ok=True)
 
 
 def _record_file(path: Path, work_root: Path) -> dict[str, str]:
