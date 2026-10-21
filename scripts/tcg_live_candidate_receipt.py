@@ -89,7 +89,7 @@ def candidate_lock(
         ) from exc
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
-            stream.write(json.dumps({"pid": os.getpid()}, sort_keys=True) + "\\n")
+            stream.write(json.dumps({"pid": os.getpid()}, sort_keys=True) + "\n")
             stream.flush()
             os.fsync(stream.fileno())
         yield
