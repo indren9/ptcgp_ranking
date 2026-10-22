@@ -510,6 +510,7 @@ def run_job(
             "latest_completed_window":
                 plan["latest_completed_window"],
             "canonical_live_run_id": run_id,
+            "offline_run_id": offline_run_id,
             "object_manifest_key":
                 persisted.manifest_key,
             "offline_network_calls":
