@@ -356,9 +356,15 @@ def test_b3r1_sequential_candidates_preserve_earlier_receipt_and_artifact_hashes
     root_b = candidate_workspace(work_root=tmp_path, identity=second["identity"])
     replay_b = root_b / "raw-replay"
     shutil.rmtree(replay_b)
-    replay_b.mkdir(parents=True)
-    (replay_b / "fresh-marker").write_text("new candidate", encoding="utf-8")
+    second["replay_manifest"].parent.mkdir(parents=True)
+    second["replay_manifest"].write_text(
+        json.dumps({"run_id": "run-1"}) + "\n", encoding="utf-8"
+    )
     second["outputs"]["mars_ranking"].write_text("other candidate", encoding="utf-8")
+    _persist(second)
+    assert load_verified_candidate(
+        work_root=tmp_path, identity=second["identity"]
+    )["candidate_ready"] is True
 
     assert first["outputs"]["mars_ranking"].read_bytes() == original_output
     assert receipt_a.read_bytes() == original_a
