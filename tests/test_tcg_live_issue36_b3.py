@@ -395,7 +395,7 @@ def test_b3r1_receipt_refuses_foreign_identity_workspace(tmp_path):
     first = _fixture(tmp_path, revision="revision-a")
     second = _fixture(tmp_path, revision="revision-b")
     first["outputs"] = second["outputs"]
-    with pytest.raises(ValueError, match="outside its source run"):
+    with pytest.raises(ValueError, match="not inside its source run"):
         _persist(first)
     assert not _receipt_path(tmp_path, first["identity"]).exists()
 
