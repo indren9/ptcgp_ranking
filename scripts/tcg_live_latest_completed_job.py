@@ -435,9 +435,11 @@ def run_job(
                 identity=identity,
                 live_manifest=live_manifest,
                 replay_manifest=replay.manifest_path,
+                replay_diagnostics=replay.diagnostics_path,
                 outputs=production.outputs,
                 source_run=replay.source_run,
-                run_id=run_id,
+                live_run_id=run_id,
+                offline_run_id=offline_run_id,
                 object_manifest_key=str(persisted.manifest_key),
                 mars_rows=production.diagnostics.get("mars_rows"),
             )
