@@ -730,3 +730,102 @@ def test_b3r3_diagnostics_semantic_mismatch_with_valid_hash_still_fails(tmp_path
         load_verified_candidate(work_root=tmp_path, identity=env["identity"])
     assert caught.value.__cause__ is not None
     assert "replay lineage mismatch" in str(caught.value.__cause__)
+
+
+def test_b3r3_job_first_run_and_reuse_report_same_two_run_ids(
+    tmp_path, monkeypatch,
+):
+    """Offline-only integration: all acquisition and storage services mocked."""
+    from types import SimpleNamespace
+
+    state = tmp_path / "state.json"
+    state.write_text(
+        json.dumps({"published_completed_window": {"code": "OLD"}}),
+        encoding="utf-8",
+    )
+    started = datetime(2026, 9, 6, 10, tzinfo=UTC)
+    plan = build_plan(
+        catalog_path=ROOT / "data/reference/ptcg_live_windows.json",
+        state=read_json(state),
+        acquisition_started_at=started,
+    )
+    revision = "b3r3-mocked-version"
+    identity = candidate_identity(
+        window=plan["latest_completed_window"],
+        config_path=ROOT / "config/tcg.yaml",
+        catalog_path=ROOT / "data/reference/ptcg_live_windows.json",
+        revision=revision,
+    )
+    env = _fixture(
+        tmp_path, window=plan["latest_completed_window"],
+        revision=revision, identity_override=identity,
+    )
+    _producer_v2_manifest_pair(env)
+    monkeypatch.setattr(job, "_git_revision", lambda _: revision)
+    acquisition_calls = []
+
+    def fake_live(**kwargs):
+        assert kwargs["execution_mode"] == "live"
+        assert kwargs["raw_store_root"] == (
+            candidate_workspace(work_root=tmp_path, identity=identity) / "raw-live"
+        )
+        acquisition_calls.append("synthetic-live")
+        return SimpleNamespace(
+            manifest=SimpleNamespace(run_id=LIVE_RUN_ID)
+        )
+
+    def fake_persist(*args, **kwargs):
+        assert args[1] == LIVE_RUN_ID
+        return SimpleNamespace(
+            manifest_key="mocked-object-store/" + LIVE_RUN_ID + "/manifest.json"
+        )
+
+    def fake_restore(*args, **kwargs):
+        assert args[1] == LIVE_RUN_ID
+        return None
+
+    def fake_core_mars(**kwargs):
+        # The job deletes and restores replay scratch before the OFFLINE
+        # stage; produce canonical schema-v2 manifests in the new scratch.
+        _producer_v2_manifest_pair(env)
+        return SimpleNamespace(
+            diagnostics={
+                "tournament_api_run_id": OFFLINE_RUN_ID,
+                "tournament_api_network_calls": 0,
+                "mars_rows": 1,
+            },
+            paths=SimpleNamespace(outputs=env["source_run"]),
+            expansion="PTCG",
+            outputs=env["outputs"],
+        )
+
+    monkeypatch.setattr(job, "run_limitless_api_acquisition", fake_live)
+    monkeypatch.setattr(job, "persist_canonical_raw_run", fake_persist)
+    monkeypatch.setattr(job, "restore_canonical_raw_run", fake_restore)
+    monkeypatch.setattr(job, "run_deck_ranking", fake_core_mars)
+    monkeypatch.setattr(job, "base_for_expansion", lambda *args: env["source_run"])
+
+    def no_backend():
+        return object()
+
+    first = job.run_job(
+        repo_root=ROOT, work_root=tmp_path, state_path=state,
+        acquisition_started_at=started, backend_factory=no_backend,
+        publish=False,
+    )
+    assert first["action"] == "candidate_ready"
+    assert first["candidate_reused"] is False
+    assert first["canonical_live_run_id"] == LIVE_RUN_ID
+    assert first["offline_run_id"] == OFFLINE_RUN_ID
+    assert len(acquisition_calls) == 1
+
+    second = job.run_job(
+        repo_root=ROOT, work_root=tmp_path, state_path=state,
+        acquisition_started_at=started, backend_factory=no_backend,
+        publish=False,
+    )
+    assert second["candidate_reused"] is True
+    assert second["network_calls"] == 0
+    assert len(acquisition_calls) == 1
+    for key in ("canonical_live_run_id", "offline_run_id"):
+        assert first[key] == second[key]
