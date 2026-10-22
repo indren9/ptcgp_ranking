@@ -31,6 +31,8 @@ CANDIDATE = (
 )
 OLD_STATE = ROOT / ".github" / "tcg-live-latest-completed-meta-state.json"
 WHEN = datetime(2026, 10, 21, 12, 0, tzinfo=UTC)
+LIVE_RUN_ID = "limitless-api-live-20261021T120000000000Z"
+OFFLINE_RUN_ID = "limitless-api-offline-20261021T120001000000Z"
 
 
 def _plan(state=None, when=WHEN):
@@ -72,11 +74,23 @@ def _fixture(
         )
         outputs[key] = file
 
-    live = transaction_root / "raw-live" / "runs" / "run-1" / "manifest.json"
-    replay = transaction_root / "raw-replay" / "runs" / "run-1" / "manifest.json"
-    for f in (live, replay):
-        f.parent.mkdir(parents=True)
-        f.write_text(json.dumps({"run_id": "run-1"}) + "\n", encoding="utf-8")
+    live = (
+        transaction_root / "raw-live" / "runs" / LIVE_RUN_ID / "manifest.json"
+    )
+    replay_dir = transaction_root / "raw-replay" / "runs" / OFFLINE_RUN_ID
+    replay = replay_dir / "manifest.json"
+    replay_diagnostics = replay_dir / "diagnostics.json"
+    for f, run_id in ((live, LIVE_RUN_ID), (replay, OFFLINE_RUN_ID)):
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(json.dumps({"run_id": run_id}) + "\n", encoding="utf-8")
+    replay_diagnostics.write_text(
+        json.dumps({
+            "execution_mode": "offline",
+            "run_id": OFFLINE_RUN_ID,
+            "replay_run_id": LIVE_RUN_ID,
+            "network_calls": 0,
+        }) + "\n", encoding="utf-8"
+    )
 
     return dict(
         work_root=tmp_path,
@@ -87,8 +101,10 @@ def _fixture(
         outputs=outputs,
         live_manifest=live,
         replay_manifest=replay,
-        run_id="run-1",
-        object_manifest_key="canonical/raw/run-1/manifest.json",
+        replay_diagnostics=replay_diagnostics,
+        live_run_id=LIVE_RUN_ID,
+        offline_run_id=OFFLINE_RUN_ID,
+        object_manifest_key="canonical/raw/" + LIVE_RUN_ID + "/manifest.json",
         mars_rows=1,
     )
 
@@ -97,8 +113,8 @@ def _persist(env):
     return save_verified_candidate(**{
         k: env[k] for k in (
             "work_root", "identity", "source_run", "outputs",
-            "live_manifest", "replay_manifest", "run_id",
-            "object_manifest_key", "mars_rows",
+            "live_manifest", "replay_manifest", "replay_diagnostics",
+            "live_run_id", "offline_run_id", "object_manifest_key", "mars_rows",
         )
     })
 
@@ -169,7 +185,9 @@ def test_receipt_reuses_exact_manifest_and_outputs_without_network(tmp_path):
     assert reused["candidate_ready"] is True
     assert reused["network_calls"] == 0
     assert reused["published"] is False
-    assert reused["canonical_live_run_id"] == "run-1"
+    assert reused["canonical_live_run_id"] == LIVE_RUN_ID
+    assert reused["offline_run_id"] == OFFLINE_RUN_ID
+    assert reused["canonical_live_run_id"] != reused["offline_run_id"]
 
 
 @pytest.mark.parametrize("input_changed", ["config", "catalog", "revision", "window"])
@@ -195,7 +213,10 @@ def test_receipt_invalidated_by_dependency_change(tmp_path, input_changed):
     ) is None
 
 
-@pytest.mark.parametrize("bad_file", ["mars_ranking", "live_manifest", "replay_manifest"])
+@pytest.mark.parametrize(
+    "bad_file",
+    ["mars_ranking", "live_manifest", "replay_manifest", "replay_diagnostics"],
+)
 def test_changed_artifacts_fail_closed(tmp_path, bad_file):
     env = _fixture(tmp_path)
     _persist(env)
@@ -358,7 +379,15 @@ def test_b3r1_sequential_candidates_preserve_earlier_receipt_and_artifact_hashes
     shutil.rmtree(replay_b)
     second["replay_manifest"].parent.mkdir(parents=True)
     second["replay_manifest"].write_text(
-        json.dumps({"run_id": "run-1"}) + "\n", encoding="utf-8"
+        json.dumps({"run_id": OFFLINE_RUN_ID}) + "\n", encoding="utf-8"
+    )
+    second["replay_diagnostics"].write_text(
+        json.dumps({
+            "execution_mode": "offline",
+            "run_id": OFFLINE_RUN_ID,
+            "replay_run_id": LIVE_RUN_ID,
+            "network_calls": 0,
+        }) + "\n", encoding="utf-8"
     )
     second["outputs"]["mars_ranking"].write_text("other candidate", encoding="utf-8")
     _persist(second)
@@ -388,7 +417,7 @@ def test_b3r1_same_code_different_boundaries_cannot_mutate_existing_candidate(
     assert receipt.exists()
     assert load_verified_candidate(
         work_root=tmp_path, identity=first["identity"]
-    )["canonical_live_run_id"] == "run-1"
+    )["canonical_live_run_id"] == LIVE_RUN_ID
 
 
 def test_b3r1_receipt_refuses_foreign_identity_workspace(tmp_path):
@@ -437,3 +466,73 @@ def test_b3r1_independent_processes_do_not_collide_in_shared_work_root(tmp_path)
     assert candidate_workspace(
         work_root=tmp_path, identity=env_a["identity"]
     ) != candidate_workspace(work_root=tmp_path, identity=env_b["identity"])
+
+
+@pytest.mark.parametrize(
+    "corruption",
+    (
+        "replay_manifest_uses_live_id",
+        "replay_diagnostics_points_to_wrong_live",
+        "replay_diagnostics_wrong_offline_id",
+        "replay_diagnostics_wrong_execution_mode",
+        "replay_diagnostics_has_network",
+    ),
+)
+def test_b3r2_rejects_invalid_live_offline_provenance_before_receipt(
+    tmp_path, corruption,
+):
+    env = _fixture(tmp_path)
+    if corruption == "replay_manifest_uses_live_id":
+        env["replay_manifest"].write_text(
+            json.dumps({"run_id": LIVE_RUN_ID}), encoding="utf-8"
+        )
+    else:
+        diagnostics = json.loads(
+            env["replay_diagnostics"].read_text(encoding="utf-8")
+        )
+        if corruption == "replay_diagnostics_points_to_wrong_live":
+            diagnostics["replay_run_id"] = "different-live-run"
+        elif corruption == "replay_diagnostics_wrong_offline_id":
+            diagnostics["run_id"] = "different-offline-run"
+        elif corruption == "replay_diagnostics_wrong_execution_mode":
+            diagnostics["execution_mode"] = "live"
+        elif corruption == "replay_diagnostics_has_network":
+            diagnostics["network_calls"] = 1
+        env["replay_diagnostics"].write_text(
+            json.dumps(diagnostics), encoding="utf-8"
+        )
+    with pytest.raises(ValueError, match="replay lineage mismatch"):
+        _persist(env)
+    assert not _receipt_path(tmp_path, env["identity"]).exists()
+
+
+def test_b3r2_receipt_records_distinct_ids_and_hashed_replay_diagnostics(tmp_path):
+    env = _fixture(tmp_path)
+    receipt = _persist(env)
+    payload = json.loads(receipt.read_text(encoding="utf-8"))
+    assert payload["schema_version"] == 2
+    assert payload["report"]["canonical_live_run_id"] == LIVE_RUN_ID
+    assert payload["report"]["offline_run_id"] == OFFLINE_RUN_ID
+    assert "replay_diagnostics" in payload["files"]
+    assert len(payload["files"]["replay_diagnostics"]["sha256"]) == 64
+    reused = load_verified_candidate(
+        work_root=tmp_path, identity=env["identity"]
+    )
+    assert reused["offline_run_id"] == OFFLINE_RUN_ID
+    assert reused["candidate_reused"] is True
+
+
+def test_b3r2_fails_closed_when_replay_diagnostics_link_tampered_after_save(
+    tmp_path,
+):
+    env = _fixture(tmp_path)
+    _persist(env)
+    diagnostics = json.loads(
+        env["replay_diagnostics"].read_text(encoding="utf-8")
+    )
+    diagnostics["replay_run_id"] = "wrong-live-run"
+    env["replay_diagnostics"].write_text(
+        json.dumps(diagnostics), encoding="utf-8"
+    )
+    with pytest.raises(RuntimeError, match="receipt invalid"):
+        load_verified_candidate(work_root=tmp_path, identity=env["identity"])
