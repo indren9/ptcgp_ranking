@@ -59,12 +59,27 @@ def candidate_identity(
     }
 
 
-def _receipt_path(work_root: Path, identity: Mapping[str, Any]) -> Path:
+def _identity_key(identity: Mapping[str, Any]) -> str:
     canonical = json.dumps(
         identity, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     )
-    key = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-    return work_root / "candidate-receipts" / (key + ".json")
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def candidate_workspace(
+    *, work_root: Path, identity: Mapping[str, Any], publish: bool = False
+) -> Path:
+    """One stable private workspace per candidate and transaction kind.
+
+    No different identity or publication transaction can rewrite a
+    completed candidate's replay or Core/MARS artifacts.
+    """
+    category = "publication-workspaces" if publish else "candidate-workspaces"
+    return work_root / category / _identity_key(identity)
+
+
+def _receipt_path(work_root: Path, identity: Mapping[str, Any]) -> Path:
+    return work_root / "candidate-receipts" / (_identity_key(identity) + ".json")
 
 
 @contextmanager
@@ -181,6 +196,14 @@ def load_verified_candidate(
             for key in REQUIRED_OUTPUTS
         ):
             raise ValueError("candidate outputs do not belong to source run")
+        candidate_root = candidate_workspace(
+            work_root=work_root, identity=identity
+        ).resolve(strict=True)
+        if not source_run.is_relative_to(candidate_root) or not all(
+            checked_file.resolve(strict=True).is_relative_to(candidate_root)
+            for checked_file in checked_files.values()
+        ):
+            raise ValueError("candidate receipt references another workspace")
     except (OSError, ValueError, TypeError, KeyError) as exc:
         raise RuntimeError(
             "TCG Live candidate receipt invalid; stop for manual review"
@@ -218,8 +241,11 @@ def save_verified_candidate(
         raise ValueError("candidate requires persisted raw run provenance")
     root = work_root.resolve(strict=True)
     source = source_run.resolve(strict=True)
-    if not source.is_dir() or not source.is_relative_to(root):
-        raise ValueError("candidate source run must belong to work root")
+    workspace = candidate_workspace(
+        work_root=work_root, identity=identity
+    ).resolve(strict=True)
+    if not source.is_dir() or not source.is_relative_to(workspace):
+        raise ValueError("candidate source run must belong to its own workspace")
     if any(not outputs.get(key) for key in REQUIRED_OUTPUTS):
         raise ValueError("candidate is missing required Core/MARS outputs")
     files = {
@@ -235,6 +261,11 @@ def save_verified_candidate(
         for key in REQUIRED_OUTPUTS
     ):
         raise ValueError("candidate output is not inside its source run")
+    if not all(
+        (root / record["path"]).resolve(strict=True).is_relative_to(workspace)
+        for record in files.values()
+    ):
+        raise ValueError("candidate file escapes its dedicated workspace")
 
     receipt = {
         "schema_version": SCHEMA_VERSION,
