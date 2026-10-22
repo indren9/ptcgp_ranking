@@ -28,6 +28,7 @@ from scripts.tcg_live_latest_completed import (
 from scripts.tcg_live_candidate_receipt import (
     candidate_identity,
     candidate_lock,
+    candidate_workspace,
     load_verified_candidate,
     save_verified_candidate,
 )
@@ -269,9 +270,6 @@ def run_job(
     scope = _scope(plan, api)
     eligibility = _eligibility(api)
 
-    live_raw_root = work_root / "raw-live"
-    replay_raw_root = work_root / "raw-replay"
-
     revision = _git_revision(repo_root)
     identity = candidate_identity(
         window=plan["latest_completed_window"],
@@ -279,6 +277,15 @@ def run_job(
         catalog_path=catalog_path,
         revision=revision,
     )
+    # Both different identities and the publishing transaction use
+    # separate scratch and artifact trees. Never overwrite a prior receipt's
+    # RAW replay or Core/MARS output while preparing a new candidate.
+    transaction_root = candidate_workspace(
+        work_root=work_root, identity=identity, publish=publish
+    )
+    live_raw_root = transaction_root / "raw-live"
+    replay_raw_root = transaction_root / "raw-replay"
+
     # Hold through both lookup and execution so concurrent invocations
     # cannot each launch a full LIVE candidate before the receipt exists.
     with candidate_lock(work_root=work_root, identity=identity):
@@ -300,7 +307,7 @@ def run_job(
             execution_mode="live",
             raw_store_root=live_raw_root,
             release_catalog=catalog_path,
-            cache_root=work_root / "cache-live",
+            cache_root=transaction_root / "cache-live",
             cache_ttl_min=float(
                 api.get("cache_ttl_min", 0)
             ),
@@ -354,11 +361,11 @@ def run_job(
         offline_config = _write_offline_config(
             source_config=config_path,
             destination=(
-                work_root / "tcg-live-offline.yaml"
+                transaction_root / "tcg-live-offline.yaml"
             ),
             raw_root=replay_raw_root,
-            cache_root=work_root / "cache-offline",
-            output_root=work_root / "source-output",
+            cache_root=transaction_root / "cache-offline",
+            output_root=transaction_root / "source-output",
             release_catalog=catalog_path,
             replay_run_id=run_id,
             completed_code=scope.set_code,
@@ -367,7 +374,7 @@ def run_job(
         production = run_deck_ranking(
             base_dir=repo_root,
             config_path=offline_config,
-            output_dir=work_root / "source-output",
+            output_dir=transaction_root / "source-output",
             run_scrape=True,
             run_core=True,
             run_mars=True,
@@ -444,7 +451,7 @@ def run_job(
         onedrive_publication_result = None
     
         if publish:
-            bundle_dir = work_root / "bundle"
+            bundle_dir = transaction_root / "bundle"
     
             if bundle_dir.exists():
                 shutil.rmtree(bundle_dir)
