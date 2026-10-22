@@ -643,6 +643,10 @@ def _producer_v2_manifest_pair(env):
     assert len(live_payload["raw"]["snapshot_refs"]) == 1
     assert live_payload["contracts"] == offline_payload["contracts"]
 
+    # run_job() removes the temporary replay tree before restoration;
+    # the mocked OFFLINE producer must recreate it as the real producer does.
+    env["live_manifest"].parent.mkdir(parents=True, exist_ok=True)
+    env["replay_manifest"].parent.mkdir(parents=True, exist_ok=True)
     env["live_manifest"].write_text(live.to_json(), encoding="utf-8")
     env["replay_manifest"].write_text(offline.to_json(), encoding="utf-8")
     diagnostics = {
