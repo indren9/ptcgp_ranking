@@ -20,6 +20,7 @@ from scripts.tcg_live_candidate_receipt import (
     candidate_workspace,
     load_verified_candidate,
     save_verified_candidate,
+    sha256_file,
 )
 from scripts.tcg_live_latest_completed import build_plan, read_json
 
@@ -536,3 +537,196 @@ def test_b3r2_fails_closed_when_replay_diagnostics_link_tampered_after_save(
     )
     with pytest.raises(RuntimeError, match="receipt invalid"):
         load_verified_candidate(work_root=tmp_path, identity=env["identity"])
+
+
+def _producer_v2_manifest_pair(env):
+    """Render full producer-shaped manifests using the canonical dataclass.
+
+    This exercises the actual AcquisitionManifest schema-v2 serializer, not
+    hand-authored JSON with only a run_id.
+    """
+    from acquisition.contracts import (
+        AcquisitionContracts,
+        ContractArtifact,
+        DENSE_SCORE_COLUMNS,
+        MATCHUP_COLUMNS,
+        RawPayloadRef,
+        TOP_META_COLUMNS,
+    )
+    from acquisition.manifest import (
+        AcquisitionManifest, AggregationSummary, NormalizedSummary,
+        RawSummary, validate_manifest_dict,
+    )
+    from acquisition.scope import ScopePolicy, EligibilityPolicy
+    from acquisition.selection import TournamentSelection
+
+    window = env["identity"]["window"]
+    def parse(value):
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+    scope = ScopePolicy(
+        policy_id="b3r3-synthetic-scope-v1",
+        game="PTCG",
+        format="STANDARD",
+        set_code=window["code"],
+        set_name=window["name"],
+        start_datetime=parse(window["start"]),
+        end_datetime=parse(window["end"]),
+        catalog_version=window["catalog_version"],
+    )
+    eligibility = EligibilityPolicy(
+        policy_id="b3r3-synthetic-eligibility-v1",
+        game="PTCG",
+        allowed_formats=("STANDARD",),
+        require_public=True,
+        require_decklists=True,
+        require_online=True,
+        allowed_platforms=("PTCGL",),
+    )
+    contracts = AcquisitionContracts(
+        top_meta_decklist=ContractArtifact(
+            name="top_meta_decklist", columns=TOP_META_COLUMNS,
+            row_count=2, sha256="a" * 64,
+        ),
+        matchup_raw=ContractArtifact(
+            name="matchup_raw", columns=MATCHUP_COLUMNS,
+            row_count=2, sha256="b" * 64,
+        ),
+        dense_score=ContractArtifact(
+            name="dense_score", columns=DENSE_SCORE_COLUMNS,
+            row_count=2, sha256="c" * 64,
+        ),
+    )
+    common = dict(
+        schema_version="2",
+        created_at=datetime(2026, 10, 21, 12, 5, tzinfo=UTC),
+        acquisition_started_at=datetime(2026, 10, 21, 12, 0, tzinfo=UTC),
+        source="Limitless Tournament API",
+        software_git_revision="b3r3-synthetic",
+        scope=scope,
+        selection=TournamentSelection(
+            tournament_ids=("synthetic-t1",), exclusion_counts={}, failures=(),
+        ),
+        raw=RawSummary(snapshot_refs=(
+            RawPayloadRef(
+                payload_type="tournament:details",
+                snapshot_id="synthetic-snapshot-01",
+                sha256="d" * 64,
+                fetched_at=datetime(2026, 10, 21, 12, 1, tzinfo=UTC),
+                relative_path="snapshots/synthetic-t1/details.json",
+                tournament_id="synthetic-t1",
+            ),
+        )),
+        normalized=NormalizedSummary(
+            tournaments_rows=1, participants_rows=2, pairings_rows=1,
+            hashes={"tournaments": "e" * 64, "participants": "f" * 64,
+                    "pairings": "0" * 64},
+        ),
+        aggregation=AggregationSummary(
+            total_participants=2, classified_participants=2,
+            unclassified_participants=0, comparable_matches=1,
+            pairing_exclusion_counts={},
+        ),
+        rate_limit_observations=(),
+        contracts=contracts,
+        eligibility=eligibility,
+    )
+
+    live = AcquisitionManifest(run_id=LIVE_RUN_ID, **common)
+    offline = AcquisitionManifest(run_id=OFFLINE_RUN_ID, **common)
+    live_payload = json.loads(live.to_json())
+    offline_payload = json.loads(offline.to_json())
+    validate_manifest_dict(live_payload)
+    validate_manifest_dict(offline_payload)
+    assert live_payload["schema_version"] == offline_payload["schema_version"] == "2"
+    assert live_payload["run_id"] != offline_payload["run_id"]
+    assert len(live_payload["raw"]["snapshot_refs"]) == 1
+    assert live_payload["contracts"] == offline_payload["contracts"]
+
+    env["live_manifest"].write_text(live.to_json(), encoding="utf-8")
+    env["replay_manifest"].write_text(offline.to_json(), encoding="utf-8")
+    diagnostics = {
+        "execution_mode": "offline",
+        "run_id": OFFLINE_RUN_ID,
+        "replay_run_id": LIVE_RUN_ID,
+        "network_calls": 0,
+    }
+    env["replay_diagnostics"].write_text(
+        json.dumps(diagnostics, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    return live_payload, offline_payload
+
+
+def test_b3r3_producer_schema_v2_manifest_receipt_full_round_trip(tmp_path):
+    from acquisition.manifest import validate_manifest_dict
+    from scripts.automatic_completed_meta_rollover import (
+        ReplayEvidence, validate_exact_offline_replay,
+    )
+
+    env = _fixture(tmp_path)
+    live, offline = _producer_v2_manifest_pair(env)
+    validate_manifest_dict(live)
+    validate_manifest_dict(offline)
+    replay = ReplayEvidence(
+        source_run=env["source_run"],
+        manifest_path=env["replay_manifest"],
+        diagnostics_path=env["replay_diagnostics"],
+    )
+    # Cross-check the exact upstream replay validator before receipt storage.
+    replay_payload = validate_exact_offline_replay(
+        env["live_manifest"], replay
+    )
+    assert replay_payload["run_id"] == OFFLINE_RUN_ID
+
+    receipt_path = _persist(env)
+    recorded = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert recorded["report"]["canonical_live_run_id"] == LIVE_RUN_ID
+    assert recorded["report"]["offline_run_id"] == OFFLINE_RUN_ID
+    assert recorded["files"]["replay_manifest"]["sha256"] == sha256_file(
+        env["replay_manifest"]
+    )
+    reused = load_verified_candidate(
+        work_root=tmp_path, identity=env["identity"]
+    )
+    assert reused["candidate_reused"] is True
+    assert reused["network_calls"] == 0
+    assert reused["canonical_live_run_id"] == LIVE_RUN_ID
+    assert reused["offline_run_id"] == OFFLINE_RUN_ID
+
+
+def test_b3r3_diagnostics_sha_mismatch_is_rejected_before_semantics(tmp_path):
+    env = _fixture(tmp_path)
+    _producer_v2_manifest_pair(env)
+    _persist(env)
+    data = json.loads(env["replay_diagnostics"].read_text(encoding="utf-8"))
+    data["replay_run_id"] = "wrong-canonical-live"
+    env["replay_diagnostics"].write_text(
+        json.dumps(data, sort_keys=True), encoding="utf-8"
+    )
+    with pytest.raises(RuntimeError, match="receipt invalid") as caught:
+        load_verified_candidate(work_root=tmp_path, identity=env["identity"])
+    assert caught.value.__cause__ is not None
+    assert "checksum/path mismatch" in str(caught.value.__cause__)
+
+
+def test_b3r3_diagnostics_semantic_mismatch_with_valid_hash_still_fails(tmp_path):
+    env = _fixture(tmp_path)
+    _producer_v2_manifest_pair(env)
+    receipt_path = _persist(env)
+    data = json.loads(env["replay_diagnostics"].read_text(encoding="utf-8"))
+    data["replay_run_id"] = "wrong-canonical-live"
+    env["replay_diagnostics"].write_text(
+        json.dumps(data, sort_keys=True), encoding="utf-8"
+    )
+    # Keep SHA-256 consistent on purpose to test lineage independently.
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    receipt["files"]["replay_diagnostics"]["sha256"] = sha256_file(
+        env["replay_diagnostics"]
+    )
+    receipt_path.write_text(
+        json.dumps(receipt, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    with pytest.raises(RuntimeError, match="receipt invalid") as caught:
+        load_verified_candidate(work_root=tmp_path, identity=env["identity"])
+    assert caught.value.__cause__ is not None
+    assert "replay lineage mismatch" in str(caught.value.__cause__)
