@@ -16,7 +16,7 @@ import tempfile
 from typing import Any, Iterator, Mapping
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 REQUIRED_OUTPUTS = (
     "run_manifest",
     "mars_ranking",
@@ -27,6 +27,7 @@ REQUIRED_OUTPUTS = (
 REQUIRED_FILES = (
     "live_manifest",
     "replay_manifest",
+    "replay_diagnostics",
     *REQUIRED_OUTPUTS,
 )
 
@@ -139,6 +140,38 @@ def _verified_file(
     return path
 
 
+def _validate_run_lineage(
+    *,
+    live: Mapping[str, Any],
+    replay: Mapping[str, Any],
+    diagnostics: Mapping[str, Any],
+    live_run_id: str,
+    offline_run_id: str,
+) -> None:
+    """Match distinct LIVE/OFFLINE run IDs using the replay provenance.
+
+    The OFFLINE manifest identifies the OFFLINE run. Its diagnostics
+    reference the canonical LIVE input by replay_run_id.
+    """
+    if (
+        not isinstance(live, Mapping)
+        or not isinstance(replay, Mapping)
+        or not isinstance(diagnostics, Mapping)
+        or not isinstance(live_run_id, str)
+        or not isinstance(offline_run_id, str)
+        or not live_run_id.strip()
+        or not offline_run_id.strip()
+        or live_run_id == offline_run_id
+        or live.get("run_id") != live_run_id
+        or replay.get("run_id") != offline_run_id
+        or diagnostics.get("run_id") != offline_run_id
+        or diagnostics.get("replay_run_id") != live_run_id
+        or diagnostics.get("execution_mode") != "offline"
+        or diagnostics.get("network_calls") != 0
+    ):
+        raise ValueError("candidate LIVE/OFFLINE replay lineage mismatch")
+
+
 def load_verified_candidate(
     *,
     work_root: Path,
@@ -174,13 +207,18 @@ def load_verified_candidate(
         replay = json.loads(
             checked_files["replay_manifest"].read_text(encoding="utf-8")
         )
-        run_id = report["canonical_live_run_id"]
+        diagnostics = json.loads(
+            checked_files["replay_diagnostics"].read_text(encoding="utf-8")
+        )
+        _validate_run_lineage(
+            live=live,
+            replay=replay,
+            diagnostics=diagnostics,
+            live_run_id=report["canonical_live_run_id"],
+            offline_run_id=report["offline_run_id"],
+        )
         if (
-            not isinstance(run_id, str)
-            or not run_id
-            or live.get("run_id") != run_id
-            or replay.get("run_id") != run_id
-            or report.get("offline_network_calls") != 0
+            report.get("offline_network_calls") != 0
             or not isinstance(report.get("object_manifest_key"), str)
             or not report["object_manifest_key"]
         ):
@@ -231,14 +269,23 @@ def save_verified_candidate(
     identity: Mapping[str, Any],
     live_manifest: Path,
     replay_manifest: Path,
+    replay_diagnostics: Path,
     outputs: Mapping[str, Path],
     source_run: Path,
-    run_id: str,
+    live_run_id: str,
+    offline_run_id: str,
     object_manifest_key: str,
     mars_rows: Any,
 ) -> Path:
-    if not run_id or not object_manifest_key:
+    if not live_run_id or not offline_run_id or not object_manifest_key:
         raise ValueError("candidate requires persisted raw run provenance")
+    _validate_run_lineage(
+        live=json.loads(live_manifest.read_text(encoding="utf-8")),
+        replay=json.loads(replay_manifest.read_text(encoding="utf-8")),
+        diagnostics=json.loads(replay_diagnostics.read_text(encoding="utf-8")),
+        live_run_id=live_run_id,
+        offline_run_id=offline_run_id,
+    )
     root = work_root.resolve(strict=True)
     source = source_run.resolve(strict=True)
     workspace = candidate_workspace(
@@ -251,6 +298,7 @@ def save_verified_candidate(
     files = {
         "live_manifest": _record_file(live_manifest, root),
         "replay_manifest": _record_file(replay_manifest, root),
+        "replay_diagnostics": _record_file(replay_diagnostics, root),
     }
     files.update({
         key: _record_file(Path(outputs[key]), root)
@@ -273,7 +321,8 @@ def save_verified_candidate(
         "files": files,
         "source_run": source.relative_to(root).as_posix(),
         "report": {
-            "canonical_live_run_id": run_id,
+            "canonical_live_run_id": live_run_id,
+            "offline_run_id": offline_run_id,
             "object_manifest_key": object_manifest_key,
             "offline_network_calls": 0,
             "mars_rows": mars_rows,
