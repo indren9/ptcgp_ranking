@@ -5,6 +5,9 @@ from __future__ import annotations
 from datetime import UTC, datetime
 import json
 from pathlib import Path
+import shutil
+import subprocess
+import sys
 
 import pytest
 
@@ -14,6 +17,7 @@ from scripts.tcg_live_candidate_receipt import (
     _receipt_path,
     candidate_identity,
     candidate_lock,
+    candidate_workspace,
     load_verified_candidate,
     save_verified_candidate,
 )
@@ -37,20 +41,27 @@ def _plan(state=None, when=WHEN):
     )
 
 
-def _fixture(tmp_path, *, window=None, revision="synthetic-revision"):
+def _fixture(
+    tmp_path, *, window=None, revision="synthetic-revision",
+    identity_override=None,
+):
     config = tmp_path / "config.yaml"
     config.write_text("effective: tcg\n", encoding="utf-8")
     catalog = tmp_path / "release.json"
     catalog.write_bytes(CANDIDATE.read_bytes())
     window = window or _plan()["latest_completed_window"]
-    identity = candidate_identity(
+    identity = identity_override or candidate_identity(
         window=window,
         config_path=config,
         catalog_path=catalog,
         revision=revision,
     )
-
-    source = tmp_path / "source-output" / "TCG" / "PBL__Pitch_Black"
+    transaction_root = candidate_workspace(
+        work_root=tmp_path, identity=identity
+    )
+    source = (
+        transaction_root / "source-output" / "TCG" / "PBL__Pitch_Black"
+    )
     source.mkdir(parents=True)
     outputs = {}
     for key in REQUIRED_OUTPUTS:
@@ -61,8 +72,8 @@ def _fixture(tmp_path, *, window=None, revision="synthetic-revision"):
         )
         outputs[key] = file
 
-    live = tmp_path / "raw-live" / "runs" / "run-1" / "manifest.json"
-    replay = tmp_path / "raw-replay" / "runs" / "run-1" / "manifest.json"
+    live = transaction_root / "raw-live" / "runs" / "run-1" / "manifest.json"
+    replay = transaction_root / "raw-replay" / "runs" / "run-1" / "manifest.json"
     for f in (live, replay):
         f.parent.mkdir(parents=True)
         f.write_text(json.dumps({"run_id": "run-1"}) + "\n", encoding="utf-8")
@@ -260,17 +271,17 @@ def test_job_reads_receipt_before_creating_backend_or_running_live(tmp_path, mon
         acquisition_started_at=datetime(2026, 9, 6, 10, tzinfo=UTC),
     )
     revision = "integration-synthetic"
-    env = _fixture(
-        tmp_path, window=target_plan["latest_completed_window"], revision=revision
-    )
-    # Real job identity hashes the actual shipped YAML and catalog, not fixture copies.
+    # Real job hashes shipped YAML/catalog, so build files in its namespace.
     identity = candidate_identity(
         window=target_plan["latest_completed_window"],
         config_path=ROOT / "config" / "tcg.yaml",
         catalog_path=ROOT / "data/reference/ptcg_live_windows.json",
         revision=revision,
     )
-    env["identity"] = identity
+    env = _fixture(
+        tmp_path, window=target_plan["latest_completed_window"],
+        revision=revision, identity_override=identity,
+    )
     _persist(env)
     monkeypatch.setattr(job, "_git_revision", lambda _: revision)
 
@@ -306,3 +317,117 @@ def test_job_publish_does_not_reuse_unpublished_receipt(tmp_path, monkeypatch):
             acquisition_started_at=datetime(2026, 9, 6, 10, tzinfo=UTC),
             backend_factory=forbidden, publish=True,
         )
+
+
+def test_b3r1_distinct_identities_have_disjoint_candidate_and_publisher_roots(tmp_path):
+    first = _fixture(tmp_path, revision="revision-a")
+    second = _fixture(tmp_path, revision="revision-b")
+    a = candidate_workspace(work_root=tmp_path, identity=first["identity"])
+    b = candidate_workspace(work_root=tmp_path, identity=second["identity"])
+    publisher = candidate_workspace(
+        work_root=tmp_path, identity=first["identity"], publish=True
+    )
+    assert len({a, b, publisher}) == 3
+    assert not a.is_relative_to(b)
+    assert not b.is_relative_to(a)
+    assert publisher.parent.name == "publication-workspaces"
+    assert a.parent.name == b.parent.name == "candidate-workspaces"
+    assert all(path.is_relative_to(a) for path in (
+        first["live_manifest"], first["replay_manifest"],
+        first["source_run"], *first["outputs"].values(),
+    ))
+    assert all(path.is_relative_to(b) for path in (
+        second["live_manifest"], second["replay_manifest"],
+        second["source_run"], *second["outputs"].values(),
+    ))
+
+
+def test_b3r1_sequential_candidates_preserve_earlier_receipt_and_artifact_hashes(
+    tmp_path,
+):
+    first = _fixture(tmp_path, revision="revision-a")
+    receipt_a = _persist(first)
+    original_a = receipt_a.read_bytes()
+    original_output = first["outputs"]["mars_ranking"].read_bytes()
+
+    # A different config/revision causes another legitimate run, including
+    # the destructive cleanup/rebuild that used to clobber the common replay.
+    second = _fixture(tmp_path, revision="revision-b")
+    root_b = candidate_workspace(work_root=tmp_path, identity=second["identity"])
+    replay_b = root_b / "raw-replay"
+    shutil.rmtree(replay_b)
+    replay_b.mkdir(parents=True)
+    (replay_b / "fresh-marker").write_text("new candidate", encoding="utf-8")
+    second["outputs"]["mars_ranking"].write_text("other candidate", encoding="utf-8")
+
+    assert first["outputs"]["mars_ranking"].read_bytes() == original_output
+    assert receipt_a.read_bytes() == original_a
+    assert first["replay_manifest"].exists()
+    assert load_verified_candidate(
+        work_root=tmp_path, identity=first["identity"]
+    )["candidate_reused"] is True
+
+
+def test_b3r1_same_code_different_boundaries_cannot_mutate_existing_candidate(
+    tmp_path,
+):
+    first = _fixture(tmp_path)
+    receipt = _persist(first)
+    changed_window = dict(first["identity"]["window"])
+    changed_window["start"] = "2026-07-16T18:00:00Z"
+    second = _fixture(tmp_path, window=changed_window)
+    assert candidate_workspace(
+        work_root=tmp_path, identity=first["identity"]
+    ) != candidate_workspace(work_root=tmp_path, identity=second["identity"])
+    assert receipt.exists()
+    assert load_verified_candidate(
+        work_root=tmp_path, identity=first["identity"]
+    )["canonical_live_run_id"] == "run-1"
+
+
+def test_b3r1_receipt_refuses_foreign_identity_workspace(tmp_path):
+    first = _fixture(tmp_path, revision="revision-a")
+    second = _fixture(tmp_path, revision="revision-b")
+    first["outputs"] = second["outputs"]
+    with pytest.raises(ValueError, match="outside its source run"):
+        _persist(first)
+    assert not _receipt_path(tmp_path, first["identity"]).exists()
+
+
+def test_b3r1_independent_processes_do_not_collide_in_shared_work_root(tmp_path):
+    env_a = _fixture(tmp_path, revision="process-a")
+    env_b = _fixture(tmp_path, revision="process-b")
+    child = (
+        "import json, sys, time; from pathlib import Path; "
+        "from scripts.tcg_live_candidate_receipt import candidate_lock, candidate_workspace; "
+        "root=Path(sys.argv[1]); identity=json.loads(sys.argv[2]); "
+        "tag=sys.argv[3]; "
+        "w=candidate_workspace(work_root=root, identity=identity); "
+        "w.mkdir(parents=True, exist_ok=True); "
+        "p=w/'raw-replay'/'marker.txt'; p.parent.mkdir(parents=True, exist_ok=True); "
+        "ctx=candidate_lock(work_root=root, identity=identity); "
+        "ctx.__enter__(); "
+        "p.write_text(tag, encoding='utf-8'); "
+        "time.sleep(0.20); "
+        "assert p.read_text(encoding='utf-8') == tag; "
+        "ctx.__exit__(None, None, None)"
+    )
+    processes = [
+        subprocess.Popen(
+            [sys.executable, "-c", child, str(tmp_path),
+             json.dumps(env["identity"]), label],
+            cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        )
+        for env, label in ((env_a, "a"), (env_b, "b"))
+    ]
+    for process in processes:
+        try:
+            stdout, stderr = process.communicate(timeout=15)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.communicate()
+            pytest.fail("synthetic concurrent candidate process timed out")
+        assert process.returncode == 0, stderr or stdout
+    assert candidate_workspace(
+        work_root=tmp_path, identity=env_a["identity"]
+    ) != candidate_workspace(work_root=tmp_path, identity=env_b["identity"])
