@@ -12,7 +12,7 @@ from scripts.latest_completed_meta import validate_bundle
 from scripts.latest_completed_meta_producer import build_bundle
 from scripts.tcg_live_publication_lock import (
     PublicationLease,
-    publication_lock,
+    PublicationLockedError,
 )
 
 
@@ -217,25 +217,25 @@ def publish_tcg_live_bundle(
     if dry_run:
         return result
 
-    # Direct callers of the local publisher are serialized too. The job
-    # supplies an already active lease spanning OneDrive + local publication.
+    # Only a coordinated transaction may write a TCG public snapshot.
+    # A stand-alone local publisher could disagree with a OneDrive snapshot.
     if _lease is None:
-        with publication_lock(
-            state_path=state_path, target_dir=target_dir
-        ) as lease:
-            published = publish_tcg_live_bundle(
-                bundle_dir=bundle_dir,
-                plan=plan,
-                state_path=state_path,
-                target_dir=target_dir,
-                _lease=lease,
-            )
-            lease.mark_clean()
-            return published
-
+        raise PublicationLockedError(
+            "TCG local publication requires a coordinated full-destination lease"
+        )
     _lease.assert_destination(
         state_path=state_path, target_dir=target_dir
     )
+    if "state_before_publish" not in plan:
+        raise ValueError(
+            "TCG plan is missing state_before_publish (freshness evidence)"
+        )
+    from scripts.tcg_live_latest_completed import read_json
+    current = read_json(state_path, missing=None)
+    if current != plan["state_before_publish"]:
+        raise RuntimeError(
+            "TCG publication state changed after planning; re-plan required"
+        )
     snapshot = _snapshot(
         target_dir=target_dir,
         state_path=state_path,
