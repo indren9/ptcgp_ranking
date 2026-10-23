@@ -411,3 +411,50 @@ Do not derive a TCG Live date from a physical release-date offset.
 
 After validation, refreshing `public/tcg-live/latest-meta/` is an intentional
 product decision, not an automatic service obligation.
+
+
+## Issue #36 F-08 — Publication concurrency safety (DRAFT; not deployed)
+
+These protections exist only in draft PR #37 until separately approved and
+merged. They do **not** authorize any LIVE acquisition or public publication.
+
+A TCG Live publisher reserves **all shared destinations** before its first
+public write: dedicated publication state, local public directory and, when
+enabled, the canonical OneDrive TCG directory. Exclusive lock files live next
+to each destination, so different candidate identities, different work roots,
+and different state paths pointing to one public directory cannot bypass the
+conflict check. Lock acquisition order is deterministic. A collision refuses
+the second transaction before it can alter public state or OneDrive. Direct
+local TCG publication is also guarded.
+
+The job rechecks the on-disk publication state **after** acquiring the locks;
+if another completed window was published during candidate preparation, the
+stale plan is rejected with **no public write** and the clean provisional locks
+are released. Candidate data remains separate from publication state.
+
+**Interrupted publication / manual recovery (no automatic expiry):**
+
+1. **Stop** any new publication. A remaining `*.publication.lock` is a
+   deliberate fail-closed barrier, *not* proof that the owner is still active.
+2. Inspect every lock's recorded start time, machine, PID and destinations.
+   Independently confirm the original job is not active before deciding that
+   the lock is stale. Never delete a live owner's lock.
+3. Inspect both the local TCG public directory and the OneDrive TCG target,
+   compare final files and manifest SHA-256 against the intended release,
+   and inspect `.github/tcg-live-latest-completed-meta-state.json` or the
+   configured alternative state. Compare CURRENT state with the original
+   manifest/run evidence and any partial publication.
+4. If any file, OneDrive copy or state is inconsistent, **STOP** and prepare
+   an explicit corrective/reconciliation proposal. Local per-file rollback
+   may have run, but it does not make the multi-destination OneDrive/local
+   transaction globally atomic; remote rollback must not be assumed.
+5. Only after operator verification and an explicit authorized recovery
+   decision may the precise stale lock files be removed, one by one. Record
+   evidence of the condition and action in the relevant run/incident log.
+   Re-plan against CURRENT state before any further controlled publication.
+
+Lock files remaining on error are intentionally not auto-removed even after
+successful local rollback: a prior OneDrive step might already have changed
+the canonical cloud target. CI only exercises synthetic/no-network cases.
+Real publication readiness needs a separate gate, independent code review,
+and verification of launcher/work-root/destination permissions.
