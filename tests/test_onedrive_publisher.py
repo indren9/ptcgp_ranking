@@ -637,3 +637,145 @@ def test_f08r3_rejects_incomplete_but_equal_window(tmp_path, missing):
         with pytest.raises(ValueError, match="five identity fields"):
             guard.assert_plan(truncated)
         guard.mark_clean()
+
+
+
+def _f08r4_directory_alias(link: Path, destination: Path) -> None:
+    """Use a Windows junction when needed; POSIX exercises directory symlinks."""
+    import os
+    import subprocess
+
+    link.parent.mkdir(parents=True, exist_ok=True)
+    destination.mkdir(parents=True, exist_ok=True)
+    if os.name == "nt":
+        result = subprocess.run(
+            ["cmd.exe", "/c", "mklink", "/J", str(link), str(destination)],
+            capture_output=True, text=True, check=False,
+        )
+        if result.returncode:
+            pytest.skip(f"Windows junction unavailable: {result.stderr.strip()}")
+        assert link.is_junction()
+    else:
+        try:
+            link.symlink_to(destination, target_is_directory=True)
+        except (OSError, NotImplementedError) as exc:
+            pytest.skip(f"POSIX directory symlink unavailable: {exc}")
+        assert link.is_symlink()
+
+
+def _f08r4_pocket_attempt(result, source_root, target, ranking, manifest):
+    return publish_transaction(
+        game="POCKET", source_root=source_root, target_root=target,
+        artifacts=(
+            PublicationArtifact(result.outputs["mars_ranking"], ranking, "ranking_csv"),
+            PublicationArtifact(result.outputs["run_manifest"], manifest, "manifest", True),
+        ),
+        allowed_paths=(ranking, manifest), manifest_relative_path=manifest,
+    )
+
+
+def test_f08r4_pocket_denies_lexical_tcg_junction_to_shared(tmp_path):
+    result, source = _pocket_result(tmp_path)
+    meta = tmp_path / "Meta"
+    shared = meta / "shared"
+    (shared / "manifest.json").parent.mkdir(parents=True)
+    (shared / "manifest.json").write_bytes(b"existing-shared")
+    _f08r4_directory_alias(meta / "TCG", shared)
+
+    with pytest.raises(PublicationError, match="POCKET cannot target a TCG"):
+        _f08r4_pocket_attempt(
+            result, source, meta / "TCG", "ranking.csv", "manifest.json",
+        )
+    assert (shared / "manifest.json").read_bytes() == b"existing-shared"
+    assert not (shared / "ranking.csv").exists()
+
+
+def test_f08r4_pocket_denies_physically_resolved_tcg_alias(tmp_path):
+    result, source = _pocket_result(tmp_path)
+    meta = tmp_path / "Meta"
+    protected = meta / "TCG"
+    _f08r4_directory_alias(meta / "shared", protected)
+
+    with pytest.raises(PublicationError, match="POCKET cannot target a TCG"):
+        _f08r4_pocket_attempt(
+            result, source, meta / "shared", "ranking.csv", "manifest.json",
+        )
+    assert not (protected / "ranking.csv").exists()
+    assert not (protected / "manifest.json").exists()
+
+
+@pytest.mark.parametrize("linked_relative", ["ranking", "manifest"])
+def test_f08r4_pocket_denies_linked_effective_artifact_or_manifest(
+    tmp_path, linked_relative
+):
+    result, source = _pocket_result(tmp_path)
+    meta = tmp_path / "Meta"
+    target = meta / "POCKET"
+    protected = meta / "TCG"
+    directory = "rankings" if linked_relative == "ranking" else "run"
+    _f08r4_directory_alias(target / directory, protected)
+    with pytest.raises(PublicationError, match="POCKET cannot target a TCG"):
+        _f08r4_pocket_attempt(
+            result, source, target, "rankings/ranking.csv", "run/manifest.json",
+        )
+    assert not (protected / "ranking.csv").exists()
+    assert not (protected / "manifest.json").exists()
+    assert not (target / "rankings" / "ranking.csv").exists()
+    assert not (target / "run" / "manifest.json").exists()
+
+
+def test_f08r4_legitimate_pocket_under_unrelated_tcg_ancestor(tmp_path):
+    result, _ = _pocket_result(tmp_path)
+    root = tmp_path / "TCG" / "unrelated" / "Meta"
+    published = publish_pocket_result(result, meta_root=root)
+    target = root / "POCKET" / "standard" / "B4a__Team_Rockets_Ambition"
+    assert published.status == "PASS"
+    assert (target / "rankings/mars/mars_ranking_latest.csv").is_file()
+    assert (target / "run/run_manifest_latest.json").is_file()
+
+
+def test_f08r4_authorized_tcg_rejects_aliased_tcg_root_even_with_lease(tmp_path):
+    bundle, plan = _write_tcg_bundle(tmp_path)
+    meta = tmp_path / "Meta"
+    physical = meta / "shared" / "TCG"
+    _f08r4_directory_alias(meta / "TCG", physical)
+    state = tmp_path / "state.json"
+    with publication_lock(
+        state_path=state, target_dir=tmp_path / "local-public",
+        onedrive_target=meta / "TCG",
+    ) as guard:
+        with pytest.raises(PublicationError, match="unaliased canonical TCG"):
+            publish_tcg_bundle(
+                bundle_dir=bundle, plan=plan, meta_root=meta, _lease=guard,
+            )
+        guard.mark_clean()
+    assert list(physical.iterdir()) == []
+    assert not state.exists()
+
+
+
+def test_f08r4_pocket_rejects_shared_physical_destination_of_tcg_junction(tmp_path):
+    result, source = _pocket_result(tmp_path)
+    meta = tmp_path / "Meta"
+    shared = meta / "shared"
+    _f08r4_directory_alias(meta / "TCG", shared)
+    with pytest.raises(PublicationError, match="POCKET cannot target a TCG"):
+        _f08r4_pocket_attempt(
+            result, source, shared, "ranking.csv", "manifest.json",
+        )
+    assert not (shared / "ranking.csv").exists()
+    assert not (shared / "manifest.json").exists()
+
+
+def test_f08r4_pocket_allows_unaliased_meta_shared(tmp_path):
+    result, source = _pocket_result(tmp_path)
+    meta = tmp_path / "Meta"
+    (meta / "TCG").mkdir(parents=True)
+    shared = meta / "shared"
+    response = _f08r4_pocket_attempt(
+        result, source, shared, "ranking.csv", "manifest.json",
+    )
+    assert response.status == "PASS"
+    assert (shared / "ranking.csv").is_file()
+    assert (shared / "manifest.json").is_file()
+    assert list((meta / "TCG").iterdir()) == []

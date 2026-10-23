@@ -95,7 +95,8 @@ def canonical_game_root(
         if configured
         else Path.home() / "OneDrive" / "Giochi" / "Pokemon" / "PTCGP" / "Meta"
     )
-    return (root / alias).resolve()
+    # Keep the declared alias visible to destination policy checks.
+    return root / alias
 
 
 def _relative_path(value: str) -> str:
@@ -104,6 +105,61 @@ def _relative_path(value: str) -> str:
     if path.is_absolute() or not path.parts or any(part in {"", ".", ".."} for part in path.parts):
         raise PublicationError(f"Unsafe publication relative path: {value!r}")
     return path.as_posix()
+
+
+def _destination_views(path: Path) -> tuple[Path, Path]:
+    """Return lexical absolute and physically resolved paths independently."""
+    declared = Path(path).expanduser()
+    lexical = Path(os.path.abspath(declared))
+    try:
+        physical = declared.resolve()
+    except (OSError, RuntimeError) as exc:
+        raise PublicationError("Cannot validate publication destination identity") from exc
+    return lexical, physical
+
+
+def _inside_tcg_namespace(path: Path) -> bool:
+    """The protected cloud namespace is Meta/TCG, not any ancestor TCG."""
+    parts = tuple(part.casefold() for part in path.parts)
+    return any(parts[i:i + 2] == ("meta", "tcg") for i in range(len(parts) - 1))
+
+
+def _physical_tcg_alias(lexical: Path, physical: Path) -> bool:
+    """Detect when Meta/TCG resolves to a sibling's physical target."""
+    for index, part in enumerate(lexical.parts):
+        if part.casefold() != "meta":
+            continue
+        tcg_declared = Path(*lexical.parts[:index + 1]) / "TCG"
+        try:
+            tcg_physical = tcg_declared.resolve()
+        except (OSError, RuntimeError) as exc:
+            raise PublicationError("Cannot validate canonical TCG alias") from exc
+        if physical == tcg_physical or tcg_physical in physical.parents:
+            return True
+    return False
+
+
+def _check_pocket_destination(target: Path, relative_paths: Iterable[str]) -> None:
+    lexical, physical = _destination_views(target)
+    if (
+        lexical.name.casefold() == "tcg"
+        or physical.name.casefold() == "tcg"
+        or _inside_tcg_namespace(lexical)
+        or _inside_tcg_namespace(physical)
+        or _physical_tcg_alias(lexical, physical)
+    ):
+        raise PublicationError("Publication game POCKET cannot target a TCG destination")
+    for proposed in relative_paths:
+        relative = _relative_path(proposed)
+        destination = target / Path(*PurePosixPath(relative).parts)
+        lexical, physical = _destination_views(destination)
+        if (
+            PurePosixPath(relative).parts[0].casefold() == "tcg"
+            or _inside_tcg_namespace(lexical)
+            or _inside_tcg_namespace(physical)
+            or _physical_tcg_alias(lexical, physical)
+        ):
+            raise PublicationError("Publication game POCKET cannot target a TCG destination")
 
 
 def sha256_file(path: Path) -> str:
@@ -263,23 +319,19 @@ def publish_transaction(
     publication_plan: Mapping[str, Any] | None = None,
 ) -> PublicationResult:
     source_root = source_root.resolve()
-    target_root = target_root.resolve()
+    declared_target = Path(target_root).expanduser()
+    lexical_target, physical_target = _destination_views(declared_target)
+    target_root = physical_target
     game_key = str(game).strip().upper()
     if game_key not in GAME_ALIASES:
         raise PublicationError(f"Unsupported publication game: {game!r}")
-    # Reject a false Pocket declaration aimed at an actual TCG root.
-    # The canonical TCG publication destination is the "TCG" directory;
-    # the Pocket API may still target arbitrary non-TCG test roots.
-    if game_key == "POCKET" and any(
-        part.casefold() == "tcg" for part in target_root.parts
+    if game_key == "PTCG" and (
+        lexical_target.name.casefold() != "tcg"
+        or physical_target.name.casefold() != "tcg"
+        or declared_target.is_symlink()
+        or declared_target.is_junction()
     ):
-        raise PublicationError(
-            "Publication game POCKET cannot target a TCG destination"
-        )
-    if game_key == "PTCG" and target_root.name.casefold() != "tcg":
-        raise PublicationError(
-            "TCG publication must target the canonical TCG directory"
-        )
+        raise PublicationError("TCG publication requires an unaliased canonical TCG directory")
     # The generic writer must not be a backdoor into unlocked TCG files.
     if game_key == "PTCG":
         if publication_lease is None:
@@ -299,19 +351,13 @@ def publish_transaction(
     if not items:
         raise PublicationError("Publication artifact set is empty")
 
-    # Check effective output destinations, never only the caller-supplied
-    # target root. A Pocket alias cannot write Meta/TCG/file via relative
-    # artifact paths or a manipulated allowlist.
+    # Validate BOTH lexical and physical identities before staging or writes.
+    # In particular, never erase Meta/TCG by resolving a link first.
     if game_key == "POCKET":
-        for proposed in (
-            *(_relative_path(item.relative_path) for item in items),
-            manifest_relative_path,
-        ):
-            effective = (target_root / Path(*PurePosixPath(proposed).parts)).resolve()
-            if any(part.casefold() == "tcg" for part in effective.parts):
-                raise PublicationError(
-                    "Publication game POCKET cannot target a TCG destination"
-                )
+        _check_pocket_destination(
+            declared_target,
+            (*(_relative_path(item.relative_path) for item in items), manifest_relative_path),
+        )
 
     tcg_snapshot = None
     if game_key == "PTCG":

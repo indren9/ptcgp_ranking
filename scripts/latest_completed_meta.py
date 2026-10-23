@@ -4,6 +4,7 @@ import argparse
 import csv
 import hashlib
 import json
+import os
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -18,6 +19,25 @@ README_START = "<!-- latest-completed-meta:start -->"
 README_END = "<!-- latest-completed-meta:end -->"
 REQUIRED_BUNDLE_FILES = ("fragment.md", "heatmap.png", "ranking.csv", "manifest.json")
 PUBLIC_BUNDLE_FILES = ("heatmap.png", "ranking.csv", "manifest.json")
+
+
+def _check_pocket_public_destination(target_dir: Path) -> None:
+    """Reject the protected TCG public tree before any legacy Pocket write."""
+    declared = Path(target_dir).expanduser()
+    lexical = Path(os.path.abspath(declared))
+    try:
+        resolved = declared.resolve()
+    except (OSError, RuntimeError) as exc:
+        raise ValueError("Cannot validate public destination identity") from exc
+
+    def is_tcg_public(path: Path) -> bool:
+        parts = tuple(part.casefold() for part in path.parts)
+        return any(parts[i:i + 2] == ("public", "tcg-live") for i in range(len(parts) - 1))
+
+    if is_tcg_public(lexical) or is_tcg_public(resolved):
+        raise ValueError("Pocket publisher cannot target protected TCG public namespace")
+
+
 PUBLIC_RANKING_COLUMNS = (
     "Rank",
     "Deck",
@@ -251,6 +271,7 @@ def publish_bundle(
     target_dir: Path,
     dry_run: bool = False,
 ) -> dict[str, Any]:
+    _check_pocket_public_destination(target_dir)
     plan = read_json(plan_path)
     validate_bundle(bundle_dir, plan)
     updated_readme = replace_readme_block(
