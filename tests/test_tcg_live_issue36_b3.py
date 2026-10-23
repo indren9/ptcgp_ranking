@@ -46,7 +46,7 @@ def _plan(state=None, when=WHEN):
 
 def _fixture(
     tmp_path, *, window=None, revision="synthetic-revision",
-    identity_override=None,
+    identity_override=None, publish=False,
 ):
     config = tmp_path / "config.yaml"
     config.write_text("effective: tcg\n", encoding="utf-8")
@@ -60,7 +60,7 @@ def _fixture(
         revision=revision,
     )
     transaction_root = candidate_workspace(
-        work_root=tmp_path, identity=identity
+        work_root=tmp_path, identity=identity, publish=publish
     )
     source = (
         transaction_root / "source-output" / "TCG" / "PBL__Pitch_Black"
@@ -833,3 +833,160 @@ def test_b3r3_job_first_run_and_reuse_report_same_two_run_ids(
     assert len(acquisition_calls) == 1
     for key in ("canonical_live_run_id", "offline_run_id"):
         assert first[key] == second[key]
+
+
+@pytest.mark.parametrize(
+    "mode", ("success", "stale", "onedrive-fail", "local-fail")
+)
+def test_f08_job_shared_lease_encloses_both_publishers_and_stale_guard(
+    tmp_path, monkeypatch, mode,
+):
+    """Whole publishing control path stays mocked: no LIVE or OneDrive writes."""
+    from types import SimpleNamespace
+    from scripts.tcg_live_publication_lock import (
+        PublicationLockedError, publication_lock, publication_lock_path,
+    )
+
+    state = tmp_path / "state.json"
+    initial_state = {"published_completed_window": {"code": "OLD"}}
+    state.write_text(json.dumps(initial_state), encoding="utf-8")
+    started = datetime(2026, 9, 6, 10, tzinfo=UTC)
+    selected = build_plan(
+        catalog_path=ROOT / "data/reference/ptcg_live_windows.json",
+        state=initial_state,
+        acquisition_started_at=started,
+    )
+    revision = "f08-offline-mock-revision"
+    identity = candidate_identity(
+        window=selected["latest_completed_window"],
+        config_path=ROOT / "config/tcg.yaml",
+        catalog_path=ROOT / "data/reference/ptcg_live_windows.json",
+        revision=revision,
+    )
+    env = _fixture(
+        tmp_path, window=selected["latest_completed_window"],
+        revision=revision, identity_override=identity, publish=True,
+    )
+    _producer_v2_manifest_pair(env)
+    local = tmp_path / "public-local"
+    remote = tmp_path / "fake-OneDrive" / "TCG"
+    event_order = []
+
+    monkeypatch.setattr(job, "_git_revision", lambda _: revision)
+    monkeypatch.setattr(
+        job, "run_limitless_api_acquisition",
+        lambda **kw: SimpleNamespace(
+            manifest=SimpleNamespace(run_id=LIVE_RUN_ID)
+        ),
+    )
+    monkeypatch.setattr(
+        job, "persist_canonical_raw_run",
+        lambda *a, **kw: SimpleNamespace(
+            manifest_key="synthetic/" + LIVE_RUN_ID + "/manifest.json"
+        ),
+    )
+    monkeypatch.setattr(
+        job, "restore_canonical_raw_run", lambda *a, **kw: None
+    )
+
+    def core(**kw):
+        _producer_v2_manifest_pair(env)
+        if mode == "stale":
+            state.write_text(
+                json.dumps({"published_completed_window": {"code": "OTHER"}}),
+                encoding="utf-8",
+            )
+        return SimpleNamespace(
+            diagnostics={
+                "tournament_api_run_id": OFFLINE_RUN_ID,
+                "tournament_api_network_calls": 0,
+                "mars_rows": 1,
+            },
+            paths=SimpleNamespace(outputs=env["source_run"]),
+            expansion="PTCG", outputs=env["outputs"],
+        )
+
+    monkeypatch.setattr(job, "run_deck_ranking", core)
+    monkeypatch.setattr(
+        job, "base_for_expansion", lambda *a: env["source_run"]
+    )
+    monkeypatch.setattr(
+        job, "build_tcg_live_bundle", lambda **kw: None
+    )
+    monkeypatch.setattr(
+        job, "onedrive_publication_enabled", lambda cfg: True
+    )
+    monkeypatch.setattr(
+        job, "canonical_game_root", lambda game: remote
+    )
+
+    def one_drive(**kw):
+        assert publication_lock_path(state).is_file()
+        assert local.with_name(local.name + ".publication.lock").is_file()
+        assert remote.with_name(remote.name + ".publication.lock").is_file()
+        with pytest.raises(PublicationLockedError, match="lock exists"):
+            with publication_lock(
+                state_path=tmp_path / "another-state.json",
+                target_dir=tmp_path / "another-public",
+                onedrive_target=remote,
+            ):
+                pytest.fail("another OneDrive publisher entered")
+        event_order.append("onedrive")
+        if mode == "onedrive-fail":
+            raise RuntimeError("simulated OneDrive failure")
+        return SimpleNamespace(
+            to_dict=lambda: {
+                "status": "PASS", "published": ("ranking.csv",),
+                "skipped_identical": (),
+            }
+        )
+
+    def local_publish(**kw):
+        kw["_lease"].assert_destination(
+            state_path=state, target_dir=local
+        )
+        event_order.append("local")
+        if mode == "local-fail":
+            raise RuntimeError("simulated local failure after OneDrive")
+        return {"dry_run": False}
+
+    monkeypatch.setattr(job, "publish_tcg_bundle", one_drive)
+    monkeypatch.setattr(job, "publish_tcg_live_bundle", local_publish)
+
+    if mode == "success":
+        outcome = job.run_job(
+            repo_root=ROOT, work_root=tmp_path, state_path=state,
+            acquisition_started_at=started, backend_factory=lambda: object(),
+            publish=True, public_target=local,
+        )
+        assert outcome["published"] is True
+        assert event_order == ["onedrive", "local"]
+        assert not publication_lock_path(state).exists()
+        assert not remote.with_name(remote.name + ".publication.lock").exists()
+        assert not local.with_name(local.name + ".publication.lock").exists()
+    else:
+        message = {
+            "stale": "state changed after planning",
+            "onedrive-fail": "simulated OneDrive failure",
+            "local-fail": "simulated local failure",
+        }[mode]
+        with pytest.raises(RuntimeError, match=message):
+            job.run_job(
+                repo_root=ROOT, work_root=tmp_path, state_path=state,
+                acquisition_started_at=started, backend_factory=lambda: object(),
+                publish=True, public_target=local,
+            )
+        if mode == "stale":
+            assert event_order == []
+            assert not publication_lock_path(state).exists()
+        else:
+            assert event_order == (
+                ["onedrive"] if mode == "onedrive-fail"
+                else ["onedrive", "local"]
+            )
+            assert publication_lock_path(state).is_file()
+            with pytest.raises(PublicationLockedError):
+                with publication_lock(
+                    state_path=state, target_dir=local, onedrive_target=remote
+                ):
+                    pytest.fail("unsafe automatic retry entered")
