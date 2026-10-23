@@ -243,10 +243,23 @@ def publish_tcg_live_bundle(
         name: (bundle_dir / name).read_bytes()
         for name in PUBLIC_FILES
     }
-    _lease.assert_bundle_hashes({
+    hashes = {
         name: hashlib.sha256(payload).hexdigest()
         for name, payload in payloads.items()
-    })
+    }
+    manifest = json.loads(payloads["manifest.json"].decode("utf-8"))
+    release = manifest.get("set") or {}
+    window = plan["latest_completed_window"]
+    if (
+        str(release.get("code") or "") != str(window.get("code") or "")
+        or str(release.get("name") or "") != str(window.get("name") or "")
+    ):
+        raise ValueError("TCG local manifest identity does not match release plan")
+    outputs = manifest.get("outputs") or {}
+    for key, filename in (("ranking", "ranking.csv"), ("heatmap", "heatmap.png")):
+        if (outputs.get(key) or {}).get("sha256") != hashes[filename]:
+            raise ValueError("TCG local bundle content differs from its manifest")
+    _lease.assert_bundle_hashes(hashes)
     snapshot = _snapshot(
         target_dir=target_dir,
         state_path=state_path,
