@@ -504,6 +504,7 @@ def run_job(
                         onedrive_publication_result = publish_tcg_bundle(
                             bundle_dir=bundle_dir,
                             plan=plan,
+                            _lease=publication_lease,
                         ).to_dict()
                     except Exception:
                         log.exception("ONEDRIVE_PUBLICATION = FAIL")
