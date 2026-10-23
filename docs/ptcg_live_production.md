@@ -424,8 +424,28 @@ enabled, the canonical OneDrive TCG directory. Exclusive lock files live next
 to each destination, so different candidate identities, different work roots,
 and different state paths pointing to one public directory cannot bypass the
 conflict check. Lock acquisition order is deterministic. A collision refuses
-the second transaction before it can alter public state or OneDrive. Direct
-local TCG publication and direct TCG OneDrive publication are also guarded.
+the second transaction before it can alter public state or OneDrive.
+
+**F-08-R1 direct publisher contract:** standalone TCG writes are deliberately
+**forbidden**: `publish_tcg_live_bundle` and `publish_tcg_bundle` accept writes
+only with the same active full-destination `PublicationLease` supplied by a
+coordinator. The underlying `publish_transaction(game="PTCG")` requires
+both that lease and the same complete plan; Pocket's generic interface is
+unchanged. The plan now includes `state_before_publish` (the original state
+snapshot, or null if none) alongside its existing release and next state.
+The first writer binds the lease to **one complete plan**, validates CURRENT
+state under the locks, and subsequent writers must present the identical
+plan. The local publisher also rechecks freshness immediately before public
+file/state writes. An old A plan after successful publication B cannot be
+applied, even by invoking the local publisher directly. An invocation without
+a coordinator is rejected before any public write.
+
+This intentionally changes the TCG direct-call interface for safety; it
+does not change the Pocket publisher, Core/MARS I/O, or production artifacts.
+It does **not** imply that separate independent direct local and OneDrive
+calls constitute an end-to-end snapshot. They are no longer permitted to
+write separately. `run_job` is the coordinator for intentional TCG release
+publication (still not authorized to execute as part of Issue #36).
 
 **Scope of exclusion:** this is an OS-filesystem `O_EXCL` lock for processes
 observing the **same filesystem namespace**. OneDrive sync is **not** a
