@@ -430,3 +430,108 @@ def test_f08r1_direct_cloud_without_coordinator_never_writes(tmp_path):
     with pytest.raises(PublicationLockedError, match="coordinated"):
         publish_tcg_bundle(bundle_dir=bundle, plan=plan, meta_root=root)
     assert not (root / "TCG" / "manifest.json").exists()
+
+
+def test_f08r2_cloud_bundle_b_and_local_bundle_a_fail_under_same_plan(tmp_path):
+    """Identical plan and lease must never permit different public bytes."""
+    from scripts.tcg_live_publication import publish_tcg_live_bundle
+
+    cloud_bundle, plan = _write_tcg_bundle(tmp_path / "cloud")
+    local_bundle, _ = _write_tcg_bundle(tmp_path / "local")
+    ranking = cloud_bundle / "ranking.csv"
+    ranking.write_bytes(ranking.read_bytes().replace(b"Test Deck", b"Cloud Deck"))
+    manifest = json.loads((cloud_bundle / "manifest.json").read_text(encoding="utf-8"))
+    manifest["outputs"]["ranking"]["sha256"] = sha256_file(ranking)
+    (cloud_bundle / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    root = tmp_path / "canonical"
+    remote = root / "TCG"
+    state = tmp_path / "state.json"
+    local_target = tmp_path / "public-local"
+    with publication_lock(
+        state_path=state, target_dir=local_target, onedrive_target=remote
+    ) as guard:
+        result = publish_tcg_bundle(
+            bundle_dir=cloud_bundle, plan=plan, meta_root=root, _lease=guard
+        )
+        assert result.status == "PASS"
+        with pytest.raises(PublicationLockedError, match="identical public bundle"):
+            publish_tcg_live_bundle(
+                bundle_dir=local_bundle, plan=plan, state_path=state,
+                target_dir=local_target, _lease=guard,
+            )
+    # Cloud may have changed, so transaction locks persist for manual recovery.
+    assert (remote / "manifest.json").is_file()
+    assert not state.exists()
+    assert not local_target.exists()
+    assert publication_lock_path(state).exists()
+
+
+def test_f08r2_generic_tcg_bundle_manifest_release_mismatch_is_rejected(tmp_path):
+    bundle, plan = _write_tcg_bundle(tmp_path)
+    manifest_path = bundle / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["set"]["name"] = "Another release with same code"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    target = tmp_path / "canonical" / "TCG"
+    artifacts = (
+        PublicationArtifact(bundle / "ranking.csv", "ranking.csv", "ranking_csv"),
+        PublicationArtifact(bundle / "heatmap.png", "heatmap.png", "png"),
+        PublicationArtifact(bundle / "manifest.json", "manifest.json", "manifest", True),
+    )
+    with publication_lock(
+        state_path=tmp_path / "state.json",
+        target_dir=tmp_path / "local-target",
+        onedrive_target=target,
+    ) as guard:
+        with pytest.raises(PublicationError, match="bundle identity"):
+            publish_transaction(
+                game="PTCG", source_root=bundle, target_root=target,
+                artifacts=artifacts, allowed_paths=TCG_PUBLIC_PATHS,
+                manifest_relative_path="manifest.json",
+                publication_lease=guard, publication_plan=plan,
+            )
+        assert not target.exists()
+        guard.mark_clean()
+
+
+def test_f08r2_pocket_game_cannot_publish_into_tcg_destination(tmp_path):
+    result, source_root = _pocket_result(tmp_path)
+    target = tmp_path / "canonical" / "TCG"
+    with pytest.raises(PublicationError, match="POCKET cannot target a TCG"):
+        publish_transaction(
+            game="POCKET", source_root=source_root,
+            target_root=target,
+            artifacts=(
+                PublicationArtifact(
+                    result.outputs["mars_ranking"],
+                    "rankings/mars/mars_ranking_latest.csv", "ranking_csv",
+                ),
+                PublicationArtifact(
+                    result.outputs["run_manifest"],
+                    "run/run_manifest_latest.json", "manifest", True,
+                ),
+            ),
+            allowed_paths=POCKET_ALLOWED_PATHS,
+            manifest_relative_path="run/run_manifest_latest.json",
+        )
+    assert not target.exists()
+
+
+def test_f08r2_lease_rejects_plan_with_wrong_published_window(tmp_path):
+    bundle, plan = _write_tcg_bundle(tmp_path)
+    wrong = json.loads(json.dumps(plan))
+    wrong["state_after_publish"]["published_completed_window"]["code"] = "PBL"
+    remote = tmp_path / "canonical" / "TCG"
+    with publication_lock(
+        state_path=tmp_path / "state.json",
+        target_dir=tmp_path / "public",
+        onedrive_target=remote,
+    ) as guard:
+        with pytest.raises(ValueError, match="state window does not match"):
+            publish_tcg_bundle(
+                bundle_dir=bundle, plan=wrong,
+                meta_root=tmp_path / "canonical", _lease=guard,
+            )
+        assert not remote.exists()
+        guard.mark_clean()
