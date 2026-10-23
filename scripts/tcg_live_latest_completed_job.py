@@ -36,6 +36,7 @@ from scripts.tcg_live_publication import (
     build_tcg_live_bundle,
     publish_tcg_live_bundle,
 )
+from scripts.tcg_live_publication_lock import publication_lock
 from sources.limitless.tournament_api.object_store import (
     S3ObjectStoreBackend,
     persist_canonical_raw_run,
@@ -468,22 +469,6 @@ def run_job(
             )
             log.info("LOCAL_PRODUCTION = PASS")
     
-            if onedrive_publication_enabled(cfg):
-                try:
-                    onedrive_publication_result = publish_tcg_bundle(
-                        bundle_dir=bundle_dir,
-                        plan=plan,
-                    ).to_dict()
-                except Exception:
-                    log.exception("ONEDRIVE_PUBLICATION = FAIL")
-                    raise
-                log.info(
-                    "ONEDRIVE_PUBLICATION = %s | published=%d | skipped_identical=%d",
-                    onedrive_publication_result["status"],
-                    len(onedrive_publication_result["published"]),
-                    len(onedrive_publication_result["skipped_identical"]),
-                )
-    
             target = (
                 public_target
                 or repo_root
@@ -491,14 +476,48 @@ def run_job(
                 / "tcg-live"
                 / "latest-meta"
             )
-    
-            publication_result = publish_tcg_live_bundle(
-                bundle_dir=bundle_dir,
-                plan=plan,
-                state_path=state_path,
-                target_dir=target,
-                dry_run=False,
-            )
+
+            # Both OneDrive and local/state writers must share one lease.
+            # Candidate-specific locks alone do not serialize publishers.
+            with publication_lock(
+                state_path=state_path, target_dir=target
+            ) as publication_lease:
+                # Acquisition can take time: a prior publisher may have
+                # advanced state while this candidate was being prepared.
+                # Refuse to publish a stale plan before any public writes.
+                if read_json(state_path, missing=None) != state:
+                    publication_lease.mark_clean()
+                    raise RuntimeError(
+                        "TCG publication state changed after planning; "
+                        "re-plan explicitly before publication"
+                    )
+
+                if onedrive_publication_enabled(cfg):
+                    try:
+                        onedrive_publication_result = publish_tcg_bundle(
+                            bundle_dir=bundle_dir,
+                            plan=plan,
+                        ).to_dict()
+                    except Exception:
+                        log.exception("ONEDRIVE_PUBLICATION = FAIL")
+                        raise
+                    log.info(
+                        "ONEDRIVE_PUBLICATION = %s | published=%d | skipped_identical=%d",
+                        onedrive_publication_result["status"],
+                        len(onedrive_publication_result["published"]),
+                        len(onedrive_publication_result["skipped_identical"]),
+                    )
+
+                publication_result = publish_tcg_live_bundle(
+                    bundle_dir=bundle_dir,
+                    plan=plan,
+                    state_path=state_path,
+                    target_dir=target,
+                    dry_run=False,
+                    _lease=publication_lease,
+                )
+                # Only after the complete destination sequence succeeded.
+                publication_lease.mark_clean()
     
         return {
             "action": (
