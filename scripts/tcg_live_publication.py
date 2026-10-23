@@ -10,6 +10,7 @@ from typing import Any, Mapping
 
 from scripts.latest_completed_meta import validate_bundle
 from scripts.latest_completed_meta_producer import build_bundle
+from scripts.tcg_live_publication_snapshot import validated_tcg_snapshot
 from scripts.tcg_live_publication_lock import (
     PublicationLease,
     PublicationLockedError,
@@ -195,10 +196,9 @@ def publish_tcg_live_bundle(
     dry_run: bool = False,
     _lease: PublicationLease | None = None,
 ) -> dict[str, Any]:
-    validate_bundle(
-        bundle_dir,
-        _validation_plan(plan),
-    )
+    # Validate exact read-once bytes, not a mutable path that is read
+    # again later. The same payloads are retained for local writes.
+    validated = validated_tcg_snapshot(bundle_dir, plan)
 
     state = plan.get("state_after_publish")
 
@@ -237,29 +237,9 @@ def publish_tcg_live_bundle(
         raise RuntimeError(
             "TCG publication state changed after planning; re-plan required"
         )
-    # Read the actual bytes once: the same hash-bound payload is written.
-    # A second coordinated publisher may not substitute a different bundle.
-    payloads = {
-        name: (bundle_dir / name).read_bytes()
-        for name in PUBLIC_FILES
-    }
-    hashes = {
-        name: hashlib.sha256(payload).hexdigest()
-        for name, payload in payloads.items()
-    }
-    manifest = json.loads(payloads["manifest.json"].decode("utf-8"))
-    release = manifest.get("set") or {}
-    window = plan["latest_completed_window"]
-    if (
-        str(release.get("code") or "") != str(window.get("code") or "")
-        or str(release.get("name") or "") != str(window.get("name") or "")
-    ):
-        raise ValueError("TCG local manifest identity does not match release plan")
-    outputs = manifest.get("outputs") or {}
-    for key, filename in (("ranking", "ranking.csv"), ("heatmap", "heatmap.png")):
-        if (outputs.get(key) or {}).get("sha256") != hashes[filename]:
-            raise ValueError("TCG local bundle content differs from its manifest")
-    _lease.assert_bundle_hashes(hashes)
+    # Source files cannot change these validated in-memory bytes.
+    payloads = validated.payloads
+    _lease.assert_bundle_hashes(validated.hashes)
     snapshot = _snapshot(
         target_dir=target_dir,
         state_path=state_path,
