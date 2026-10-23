@@ -237,6 +237,16 @@ def publish_tcg_live_bundle(
         raise RuntimeError(
             "TCG publication state changed after planning; re-plan required"
         )
+    # Read the actual bytes once: the same hash-bound payload is written.
+    # A second coordinated publisher may not substitute a different bundle.
+    payloads = {
+        name: (bundle_dir / name).read_bytes()
+        for name in PUBLIC_FILES
+    }
+    _lease.assert_bundle_hashes({
+        name: hashlib.sha256(payload).hexdigest()
+        for name, payload in payloads.items()
+    })
     snapshot = _snapshot(
         target_dir=target_dir,
         state_path=state_path,
@@ -246,7 +256,7 @@ def publish_tcg_live_bundle(
         for name in PUBLIC_FILES:
             _atomic_write(
                 target_dir / name,
-                (bundle_dir / name).read_bytes(),
+                payloads[name],
             )
 
         _atomic_write(
