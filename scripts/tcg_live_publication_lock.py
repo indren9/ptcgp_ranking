@@ -75,9 +75,18 @@ class PublicationLease:
             or not isinstance(plan.get("state_after_publish"), Mapping)
         ):
             raise ValueError("TCG publication requires a complete freshness-bound plan")
+        window = plan["latest_completed_window"]
+        required_window = ("code", "name", "start", "end", "catalog_version")
+        if any(
+            key not in window
+            or not isinstance(window[key], str)
+            or not window[key].strip()
+            for key in required_window
+        ):
+            raise ValueError("TCG completed release window must include all five identity fields")
         if (
             dict(plan["state_after_publish"]).get("published_completed_window")
-            != dict(plan["latest_completed_window"])
+            != dict(window)
         ):
             raise ValueError(
                 "TCG publication state window does not match planned window"
