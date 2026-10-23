@@ -500,3 +500,32 @@ successful local rollback: a prior OneDrive step might already have changed
 the canonical cloud target. CI only exercises synthetic/no-network cases.
 Real publication readiness needs a separate gate, independent code review,
 and verification of launcher/work-root/destination permissions.
+
+
+**F-08-R3 verified-byte and effective-target contract (DRAFT ONLY):**
+
+- The generic writer checks the final effective destination
+  (`target_root / artifact.relative_path`), not only the declared target
+  root, before allowing a Pocket write. A `TCG/...` relative path cannot
+  evade the TCG lease using `game="POCKET"`.
+- The generic TCG entrypoint requires each `PublicationArtifact.source`
+  to identify exactly `source_root/<public_filename>` with the expected
+  name, kind and manifest flag. It cannot validate bundle A then choose
+  nested artifact B.
+- Both TCG writers validate a **read-once snapshot** consisting of
+  `ranking.csv`, `heatmap.png`, `manifest.json` and `fragment.md`,
+  using the existing canonical `validate_bundle` on isolated copies.
+  They additionally require the manifest game `PTCG`, format `standard`
+  and matching release code/name. The cloud publisher stages precisely
+  those validated in-memory bytes and checks staged SHA-256 before replacing
+  canonical targets; the local publisher writes the same validated bytes
+  without re-reading mutable source files.
+- Every completed-window identity supplied to a TCG publication lease must
+  contain nonempty `code`, `name`, `start`, `end` and
+  `catalog_version`, consistent with the current completed-window planner.
+  The full window must equal the state recorded for publication.
+- This is a strictly TCG publication-API safety change. Standard Pocket
+  sources, canonical I/O, scientific methodology and approved/FROZEN
+  artifacts are not modified. The cloud/local operation is still not a
+  globally atomic transaction, and the filesystem lock is not distributed
+  across independently synchronized OneDrive devices.
