@@ -47,6 +47,7 @@ from sources.limitless.tournament_api.release_catalog import (
 )
 from storage.routing import base_for_expansion
 from storage.onedrive_publisher import (
+    canonical_game_root,
     onedrive_publication_enabled,
     publish_tcg_bundle,
 )
@@ -480,7 +481,13 @@ def run_job(
             # Both OneDrive and local/state writers must share one lease.
             # Candidate-specific locks alone do not serialize publishers.
             with publication_lock(
-                state_path=state_path, target_dir=target
+                state_path=state_path,
+                target_dir=target,
+                onedrive_target=(
+                    canonical_game_root("PTCG")
+                    if onedrive_publication_enabled(cfg)
+                    else None
+                ),
             ) as publication_lease:
                 # Acquisition can take time: a prior publisher may have
                 # advanced state while this candidate was being prepared.
