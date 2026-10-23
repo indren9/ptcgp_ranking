@@ -417,3 +417,44 @@ def test_f08r1_local_direct_without_coordinator_denied_no_artifacts(tmp_path):
     assert not state.exists()
     assert not target.exists()
     assert not publication_lock_path(state).exists()
+
+
+def test_f08r1_one_lease_cannot_write_two_different_release_plans(tmp_path):
+    bundle = fake_bundle(tmp_path / "bundle")
+    state = tmp_path / "state.json"
+    target = tmp_path / "local-public"
+    remote = tmp_path / "OneDrive" / "TCG"
+    a = plan()
+    b = plan()
+    b["state_after_publish"]["updated_at"] = "2026-10-24T00:00:00Z"
+    with publication_lock(
+        state_path=state, target_dir=target, onedrive_target=remote
+    ) as lease:
+        # Equivalent to the first (OneDrive) writer reserving release A.
+        lease.assert_onedrive_target(remote)
+        lease.assert_plan(a)
+        with pytest.raises(PublicationLockedError, match="same release plan"):
+            publish_tcg_live_bundle(
+                bundle_dir=bundle, plan=b, state_path=state,
+                target_dir=target, _lease=lease,
+            )
+        assert not state.exists()
+        assert not (target / "manifest.json").exists()
+        lease.mark_clean()
+    assert not publication_lock_path(state).exists()
+
+
+def test_f08r1_local_rejects_unbound_or_unverifiable_plan(tmp_path):
+    bundle = fake_bundle(tmp_path / "bundle")
+    state, target = tmp_path / "state.json", tmp_path / "public"
+    missing = plan()
+    del missing["state_before_publish"]
+    with publication_lock(state_path=state, target_dir=target) as lease:
+        with pytest.raises(ValueError, match="freshness-bound plan"):
+            publish_tcg_live_bundle(
+                bundle_dir=bundle, plan=missing, state_path=state,
+                target_dir=target, _lease=lease,
+            )
+        assert not state.exists()
+        assert not target.exists()
+        lease.mark_clean()
