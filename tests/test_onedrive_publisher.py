@@ -8,6 +8,10 @@ from types import SimpleNamespace
 from openpyxl import Workbook
 import pytest
 
+from scripts.tcg_live_publication_lock import (
+    PublicationLockedError,
+    publication_lock,
+)
 from scripts.latest_completed_meta import PUBLIC_RANKING_COLUMNS
 from storage.onedrive_publisher import (
     POCKET_ALLOWED_PATHS,
@@ -295,3 +299,49 @@ def test_successful_publication_never_deletes_local_sources(tmp_path):
     after = {path.relative_to(source): sha256_file(path) for path in source.rglob("*") if path.is_file()}
 
     assert after == before
+
+
+def test_f08_tcg_direct_onedrive_writer_collides_with_job_lease(tmp_path):
+    bundle, plan = _write_tcg_bundle(tmp_path)
+    destination_root = tmp_path / "canonical"
+    remote = destination_root / "TCG"
+    with publication_lock(
+        state_path=tmp_path / "state.json",
+        target_dir=tmp_path / "local-public",
+        onedrive_target=remote,
+    ) as guard:
+        with pytest.raises(PublicationLockedError):
+            publish_tcg_bundle(
+                bundle_dir=bundle, plan=plan, meta_root=destination_root
+            )
+        assert not (remote / "manifest.json").exists()
+        # The coordinator can publish under the already-held lease.
+        result = publish_tcg_bundle(
+            bundle_dir=bundle, plan=plan, meta_root=destination_root,
+            _lease=guard,
+        )
+        assert result.status == "PASS"
+        guard.mark_clean()
+    assert not remote.with_name(remote.name + ".publication.lock").exists()
+
+
+def test_f08_tcg_direct_onedrive_partial_failure_keeps_lock(tmp_path):
+    bundle, plan = _write_tcg_bundle(tmp_path)
+    destination_root = tmp_path / "canonical"
+    remote = destination_root / "TCG"
+
+    def interrupt(stage, artifact):
+        if stage == "after_canonical_replace" and not artifact.manifest:
+            raise RuntimeError("synthetic interrupted OneDrive writer")
+
+    with pytest.raises(PublicationError, match="synthetic interrupted"):
+        publish_tcg_bundle(
+            bundle_dir=bundle, plan=plan, meta_root=destination_root,
+            failure_injector=interrupt,
+        )
+    lock = remote.with_name(remote.name + ".publication.lock")
+    assert lock.exists()
+    with pytest.raises(PublicationLockedError):
+        publish_tcg_bundle(
+            bundle_dir=bundle, plan=plan, meta_root=destination_root
+        )
