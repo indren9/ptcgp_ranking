@@ -120,6 +120,7 @@ def plan():
 
     return {
         "latest_completed_window": window,
+        "state_before_publish": None,
         "state_after_publish": {
             "schema_version": 1,
             "game": "PTCG",
@@ -146,12 +147,15 @@ def test_publication_is_separate_from_pocket(
         / "latest-meta"
     )
 
-    result = publish_tcg_live_bundle(
-        bundle_dir=bundle,
-        plan=plan(),
-        state_path=state,
-        target_dir=target,
-    )
+    with publication_lock(state_path=state, target_dir=target) as guard:
+        result = publish_tcg_live_bundle(
+            bundle_dir=bundle,
+            plan=plan(),
+            state_path=state,
+            target_dir=target,
+            _lease=guard,
+        )
+        guard.mark_clean()
 
     assert result["dry_run"] is False
 
@@ -204,9 +208,12 @@ def test_f08_direct_publish_success_releases_all_destination_locks(tmp_path):
     bundle = fake_bundle(tmp_path / "bundle")
     state = tmp_path / "state.json"
     target = tmp_path / "public" / "latest-meta"
-    publish_tcg_live_bundle(
-        bundle_dir=bundle, plan=plan(), state_path=state, target_dir=target
-    )
+    with publication_lock(state_path=state, target_dir=target) as guard:
+        publish_tcg_live_bundle(
+            bundle_dir=bundle, plan=plan(), state_path=state,
+            target_dir=target, _lease=guard,
+        )
+        guard.mark_clean()
     assert state.is_file()
     assert not publication_lock_path(state).exists()
     assert not target.with_name(target.name + ".publication.lock").exists()
@@ -219,10 +226,13 @@ def test_f08_same_state_or_same_local_destination_blocks_before_write(tmp_path):
     other_state = tmp_path / "other-state.json"
     other_target = tmp_path / "another" / "latest-meta"
     with publication_lock(state_path=state, target_dir=target) as first:
-        with pytest.raises(PublicationLockedError, match="lock exists"):
+        with pytest.raises(PublicationLockedError, match="coordinated"):
             publish_tcg_live_bundle(
                 bundle_dir=bundle, plan=plan(), state_path=state, target_dir=target
             )
+        with pytest.raises(PublicationLockedError, match="lock exists"):
+            with publication_lock(state_path=state, target_dir=target):
+                pytest.fail("second coordinator entered")
         with pytest.raises(PublicationLockedError, match="lock exists"):
             with publication_lock(state_path=state, target_dir=other_target):
                 pytest.fail("same state acquired twice")
@@ -262,7 +272,11 @@ def test_f08_rollback_failure_retains_recovery_locks(tmp_path, monkeypatch):
     target.mkdir(parents=True)
     ranking = target / "ranking.csv"
     ranking.write_bytes(b"old public ranking")
-    state.write_bytes(b"old state")
+    old_state = {"published_completed_window": {"code": "OLD"}}
+    state.write_text(json.dumps(old_state), encoding="utf-8")
+    previous_state_bytes = state.read_bytes()
+    planned = plan()
+    planned["state_before_publish"] = old_state
     original = publisher._atomic_write
     fail_once = [True]
 
@@ -274,11 +288,14 @@ def test_f08_rollback_failure_retains_recovery_locks(tmp_path, monkeypatch):
 
     monkeypatch.setattr(publisher, "_atomic_write", interrupted_write)
     with pytest.raises(RuntimeError, match="simulated local"):
-        publish_tcg_live_bundle(
-            bundle_dir=bundle, plan=plan(), state_path=state, target_dir=target
-        )
+        with publication_lock(state_path=state, target_dir=target) as guard:
+            publish_tcg_live_bundle(
+                bundle_dir=bundle, plan=planned, state_path=state,
+                target_dir=target, _lease=guard,
+            )
+            guard.mark_clean()
     assert ranking.read_bytes() == b"old public ranking"
-    assert state.read_bytes() == b"old state"
+    assert state.read_bytes() == previous_state_bytes
     assert publication_lock_path(state).exists()
     assert target.with_name(target.name + ".publication.lock").exists()
     with pytest.raises(PublicationLockedError):
@@ -287,12 +304,15 @@ def test_f08_rollback_failure_retains_recovery_locks(tmp_path, monkeypatch):
         )
     # Simulated operator: after explicit verification of rollback/state only.
     assert ranking.read_bytes() == b"old public ranking"
-    assert state.read_bytes() == b"old state"
+    assert state.read_bytes() == previous_state_bytes
     publication_lock_path(state).unlink()
     target.with_name(target.name + ".publication.lock").unlink()
-    publish_tcg_live_bundle(
-        bundle_dir=bundle, plan=plan(), state_path=state, target_dir=target
-    )
+    with publication_lock(state_path=state, target_dir=target) as guard:
+        publish_tcg_live_bundle(
+            bundle_dir=bundle, plan=planned, state_path=state,
+            target_dir=target, _lease=guard,
+        )
+        guard.mark_clean()
     assert not publication_lock_path(state).exists()
 
 
@@ -338,4 +358,62 @@ def test_f08_independent_process_collision_on_same_destination(tmp_path):
         )
         assert result.returncode == 0, result.stderr
         lease.mark_clean()
+    assert not publication_lock_path(state).exists()
+
+
+def test_f08r1_local_stale_plan_a_after_published_b_never_regresses(tmp_path):
+    bundle_a = fake_bundle(tmp_path / "bundle-A")
+    bundle_b = fake_bundle(tmp_path / "bundle-B")
+    state = tmp_path / "state.json"
+    target = tmp_path / "public" / "latest-meta"
+    first = plan()
+    with publication_lock(state_path=state, target_dir=target) as guard:
+        publish_tcg_live_bundle(
+            bundle_dir=bundle_a, plan=first, state_path=state,
+            target_dir=target, _lease=guard,
+        )
+        guard.mark_clean()
+    state_a = json.loads(state.read_text(encoding="utf-8"))
+    second = plan()
+    second["state_before_publish"] = state_a
+    second["state_after_publish"] = dict(state_a)
+    second["state_after_publish"]["updated_at"] = "2026-10-23T10:00:00Z"
+    # Different output bytes make the regression visible on the public target.
+    ranking_b = bundle_b / "ranking.csv"
+    ranking_b.write_bytes(ranking_b.read_bytes().replace(b"deck-a", b"deck-b"))
+    manifest_b = json.loads((bundle_b / "manifest.json").read_text(encoding="utf-8"))
+    manifest_b["outputs"]["ranking"]["sha256"] = sha(ranking_b)
+    (bundle_b / "manifest.json").write_text(
+        json.dumps(manifest_b), encoding="utf-8"
+    )
+    with publication_lock(state_path=state, target_dir=target) as guard:
+        publish_tcg_live_bundle(
+            bundle_dir=bundle_b, plan=second, state_path=state,
+            target_dir=target, _lease=guard,
+        )
+        guard.mark_clean()
+    before_state = state.read_bytes()
+    before_files = {name: (target / name).read_bytes() for name in PUBLIC_FILES}
+    with publication_lock(state_path=state, target_dir=target) as guard:
+        with pytest.raises(RuntimeError, match="state changed after planning"):
+            publish_tcg_live_bundle(
+                bundle_dir=bundle_a, plan=first, state_path=state,
+                target_dir=target, _lease=guard,
+            )
+        guard.mark_clean()  # Preflight only; no file writes occurred.
+    assert state.read_bytes() == before_state
+    assert all((target / name).read_bytes() == before_files[name] for name in PUBLIC_FILES)
+
+
+def test_f08r1_local_direct_without_coordinator_denied_no_artifacts(tmp_path):
+    bundle = fake_bundle(tmp_path / "bundle")
+    state = tmp_path / "state.json"
+    target = tmp_path / "public"
+    with pytest.raises(PublicationLockedError, match="coordinated"):
+        publish_tcg_live_bundle(
+            bundle_dir=bundle, plan=plan(), state_path=state,
+            target_dir=target,
+        )
+    assert not state.exists()
+    assert not target.exists()
     assert not publication_lock_path(state).exists()
