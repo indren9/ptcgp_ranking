@@ -541,3 +541,98 @@ def test_f08r2_lease_rejects_plan_with_wrong_published_window(tmp_path):
             )
         assert not remote.exists()
         guard.mark_clean()
+
+
+def test_f08r3_pocket_relative_path_into_tcg_is_denied(tmp_path):
+    result, source_root = _pocket_result(tmp_path)
+    target = tmp_path / "canonical" / "Meta"
+    bad = "TCG/ranking.csv"
+    manifest = "TCG/manifest.json"
+    with pytest.raises(PublicationError, match="POCKET cannot target a TCG"):
+        publish_transaction(
+            game="POCKET", source_root=source_root, target_root=target,
+            artifacts=(
+                PublicationArtifact(result.outputs["mars_ranking"], bad, "ranking_csv"),
+                PublicationArtifact(result.outputs["run_manifest"], manifest, "manifest", True),
+            ),
+            allowed_paths=(bad, manifest),
+            manifest_relative_path=manifest,
+        )
+    assert not (target / bad).exists()
+    assert not (target / manifest).exists()
+
+
+def test_f08r3_tcg_artifacts_from_nested_subdir_not_validated_root(tmp_path):
+    import shutil
+    root, plan = _write_tcg_bundle(tmp_path)
+    nested = root / "other-artifacts"
+    nested.mkdir()
+    for name in ("ranking.csv", "heatmap.png", "manifest.json"):
+        shutil.copy2(root / name, nested / name)
+    target = tmp_path / "Meta" / "TCG"
+    with publication_lock(
+        state_path=tmp_path / "state.json",
+        target_dir=tmp_path / "local-public",
+        onedrive_target=target,
+    ) as guard:
+        with pytest.raises(PublicationError, match="exact validated bundle root"):
+            publish_transaction(
+                game="PTCG", source_root=root, target_root=target,
+                artifacts=(
+                    PublicationArtifact(nested / "ranking.csv", "ranking.csv", "ranking_csv"),
+                    PublicationArtifact(nested / "heatmap.png", "heatmap.png", "png"),
+                    PublicationArtifact(nested / "manifest.json", "manifest.json", "manifest", True),
+                ),
+                allowed_paths=TCG_PUBLIC_PATHS,
+                manifest_relative_path="manifest.json",
+                publication_lease=guard, publication_plan=plan,
+            )
+        assert not target.exists()
+        guard.mark_clean()
+
+
+def test_f08r3_generic_tcg_uses_validated_immutable_bytes_when_source_changes(
+    tmp_path, monkeypatch
+):
+    import storage.onedrive_publisher as publisher
+    root, plan = _write_tcg_bundle(tmp_path)
+    original = (root / "ranking.csv").read_bytes()
+    original_manifest = (root / "manifest.json").read_bytes()
+    real_freeze = publisher.validated_tcg_snapshot
+
+    def mutate_after_freeze(bundle_dir, checked_plan):
+        frozen = real_freeze(bundle_dir, checked_plan)
+        (bundle_dir / "ranking.csv").write_bytes(b"post-validation-changed")
+        (bundle_dir / "manifest.json").write_bytes(b'{"game":"POCKET"}')
+        return frozen
+
+    monkeypatch.setattr(publisher, "validated_tcg_snapshot", mutate_after_freeze)
+    target = tmp_path / "Meta" / "TCG"
+    with publication_lock(
+        state_path=tmp_path / "state.json",
+        target_dir=tmp_path / "local-public",
+        onedrive_target=target,
+    ) as guard:
+        response = publish_tcg_bundle(
+            bundle_dir=root, plan=plan, meta_root=tmp_path / "Meta", _lease=guard
+        )
+        assert response.status == "PASS"
+        guard.mark_clean()
+    assert (target / "ranking.csv").read_bytes() == original
+    assert (target / "manifest.json").read_bytes() == original_manifest
+
+
+@pytest.mark.parametrize("missing", ("code", "name", "start", "end", "catalog_version"))
+def test_f08r3_rejects_incomplete_but_equal_window(tmp_path, missing):
+    import copy
+    _, plan = _write_tcg_bundle(tmp_path)
+    truncated = copy.deepcopy(plan)
+    del truncated["latest_completed_window"][missing]
+    del truncated["state_after_publish"]["published_completed_window"][missing]
+    with publication_lock(
+        state_path=tmp_path / "state.json",
+        target_dir=tmp_path / "local-public",
+    ) as guard:
+        with pytest.raises(ValueError, match="five identity fields"):
+            guard.assert_plan(truncated)
+        guard.mark_clean()
