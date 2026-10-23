@@ -244,8 +244,24 @@ def publish_transaction(
 ) -> PublicationResult:
     source_root = source_root.resolve()
     target_root = target_root.resolve()
+    game_key = str(game).strip().upper()
+    if game_key not in GAME_ALIASES:
+        raise PublicationError(f"Unsupported publication game: {game!r}")
+    # Reject a false Pocket declaration aimed at an actual TCG root.
+    # The canonical TCG publication destination is the "TCG" directory;
+    # the Pocket API may still target arbitrary non-TCG test roots.
+    if game_key == "POCKET" and any(
+        part.casefold() == "tcg" for part in target_root.parts
+    ):
+        raise PublicationError(
+            "Publication game POCKET cannot target a TCG destination"
+        )
+    if game_key == "PTCG" and target_root.name.casefold() != "tcg":
+        raise PublicationError(
+            "TCG publication must target the canonical TCG directory"
+        )
     # The generic writer must not be a backdoor into unlocked TCG files.
-    if str(game).strip().upper() == "PTCG":
+    if game_key == "PTCG":
         if publication_lease is None:
             raise PublicationError(
                 "TCG generic publication requires a coordinated lease"
@@ -293,6 +309,39 @@ def publish_transaction(
         raise PublicationError("Exactly one declared manifest must match manifest_relative_path")
     if manifest_payload is not None:
         _validate_recorded_hashes(manifest_payload, normalized_items)
+
+    if game_key == "PTCG":
+        # The direct generic entrypoint gets the same TCG bundle validation
+        # as the wrapper; the caller-supplied game/kind/allowlist cannot
+        # substitute another release or incomplete artifact set.
+        if (
+            allowed != set(TCG_PUBLIC_PATHS)
+            or set(source_hashes) != set(TCG_PUBLIC_PATHS)
+            or manifest_relative_path != "manifest.json"
+        ):
+            raise PublicationError("TCG requires the exact three-file public contract")
+        assert publication_plan is not None
+        assert publication_lease is not None
+        try:
+            checked_manifest = validate_bundle(
+                source_root,
+                {
+                    "action": "publish",
+                    "completed_set": dict(publication_plan["latest_completed_window"]),
+                },
+            )
+        except (OSError, ValueError, TypeError) as exc:
+            raise PublicationError("TCG bundle validation failed") from exc
+        scope = checked_manifest.get("set") or {}
+        window = publication_plan["latest_completed_window"]
+        if (
+            str(checked_manifest.get("game") or "").upper() != "PTCG"
+            or str(checked_manifest.get("format") or "").lower() != "standard"
+            or str(scope.get("code") or "") != str(window.get("code") or "")
+            or str(scope.get("name") or "") != str(window.get("name") or "")
+        ):
+            raise PublicationError("TCG bundle identity does not match release plan")
+        publication_lease.assert_bundle_hashes(source_hashes)
 
     ordered = [item for item in normalized_items if not item.manifest] + manifests
     destination_state: dict[str, str | None] = {}
