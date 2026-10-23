@@ -140,7 +140,15 @@ def _write_tcg_bundle(tmp_path: Path):
         ),
         encoding="utf-8",
     )
-    plan = {"latest_completed_window": {"code": "CRI", "name": "Chaos Rising"}}
+    window = {"code": "CRI", "name": "Chaos Rising"}
+    plan = {
+        "latest_completed_window": window,
+        "state_before_publish": None,
+        "state_after_publish": {
+            "published_completed_window": window,
+            "updated_at": "2026-10-23T08:00:00Z",
+        },
+    }
     return bundle, plan
 
 
@@ -377,7 +385,7 @@ def test_f08_tcg_direct_onedrive_partial_failure_keeps_lock(tmp_path):
 
 
 def test_f08r1_generic_tcg_writer_requires_full_lease_before_mutation(tmp_path):
-    bundle, _ = _write_tcg_bundle(tmp_path)
+    bundle, plan = _write_tcg_bundle(tmp_path)
     target = tmp_path / "canonical" / "TCG"
     artifacts = (
         PublicationArtifact(bundle / "ranking.csv", "ranking.csv", "ranking_csv"),
@@ -388,6 +396,7 @@ def test_f08r1_generic_tcg_writer_requires_full_lease_before_mutation(tmp_path):
         game="PTCG", source_root=bundle, target_root=target,
         artifacts=artifacts, allowed_paths=TCG_PUBLIC_PATHS,
         manifest_relative_path="manifest.json",
+        publication_plan=plan,
     )
     with pytest.raises(PublicationError, match="coordinated lease"):
         publish_transaction(**params)
