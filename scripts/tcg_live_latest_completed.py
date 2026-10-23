@@ -124,6 +124,11 @@ def build_plan(
         "action": action,
         "reason": reason,
         "latest_completed_window": current_window,
+        # Compare CURRENT state under the publication lease; release code
+        # alone is insufficient to detect a stale direct caller.
+        "state_before_publish": (
+            dict(state) if isinstance(state, Mapping) else None
+        ),
         "state_after_publish": {
             "schema_version": SCHEMA_VERSION,
             "game": "PTCG",
