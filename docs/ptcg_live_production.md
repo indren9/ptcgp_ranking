@@ -440,6 +440,21 @@ file/state writes. An old A plan after successful publication B cannot be
 applied, even by invoking the local publisher directly. An invocation without
 a coordinator is rejected before any public write.
 
+**F-08-R2 content and destination binding (draft):** the publication
+lease records SHA-256 hashes for the exact public `ranking.csv`,
+`heatmap.png` and `manifest.json`. Every coordinated TCG writer verifies
+the same mapping and the output hashes recorded inside the manifest. The
+TCG generic writer also checks full bundle validity and the manifest release
+code/name against the plan; the local publisher reads its payload once,
+checks the manifest against those bytes, then writes those same bytes.
+A different cloud and local bundle under an identical plan is rejected,
+even if the release code is identical. The plan must also have
+`state_after_publish.published_completed_window` equal to the fully
+identified `latest_completed_window`. The generic writer rejects
+`game="POCKET"` with any canonical TCG path component, and TCG writes
+require a TCG destination. These are fail-closed API protections and do not
+create a distributed transaction.
+
 This intentionally changes the TCG direct-call interface for safety; it
 does not change the Pocket publisher, Core/MARS I/O, or production artifacts.
 It does **not** imply that separate independent direct local and OneDrive
