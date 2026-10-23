@@ -13,6 +13,7 @@ from typing import Any, Callable, Iterable, Mapping
 from openpyxl import load_workbook
 
 from scripts.latest_completed_meta import PUBLIC_RANKING_COLUMNS, validate_bundle
+from scripts.tcg_live_publication_snapshot import validated_tcg_snapshot
 from scripts.tcg_live_publication_lock import (
     PublicationLease,
     PublicationLockedError,
@@ -168,6 +169,25 @@ def _load_manifest(path: Path) -> dict[str, Any]:
     return payload
 
 
+def _copy_bytes_to_temp(payload: bytes, destination: Path) -> Path:
+    """Stage the precise semantically validated bytes, not a mutable source."""
+    fd, name = tempfile.mkstemp(
+        dir=destination.parent,
+        prefix=f".{destination.name}.onedrive-publish-",
+        suffix=".tmp",
+    )
+    temp = Path(name)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+    except BaseException:
+        temp.unlink(missing_ok=True)
+        raise
+    return temp
+
+
 def _validate_recorded_hashes(
     manifest: Mapping[str, Any],
     artifacts: Iterable[PublicationArtifact],
@@ -279,6 +299,47 @@ def publish_transaction(
     if not items:
         raise PublicationError("Publication artifact set is empty")
 
+    # Check effective output destinations, never only the caller-supplied
+    # target root. A Pocket alias cannot write Meta/TCG/file via relative
+    # artifact paths or a manipulated allowlist.
+    if game_key == "POCKET":
+        for proposed in (
+            *(_relative_path(item.relative_path) for item in items),
+            manifest_relative_path,
+        ):
+            effective = (target_root / Path(*PurePosixPath(proposed).parts)).resolve()
+            if any(part.casefold() == "tcg" for part in effective.parts):
+                raise PublicationError(
+                    "Publication game POCKET cannot target a TCG destination"
+                )
+
+    tcg_snapshot = None
+    if game_key == "PTCG":
+        # The three selected sources MUST be precisely the bundle root
+        # artifacts. The caller cannot validate root A and copy subdir B.
+        expected = {
+            "ranking.csv": ("ranking_csv", False),
+            "heatmap.png": ("png", False),
+            "manifest.json": ("manifest", True),
+        }
+        if len(items) != len(expected):
+            raise PublicationError("TCG requires exactly three root artifacts")
+        for item in items:
+            relative = _relative_path(item.relative_path)
+            if (
+                relative not in expected
+                or (item.kind, item.manifest) != expected[relative]
+                or item.source.resolve() != (source_root / relative).resolve()
+            ):
+                raise PublicationError(
+                    "TCG artifact must be the exact validated bundle root file"
+                )
+        assert publication_plan is not None
+        try:
+            tcg_snapshot = validated_tcg_snapshot(source_root, publication_plan)
+        except (OSError, ValueError, TypeError, UnicodeError) as exc:
+            raise PublicationError("TCG immutable snapshot validation failed") from exc
+
     seen: set[str] = set()
     manifests: list[PublicationArtifact] = []
     manifest_payload: dict[str, Any] | None = None
@@ -298,16 +359,27 @@ def publish_transaction(
         except ValueError as exc:
             raise PublicationError(f"Artifact escapes source root: {resolved_source}") from exc
         normalized = PublicationArtifact(resolved_source, relative, item.kind, item.manifest)
-        payload = _validate_artifact(normalized)
+        # TCG content comes only from the fully validated read-once snapshot;
+        # do not re-read mutable PublicationArtifact.source after validation.
+        payload = (
+            tcg_snapshot.manifest
+            if tcg_snapshot is not None and normalized.manifest
+            else None
+            if tcg_snapshot is not None
+            else _validate_artifact(normalized)
+        )
         if normalized.manifest:
             manifests.append(normalized)
             manifest_payload = payload
         normalized_items.append(normalized)
-        source_hashes[relative] = sha256_file(resolved_source)
+        source_hashes[relative] = (
+            tcg_snapshot.hashes[relative]
+            if tcg_snapshot is not None else sha256_file(resolved_source)
+        )
 
     if len(manifests) != 1 or manifests[0].relative_path != manifest_relative_path:
         raise PublicationError("Exactly one declared manifest must match manifest_relative_path")
-    if manifest_payload is not None:
+    if manifest_payload is not None and tcg_snapshot is None:
         _validate_recorded_hashes(manifest_payload, normalized_items)
 
     if game_key == "PTCG":
@@ -322,16 +394,8 @@ def publish_transaction(
             raise PublicationError("TCG requires the exact three-file public contract")
         assert publication_plan is not None
         assert publication_lease is not None
-        try:
-            checked_manifest = validate_bundle(
-                source_root,
-                {
-                    "action": "publish",
-                    "completed_set": dict(publication_plan["latest_completed_window"]),
-                },
-            )
-        except (OSError, ValueError, TypeError) as exc:
-            raise PublicationError("TCG bundle validation failed") from exc
+        assert tcg_snapshot is not None
+        checked_manifest = tcg_snapshot.manifest
         scope = checked_manifest.get("set") or {}
         window = publication_plan["latest_completed_window"]
         if (
@@ -358,7 +422,11 @@ def publish_transaction(
             if current == source_hashes[item.relative_path]:
                 continue
             destination.parent.mkdir(parents=True, exist_ok=True)
-            temp = _copy_source_to_temp(item.source, destination)
+            temp = (
+                _copy_bytes_to_temp(tcg_snapshot.payloads[item.relative_path], destination)
+                if tcg_snapshot is not None
+                else _copy_source_to_temp(item.source, destination)
+            )
             staged[item.relative_path] = temp
             if failure_injector is not None:
                 failure_injector("after_temp_copy", item)
