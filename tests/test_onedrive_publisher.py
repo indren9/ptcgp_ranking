@@ -11,10 +11,12 @@ import pytest
 from scripts.tcg_live_publication_lock import (
     PublicationLockedError,
     publication_lock,
+    publication_lock_path,
 )
 from scripts.latest_completed_meta import PUBLIC_RANKING_COLUMNS
 from storage.onedrive_publisher import (
     POCKET_ALLOWED_PATHS,
+    TCG_PUBLIC_PATHS,
     PublicationArtifact,
     PublicationError,
     canonical_game_root,
@@ -212,7 +214,7 @@ def test_unexpected_artifact_fails_closed(tmp_path):
 
     with pytest.raises(PublicationError, match="Unexpected artifact"):
         publish_transaction(
-            game="PTCG",
+            game="POCKET",
             source_root=source,
             target_root=tmp_path / "target",
             artifacts=(
@@ -267,8 +269,17 @@ def test_alias_mapping_is_exact(tmp_path):
 
 def test_tcg_bundle_uses_actual_three_file_contract(tmp_path):
     bundle, plan = _write_tcg_bundle(tmp_path)
-    publication = publish_tcg_bundle(bundle_dir=bundle, plan=plan, meta_root=tmp_path / "canonical")
     target = tmp_path / "canonical" / "TCG"
+    with publication_lock(
+        state_path=tmp_path / "state.json",
+        target_dir=tmp_path / "local-public",
+        onedrive_target=target,
+    ) as guard:
+        publication = publish_tcg_bundle(
+            bundle_dir=bundle, plan=plan, meta_root=tmp_path / "canonical",
+            _lease=guard,
+        )
+        guard.mark_clean()
 
     assert set(publication.published) == {"ranking.csv", "heatmap.png", "manifest.json"}
     assert {path.name for path in target.iterdir()} == {"ranking.csv", "heatmap.png", "manifest.json"}
@@ -285,7 +296,17 @@ def test_raw_cache_replay_and_state_are_never_published(tmp_path):
             path.mkdir()
             (path / "private.json").write_text("private", encoding="utf-8")
 
-    publish_tcg_bundle(bundle_dir=bundle, plan=plan, meta_root=tmp_path / "canonical")
+    remote = tmp_path / "canonical" / "TCG"
+    with publication_lock(
+        state_path=tmp_path / "state.json",
+        target_dir=tmp_path / "local-public",
+        onedrive_target=remote,
+    ) as guard:
+        publish_tcg_bundle(
+            bundle_dir=bundle, plan=plan, meta_root=tmp_path / "canonical",
+            _lease=guard,
+        )
+        guard.mark_clean()
     published = {path.relative_to(tmp_path / "canonical" / "TCG").as_posix() for path in (tmp_path / "canonical" / "TCG").rglob("*") if path.is_file()}
 
     assert published == {"ranking.csv", "heatmap.png", "manifest.json"}
@@ -334,14 +355,69 @@ def test_f08_tcg_direct_onedrive_partial_failure_keeps_lock(tmp_path):
         if stage == "after_canonical_replace" and not artifact.manifest:
             raise RuntimeError("synthetic interrupted OneDrive writer")
 
+    state = tmp_path / "state.json"
+    local_target = tmp_path / "local-public"
     with pytest.raises(PublicationError, match="synthetic interrupted"):
-        publish_tcg_bundle(
-            bundle_dir=bundle, plan=plan, meta_root=destination_root,
-            failure_injector=interrupt,
-        )
+        with publication_lock(
+            state_path=state, target_dir=local_target, onedrive_target=remote
+        ) as guard:
+            publish_tcg_bundle(
+                bundle_dir=bundle, plan=plan, meta_root=destination_root,
+                failure_injector=interrupt, _lease=guard,
+            )
+            guard.mark_clean()
     lock = remote.with_name(remote.name + ".publication.lock")
     assert lock.exists()
+    assert publication_lock_path(state).exists()
     with pytest.raises(PublicationLockedError):
-        publish_tcg_bundle(
-            bundle_dir=bundle, plan=plan, meta_root=destination_root
-        )
+        with publication_lock(
+            state_path=state, target_dir=local_target, onedrive_target=remote
+        ):
+            pytest.fail("failed transaction was retried")
+
+
+def test_f08r1_generic_tcg_writer_requires_full_lease_before_mutation(tmp_path):
+    bundle, _ = _write_tcg_bundle(tmp_path)
+    target = tmp_path / "canonical" / "TCG"
+    artifacts = (
+        PublicationArtifact(bundle / "ranking.csv", "ranking.csv", "ranking_csv"),
+        PublicationArtifact(bundle / "heatmap.png", "heatmap.png", "png"),
+        PublicationArtifact(bundle / "manifest.json", "manifest.json", "manifest", True),
+    )
+    params = dict(
+        game="PTCG", source_root=bundle, target_root=target,
+        artifacts=artifacts, allowed_paths=TCG_PUBLIC_PATHS,
+        manifest_relative_path="manifest.json",
+    )
+    with pytest.raises(PublicationError, match="coordinated lease"):
+        publish_transaction(**params)
+    assert not target.exists()
+
+    # Even the wrong full lease is rejected, not treated as a generic bypass.
+    with publication_lock(
+        state_path=tmp_path / "state.json",
+        target_dir=tmp_path / "local-public",
+        onedrive_target=tmp_path / "other-remote",
+    ) as wrong:
+        with pytest.raises(PublicationLockedError):
+            publish_transaction(**params, publication_lease=wrong)
+        assert not target.exists()
+        wrong.mark_clean()
+
+    with publication_lock(
+        state_path=tmp_path / "state.json",
+        target_dir=tmp_path / "local-public",
+        onedrive_target=target,
+    ) as guard:
+        result = publish_transaction(**params, publication_lease=guard)
+        assert result.status == "PASS"
+        guard.mark_clean()
+    assert (target / "manifest.json").exists()
+
+
+def test_f08r1_direct_cloud_without_coordinator_never_writes(tmp_path):
+    bundle, plan = _write_tcg_bundle(tmp_path)
+    root = tmp_path / "canonical"
+    with pytest.raises(PublicationLockedError, match="coordinated"):
+        publish_tcg_bundle(bundle_dir=bundle, plan=plan, meta_root=root)
+    assert not (root / "TCG" / "manifest.json").exists()
