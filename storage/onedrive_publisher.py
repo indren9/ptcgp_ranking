@@ -13,6 +13,10 @@ from typing import Any, Callable, Iterable, Mapping
 from openpyxl import load_workbook
 
 from scripts.latest_completed_meta import PUBLIC_RANKING_COLUMNS, validate_bundle
+from scripts.tcg_live_publication_lock import (
+    PublicationLease,
+    direct_onedrive_publication_lock,
+)
 from storage.routing import base_for_expansion
 
 
@@ -417,6 +421,7 @@ def publish_tcg_bundle(
     plan: Mapping[str, Any],
     meta_root: Path | str | None = None,
     failure_injector: FailureInjector | None = None,
+    _lease: PublicationLease | None = None,
 ) -> PublicationResult:
     validation_plan = {
         "action": "publish",
@@ -433,10 +438,23 @@ def publish_tcg_bundle(
         PublicationArtifact(bundle_dir / "heatmap.png", "heatmap.png", "png"),
         PublicationArtifact(bundle_dir / "manifest.json", "manifest.json", "manifest", True),
     )
+    destination = canonical_game_root("PTCG", meta_root=meta_root)
+    if _lease is None:
+        with direct_onedrive_publication_lock(destination):
+            return publish_transaction(
+                game="PTCG",
+                source_root=bundle_dir,
+                target_root=destination,
+                artifacts=artifacts,
+                allowed_paths=TCG_PUBLIC_PATHS,
+                manifest_relative_path="manifest.json",
+                failure_injector=failure_injector,
+            )
+    _lease.assert_onedrive_target(destination)
     return publish_transaction(
         game="PTCG",
         source_root=bundle_dir,
-        target_root=canonical_game_root("PTCG", meta_root=meta_root),
+        target_root=destination,
         artifacts=artifacts,
         allowed_paths=TCG_PUBLIC_PATHS,
         manifest_relative_path="manifest.json",
