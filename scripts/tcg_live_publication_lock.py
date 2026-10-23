@@ -10,11 +10,12 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from datetime import UTC, datetime
+import hashlib
 import json
 import os
 from pathlib import Path
 import socket
-from typing import Iterator
+from typing import Any, Iterator, Mapping
 
 
 class PublicationLockedError(RuntimeError):
@@ -33,6 +34,7 @@ class PublicationLease:
         self.lock_paths = lock_paths
         self.active = True
         self._clean = False
+        self._plan_fingerprint: str | None = None
 
     def assert_destination(self, *, state_path: Path, target_dir: Path) -> None:
         if (
@@ -56,6 +58,35 @@ class PublicationLease:
             raise PublicationLockedError(
                 "TCG OneDrive publication lease absent or wrong target"
             )
+
+    def assert_plan(self, plan: Mapping[str, Any]) -> None:
+        """Bind the entire lease to one expected state and one release plan.
+
+        The first writer validates CURRENT state while locks are held.
+        Subsequent TCG writers under this lease must use the *same* plan.
+        """
+        if not self.active:
+            raise PublicationLockedError("TCG publication lease is inactive")
+        if (
+            not isinstance(plan, Mapping)
+            or "state_before_publish" not in plan
+            or not isinstance(plan.get("latest_completed_window"), Mapping)
+            or not isinstance(plan.get("state_after_publish"), Mapping)
+        ):
+            raise ValueError("TCG publication requires a complete freshness-bound plan")
+        fingerprint = hashlib.sha256(
+            json.dumps(plan, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        if self._plan_fingerprint is not None and fingerprint != self._plan_fingerprint:
+            raise PublicationLockedError(
+                "TCG publishers must use the same release plan under one lease"
+            )
+        from scripts.tcg_live_latest_completed import read_json
+        if read_json(self.state_path, missing=None) != plan["state_before_publish"]:
+            raise RuntimeError(
+                "TCG publication state changed after planning; re-plan required"
+            )
+        self._plan_fingerprint = fingerprint
 
     def mark_clean(self) -> None:
         """Allow release only after full success or a no-write preflight."""
@@ -142,43 +173,3 @@ def publication_lock(
             for lock_path in reversed(lock_paths):
                 lock_path.unlink(missing_ok=True)
 
-
-@contextmanager
-def direct_onedrive_publication_lock(target: Path) -> Iterator[None]:
-    """Protect direct TCG OneDrive callers from concurrent job publishers.
-
-    Failure retains the lock (remote publication is not transactionally
-    rolled back). Use the same manual recovery procedure as the job.
-    """
-    destination = target.resolve()
-    lock_path = _destination_lock_path(destination)
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-    except FileExistsError as exc:
-        raise PublicationLockedError(
-            f"TCG OneDrive publication lock exists at {lock_path}; "
-            "manual review required before retry"
-        ) from exc
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as stream:
-            json.dump({
-                "schema_version": 1,
-                "started_at": datetime.now(UTC).isoformat(),
-                "pid": os.getpid(),
-                "host": socket.gethostname(),
-                "onedrive_target": str(destination),
-                "recovery": "MANUAL_INSPECTION_REQUIRED_AFTER_INTERRUPTION",
-            }, stream, sort_keys=True)
-            stream.write("\n")
-            stream.flush()
-            os.fsync(stream.fileno())
-    except BaseException:
-        lock_path.unlink(missing_ok=True)  # No publisher has entered.
-        raise
-    try:
-        yield
-    except BaseException:
-        raise  # Preserve durable lock on partial/uncertain publish.
-    else:
-        lock_path.unlink(missing_ok=True)
