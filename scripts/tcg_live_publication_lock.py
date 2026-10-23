@@ -25,9 +25,11 @@ class PublicationLease:
     def __init__(
         self, *, state_path: Path, target_dir: Path,
         lock_paths: tuple[Path, ...],
+        onedrive_target: Path | None,
     ):
         self.state_path = state_path
         self.target_dir = target_dir
+        self.onedrive_target = onedrive_target
         self.lock_paths = lock_paths
         self.active = True
         self._clean = False
@@ -41,6 +43,18 @@ class PublicationLease:
         ):
             raise PublicationLockedError(
                 "TCG publication lease absent or for another destination"
+            )
+
+    def assert_onedrive_target(self, target: Path) -> None:
+        if (
+            not self.active
+            or self.onedrive_target is None
+            or self.onedrive_target != target.resolve()
+            or _destination_lock_path(target) not in self.lock_paths
+            or not all(p.is_file() for p in self.lock_paths)
+        ):
+            raise PublicationLockedError(
+                "TCG OneDrive publication lease absent or wrong target"
             )
 
     def mark_clean(self) -> None:
@@ -114,7 +128,11 @@ def publication_lock(
         raise
 
     lease = PublicationLease(
-        state_path=state, target_dir=target, lock_paths=lock_paths
+        state_path=state, target_dir=target,
+        onedrive_target=(
+            onedrive_target.resolve() if onedrive_target is not None else None
+        ),
+        lock_paths=lock_paths,
     )
     try:
         yield lease
@@ -123,3 +141,44 @@ def publication_lock(
         if lease._clean:
             for lock_path in reversed(lock_paths):
                 lock_path.unlink(missing_ok=True)
+
+
+@contextmanager
+def direct_onedrive_publication_lock(target: Path) -> Iterator[None]:
+    """Protect direct TCG OneDrive callers from concurrent job publishers.
+
+    Failure retains the lock (remote publication is not transactionally
+    rolled back). Use the same manual recovery procedure as the job.
+    """
+    destination = target.resolve()
+    lock_path = _destination_lock_path(destination)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    except FileExistsError as exc:
+        raise PublicationLockedError(
+            f"TCG OneDrive publication lock exists at {lock_path}; "
+            "manual review required before retry"
+        ) from exc
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump({
+                "schema_version": 1,
+                "started_at": datetime.now(UTC).isoformat(),
+                "pid": os.getpid(),
+                "host": socket.gethostname(),
+                "onedrive_target": str(destination),
+                "recovery": "MANUAL_INSPECTION_REQUIRED_AFTER_INTERRUPTION",
+            }, stream, sort_keys=True)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+    except BaseException:
+        lock_path.unlink(missing_ok=True)  # No publisher has entered.
+        raise
+    try:
+        yield
+    except BaseException:
+        raise  # Preserve durable lock on partial/uncertain publish.
+    else:
+        lock_path.unlink(missing_ok=True)
