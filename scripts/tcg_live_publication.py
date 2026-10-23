@@ -10,6 +10,11 @@ from typing import Any, Mapping
 
 from scripts.latest_completed_meta import validate_bundle
 from scripts.latest_completed_meta_producer import build_bundle
+from scripts.tcg_live_publication_snapshot import validated_tcg_snapshot
+from scripts.tcg_live_publication_lock import (
+    PublicationLease,
+    PublicationLockedError,
+)
 
 
 PUBLIC_FILES = (
@@ -189,11 +194,11 @@ def publish_tcg_live_bundle(
     state_path: Path,
     target_dir: Path,
     dry_run: bool = False,
+    _lease: PublicationLease | None = None,
 ) -> dict[str, Any]:
-    validate_bundle(
-        bundle_dir,
-        _validation_plan(plan),
-    )
+    # Validate exact read-once bytes, not a mutable path that is read
+    # again later. The same payloads are retained for local writes.
+    validated = validated_tcg_snapshot(bundle_dir, plan)
 
     state = plan.get("state_after_publish")
 
@@ -212,6 +217,29 @@ def publish_tcg_live_bundle(
     if dry_run:
         return result
 
+    # Only a coordinated transaction may write a TCG public snapshot.
+    # A stand-alone local publisher could disagree with a OneDrive snapshot.
+    if _lease is None:
+        raise PublicationLockedError(
+            "TCG local publication requires a coordinated full-destination lease"
+        )
+    _lease.assert_destination(
+        state_path=state_path, target_dir=target_dir
+    )
+    _lease.assert_plan(plan)
+    if "state_before_publish" not in plan:
+        raise ValueError(
+            "TCG plan is missing state_before_publish (freshness evidence)"
+        )
+    from scripts.tcg_live_latest_completed import read_json
+    current = read_json(state_path, missing=None)
+    if current != plan["state_before_publish"]:
+        raise RuntimeError(
+            "TCG publication state changed after planning; re-plan required"
+        )
+    # Source files cannot change these validated in-memory bytes.
+    payloads = validated.payloads
+    _lease.assert_bundle_hashes(validated.hashes)
     snapshot = _snapshot(
         target_dir=target_dir,
         state_path=state_path,
@@ -221,7 +249,7 @@ def publish_tcg_live_bundle(
         for name in PUBLIC_FILES:
             _atomic_write(
                 target_dir / name,
-                (bundle_dir / name).read_bytes(),
+                payloads[name],
             )
 
         _atomic_write(

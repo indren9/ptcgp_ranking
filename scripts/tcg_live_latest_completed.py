@@ -78,15 +78,27 @@ def build_plan(
         .get("published_completed_window")
     )
 
-    previous_code = str(
-        (previous or {}).get("code") or ""
-    ).strip()
-
-    changed = (
-        not previous_code
-        or previous_code.casefold()
-        != completed.code.casefold()
+    # A code alone cannot identify a completed window: corrected
+    # boundaries or catalog revisions must invalidate older snapshots.
+    previous_code = (
+        str(previous.get("code") or "").strip()
+        if isinstance(previous, Mapping)
+        else ""
     )
+    same_window = (
+        isinstance(previous, Mapping)
+        and all(
+            previous.get(key) == current_window[key]
+            for key in (
+                "code",
+                "name",
+                "start",
+                "end",
+                "catalog_version",
+            )
+        )
+    )
+    changed = not same_window
 
     action = (
         "publish_required"
@@ -112,6 +124,11 @@ def build_plan(
         "action": action,
         "reason": reason,
         "latest_completed_window": current_window,
+        # Compare CURRENT state under the publication lease; release code
+        # alone is insufficient to detect a stale direct caller.
+        "state_before_publish": (
+            dict(state) if isinstance(state, Mapping) else None
+        ),
         "state_after_publish": {
             "schema_version": SCHEMA_VERSION,
             "game": "PTCG",

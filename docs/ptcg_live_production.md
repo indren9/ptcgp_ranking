@@ -411,3 +411,121 @@ Do not derive a TCG Live date from a physical release-date offset.
 
 After validation, refreshing `public/tcg-live/latest-meta/` is an intentional
 product decision, not an automatic service obligation.
+
+
+## Issue #36 F-08 — Publication concurrency safety (DRAFT; not deployed)
+
+These protections exist only in draft PR #37 until separately approved and
+merged. They do **not** authorize any LIVE acquisition or public publication.
+
+A TCG Live publisher reserves **all shared destinations** before its first
+public write: dedicated publication state, local public directory and, when
+enabled, the canonical OneDrive TCG directory. Exclusive lock files live next
+to each destination, so different candidate identities, different work roots,
+and different state paths pointing to one public directory cannot bypass the
+conflict check. Lock acquisition order is deterministic. A collision refuses
+the second transaction before it can alter public state or OneDrive.
+
+**F-08-R1 direct publisher contract:** standalone TCG writes are deliberately
+**forbidden**: `publish_tcg_live_bundle` and `publish_tcg_bundle` accept writes
+only with the same active full-destination `PublicationLease` supplied by a
+coordinator. The underlying `publish_transaction(game="PTCG")` requires
+both that lease and the same complete plan; Pocket's generic interface is
+unchanged. The plan now includes `state_before_publish` (the original state
+snapshot, or null if none) alongside its existing release and next state.
+The first writer binds the lease to **one complete plan**, validates CURRENT
+state under the locks, and subsequent writers must present the identical
+plan. The local publisher also rechecks freshness immediately before public
+file/state writes. An old A plan after successful publication B cannot be
+applied, even by invoking the local publisher directly. An invocation without
+a coordinator is rejected before any public write.
+
+**F-08-R2 content and destination binding (draft):** the publication
+lease records SHA-256 hashes for the exact public `ranking.csv`,
+`heatmap.png` and `manifest.json`. Every coordinated TCG writer verifies
+the same mapping and the output hashes recorded inside the manifest. The
+TCG generic writer also checks full bundle validity and the manifest release
+code/name against the plan; the local publisher reads its payload once,
+checks the manifest against those bytes, then writes those same bytes.
+A different cloud and local bundle under an identical plan is rejected,
+even if the release code is identical. The plan must also have
+`state_after_publish.published_completed_window` equal to the fully
+identified `latest_completed_window`. The generic writer rejects
+`game="POCKET"` with any canonical TCG path component, and TCG writes
+require a TCG destination. These are fail-closed API protections and do not
+create a distributed transaction.
+
+This intentionally changes the TCG direct-call interface for safety; it
+does not change the Pocket publisher, Core/MARS I/O, or production artifacts.
+It does **not** imply that separate independent direct local and OneDrive
+calls constitute an end-to-end snapshot. They are no longer permitted to
+write separately. `run_job` is the coordinator for intentional TCG release
+publication (still not authorized to execute as part of Issue #36).
+
+**Scope of exclusion:** this is an OS-filesystem `O_EXCL` lock for processes
+observing the **same filesystem namespace**. OneDrive sync is **not** a
+distributed locking protocol: independent PCs, disconnected sync clients, or
+external writers bypassing this code are not guaranteed to serialize. Such
+writers require a separate distributed coordination mechanism or an explicitly
+enforced single-writer deployment policy before production approval.
+
+The job rechecks the on-disk publication state **after** acquiring the locks;
+if another completed window was published during candidate preparation, the
+stale plan is rejected with **no public write** and the clean provisional locks
+are released. Candidate data remains separate from publication state.
+
+**Interrupted publication / manual recovery (no automatic expiry):**
+
+1. **Stop** any new publication. A remaining `*.publication.lock` is a
+   deliberate fail-closed barrier, *not* proof that the owner is still active.
+2. Inspect every lock's recorded start time, machine, PID and destinations.
+   Independently confirm the original job is not active before deciding that
+   the lock is stale. Never delete a live owner's lock.
+3. Inspect both the local TCG public directory and the OneDrive TCG target,
+   compare final files and manifest SHA-256 against the intended release,
+   and inspect `.github/tcg-live-latest-completed-meta-state.json` or the
+   configured alternative state. Compare CURRENT state with the original
+   manifest/run evidence and any partial publication.
+4. If any file, OneDrive copy or state is inconsistent, **STOP** and prepare
+   an explicit corrective/reconciliation proposal. Local per-file rollback
+   may have run, but it does not make the multi-destination OneDrive/local
+   transaction globally atomic; remote rollback must not be assumed.
+5. Only after operator verification and an explicit authorized recovery
+   decision may the precise stale lock files be removed, one by one. Record
+   evidence of the condition and action in the relevant run/incident log.
+   Re-plan against CURRENT state before any further controlled publication.
+
+Lock files remaining on error are intentionally not auto-removed even after
+successful local rollback: a prior OneDrive step might already have changed
+the canonical cloud target. CI only exercises synthetic/no-network cases.
+Real publication readiness needs a separate gate, independent code review,
+and verification of launcher/work-root/destination permissions.
+
+
+**F-08-R3 verified-byte and effective-target contract (DRAFT ONLY):**
+
+- The generic writer checks the final effective destination
+  (`target_root / artifact.relative_path`), not only the declared target
+  root, before allowing a Pocket write. A `TCG/...` relative path cannot
+  evade the TCG lease using `game="POCKET"`.
+- The generic TCG entrypoint requires each `PublicationArtifact.source`
+  to identify exactly `source_root/<public_filename>` with the expected
+  name, kind and manifest flag. It cannot validate bundle A then choose
+  nested artifact B.
+- Both TCG writers validate a **read-once snapshot** consisting of
+  `ranking.csv`, `heatmap.png`, `manifest.json` and `fragment.md`,
+  using the existing canonical `validate_bundle` on isolated copies.
+  They additionally require the manifest game `PTCG`, format `standard`
+  and matching release code/name. The cloud publisher stages precisely
+  those validated in-memory bytes and checks staged SHA-256 before replacing
+  canonical targets; the local publisher writes the same validated bytes
+  without re-reading mutable source files.
+- Every completed-window identity supplied to a TCG publication lease must
+  contain nonempty `code`, `name`, `start`, `end` and
+  `catalog_version`, consistent with the current completed-window planner.
+  The full window must equal the state recorded for publication.
+- This is a strictly TCG publication-API safety change. Standard Pocket
+  sources, canonical I/O, scientific methodology and approved/FROZEN
+  artifacts are not modified. The cloud/local operation is still not a
+  globally atomic transaction, and the filesystem lock is not distributed
+  across independently synchronized OneDrive devices.
