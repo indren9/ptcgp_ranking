@@ -628,7 +628,8 @@ def test_f08r3_rejects_incomplete_but_equal_window(tmp_path, missing):
     _, plan = _write_tcg_bundle(tmp_path)
     truncated = copy.deepcopy(plan)
     del truncated["latest_completed_window"][missing]
-    del truncated["state_after_publish"]["published_completed_window"][missing]
+    # This fixture intentionally aliases the same window in the next state;
+    # the one deletion makes BOTH mappings equally incomplete.
     with publication_lock(
         state_path=tmp_path / "state.json",
         target_dir=tmp_path / "local-public",
