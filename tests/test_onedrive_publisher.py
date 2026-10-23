@@ -140,7 +140,13 @@ def _write_tcg_bundle(tmp_path: Path):
         ),
         encoding="utf-8",
     )
-    window = {"code": "CRI", "name": "Chaos Rising"}
+    window = {
+        "code": "CRI",
+        "name": "Chaos Rising",
+        "start": "2026-09-01T17:00:00Z",
+        "end": "2026-10-01T17:00:00Z",
+        "catalog_version": "test-v1",
+    }
     plan = {
         "latest_completed_window": window,
         "state_before_publish": None,
@@ -484,7 +490,7 @@ def test_f08r2_generic_tcg_bundle_manifest_release_mismatch_is_rejected(tmp_path
         target_dir=tmp_path / "local-target",
         onedrive_target=target,
     ) as guard:
-        with pytest.raises(PublicationError, match="bundle identity"):
+        with pytest.raises(PublicationError, match="snapshot validation"):
             publish_transaction(
                 game="PTCG", source_root=bundle, target_root=target,
                 artifacts=artifacts, allowed_paths=TCG_PUBLIC_PATHS,
