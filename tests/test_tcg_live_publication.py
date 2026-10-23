@@ -79,6 +79,8 @@ def fake_bundle(root: Path) -> Path:
     )
 
     manifest = {
+        "game": "PTCG",
+        "format": "standard",
         "set": {
             "code": "CRI",
             "name": "Chaos Rising Live window",
