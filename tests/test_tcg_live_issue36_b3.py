@@ -921,6 +921,7 @@ def test_f08_job_shared_lease_encloses_both_publishers_and_stale_guard(
     )
 
     def one_drive(**kw):
+        kw["_lease"].assert_onedrive_target(remote)
         assert publication_lock_path(state).is_file()
         assert local.with_name(local.name + ".publication.lock").is_file()
         assert remote.with_name(remote.name + ".publication.lock").is_file()
