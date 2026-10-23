@@ -460,3 +460,54 @@ def test_f08r1_local_rejects_unbound_or_unverifiable_plan(tmp_path):
         assert not state.exists()
         assert not target.exists()
         lease.mark_clean()
+
+
+@pytest.mark.parametrize(
+    "field,bad", (("game", "POCKET"), ("format", "expanded"))
+)
+def test_f08r3_local_rejects_semantically_wrong_manifest_before_write(
+    tmp_path, field, bad
+):
+    bundle = fake_bundle(tmp_path / "bundle")
+    manifest_file = bundle / "manifest.json"
+    manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+    manifest[field] = bad
+    manifest_file.write_text(json.dumps(manifest), encoding="utf-8")
+    state, target = tmp_path / "state.json", tmp_path / "public"
+    with publication_lock(state_path=state, target_dir=target) as guard:
+        with pytest.raises(ValueError, match="snapshot game/format/release"):
+            publish_tcg_live_bundle(
+                bundle_dir=bundle, plan=plan(), state_path=state,
+                target_dir=target, _lease=guard,
+            )
+        guard.mark_clean()
+    assert not state.exists()
+    assert not target.exists()
+
+
+def test_f08r3_local_uses_same_validated_bytes_after_source_mutation(
+    tmp_path, monkeypatch
+):
+    import scripts.tcg_live_publication as publisher
+
+    bundle = fake_bundle(tmp_path / "bundle")
+    original_ranking = (bundle / "ranking.csv").read_bytes()
+    original_manifest = (bundle / "manifest.json").read_bytes()
+    real_freeze = publisher.validated_tcg_snapshot
+
+    def mutated_after_snapshot(source, published_plan):
+        validated = real_freeze(source, published_plan)
+        (source / "ranking.csv").write_bytes(b"broken after validation")
+        (source / "manifest.json").write_bytes(b'{"game":"POCKET"}')
+        return validated
+
+    monkeypatch.setattr(publisher, "validated_tcg_snapshot", mutated_after_snapshot)
+    state, target = tmp_path / "state.json", tmp_path / "public"
+    with publication_lock(state_path=state, target_dir=target) as guard:
+        publish_tcg_live_bundle(
+            bundle_dir=bundle, plan=plan(),
+            state_path=state, target_dir=target, _lease=guard,
+        )
+        guard.mark_clean()
+    assert (target / "ranking.csv").read_bytes() == original_ranking
+    assert (target / "manifest.json").read_bytes() == original_manifest
