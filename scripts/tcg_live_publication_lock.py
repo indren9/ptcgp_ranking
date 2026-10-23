@@ -35,6 +35,7 @@ class PublicationLease:
         self.active = True
         self._clean = False
         self._plan_fingerprint: str | None = None
+        self._bundle_hashes: dict[str, str] | None = None
 
     def assert_destination(self, *, state_path: Path, target_dir: Path) -> None:
         if (
@@ -74,6 +75,13 @@ class PublicationLease:
             or not isinstance(plan.get("state_after_publish"), Mapping)
         ):
             raise ValueError("TCG publication requires a complete freshness-bound plan")
+        if (
+            dict(plan["state_after_publish"]).get("published_completed_window")
+            != dict(plan["latest_completed_window"])
+        ):
+            raise ValueError(
+                "TCG publication state window does not match planned window"
+            )
         fingerprint = hashlib.sha256(
             json.dumps(plan, sort_keys=True, separators=(",", ":")).encode("utf-8")
         ).hexdigest()
@@ -87,6 +95,29 @@ class PublicationLease:
                 "TCG publication state changed after planning; re-plan required"
             )
         self._plan_fingerprint = fingerprint
+
+    def assert_bundle_hashes(self, files: Mapping[str, str]) -> None:
+        """Require identical public bytes across the coordinated TCG writers."""
+        if not self.active:
+            raise PublicationLockedError("TCG publication lease is inactive")
+        required = {"ranking.csv", "heatmap.png", "manifest.json"}
+        if (
+            not isinstance(files, Mapping)
+            or set(files) != required
+            or any(
+                not isinstance(value, str)
+                or len(value) != 64
+                or any(ch not in "0123456789abcdef" for ch in value)
+                for value in files.values()
+            )
+        ):
+            raise ValueError("TCG publication requires three SHA-256 public artifacts")
+        supplied = dict(files)
+        if self._bundle_hashes is not None and supplied != self._bundle_hashes:
+            raise PublicationLockedError(
+                "TCG publishers require identical public bundle content"
+            )
+        self._bundle_hashes = supplied
 
     def mark_clean(self) -> None:
         """Allow release only after full success or a no-write preflight."""
