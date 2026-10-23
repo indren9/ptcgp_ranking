@@ -10,6 +10,10 @@ from typing import Any, Mapping
 
 from scripts.latest_completed_meta import validate_bundle
 from scripts.latest_completed_meta_producer import build_bundle
+from scripts.tcg_live_publication_lock import (
+    PublicationLease,
+    publication_lock,
+)
 
 
 PUBLIC_FILES = (
@@ -189,6 +193,7 @@ def publish_tcg_live_bundle(
     state_path: Path,
     target_dir: Path,
     dry_run: bool = False,
+    _lease: PublicationLease | None = None,
 ) -> dict[str, Any]:
     validate_bundle(
         bundle_dir,
@@ -212,6 +217,25 @@ def publish_tcg_live_bundle(
     if dry_run:
         return result
 
+    # Direct callers of the local publisher are serialized too. The job
+    # supplies an already active lease spanning OneDrive + local publication.
+    if _lease is None:
+        with publication_lock(
+            state_path=state_path, target_dir=target_dir
+        ) as lease:
+            published = publish_tcg_live_bundle(
+                bundle_dir=bundle_dir,
+                plan=plan,
+                state_path=state_path,
+                target_dir=target_dir,
+                _lease=lease,
+            )
+            lease.mark_clean()
+            return published
+
+    _lease.assert_destination(
+        state_path=state_path, target_dir=target_dir
+    )
     snapshot = _snapshot(
         target_dir=target_dir,
         state_path=state_path,
