@@ -15,7 +15,7 @@ from openpyxl import load_workbook
 from scripts.latest_completed_meta import PUBLIC_RANKING_COLUMNS, validate_bundle
 from scripts.tcg_live_publication_lock import (
     PublicationLease,
-    direct_onedrive_publication_lock,
+    PublicationLockedError,
 )
 from storage.routing import base_for_expansion
 
@@ -239,9 +239,17 @@ def publish_transaction(
     allowed_paths: Iterable[str],
     manifest_relative_path: str,
     failure_injector: FailureInjector | None = None,
+    publication_lease: PublicationLease | None = None,
 ) -> PublicationResult:
     source_root = source_root.resolve()
     target_root = target_root.resolve()
+    # The generic writer must not be a backdoor into unlocked TCG files.
+    if str(game).strip().upper() == "PTCG":
+        if publication_lease is None:
+            raise PublicationError(
+                "TCG generic publication requires a coordinated lease"
+            )
+        publication_lease.assert_onedrive_target(target_root)
     allowed = {_relative_path(path) for path in allowed_paths}
     manifest_relative_path = _relative_path(manifest_relative_path)
     items = tuple(artifacts)
@@ -440,16 +448,9 @@ def publish_tcg_bundle(
     )
     destination = canonical_game_root("PTCG", meta_root=meta_root)
     if _lease is None:
-        with direct_onedrive_publication_lock(destination):
-            return publish_transaction(
-                game="PTCG",
-                source_root=bundle_dir,
-                target_root=destination,
-                artifacts=artifacts,
-                allowed_paths=TCG_PUBLIC_PATHS,
-                manifest_relative_path="manifest.json",
-                failure_injector=failure_injector,
-            )
+        raise PublicationLockedError(
+            "TCG OneDrive publication requires a coordinated full-destination lease"
+        )
     _lease.assert_onedrive_target(destination)
     return publish_transaction(
         game="PTCG",
@@ -459,6 +460,7 @@ def publish_tcg_bundle(
         allowed_paths=TCG_PUBLIC_PATHS,
         manifest_relative_path="manifest.json",
         failure_injector=failure_injector,
+        publication_lease=_lease,
     )
 
 
