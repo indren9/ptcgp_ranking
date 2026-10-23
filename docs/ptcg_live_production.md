@@ -425,7 +425,14 @@ to each destination, so different candidate identities, different work roots,
 and different state paths pointing to one public directory cannot bypass the
 conflict check. Lock acquisition order is deterministic. A collision refuses
 the second transaction before it can alter public state or OneDrive. Direct
-local TCG publication is also guarded.
+local TCG publication and direct TCG OneDrive publication are also guarded.
+
+**Scope of exclusion:** this is an OS-filesystem `O_EXCL` lock for processes
+observing the **same filesystem namespace**. OneDrive sync is **not** a
+distributed locking protocol: independent PCs, disconnected sync clients, or
+external writers bypassing this code are not guaranteed to serialize. Such
+writers require a separate distributed coordination mechanism or an explicitly
+enforced single-writer deployment policy before production approval.
 
 The job rechecks the on-disk publication state **after** acquiring the locks;
 if another completed window was published during candidate preparation, the
