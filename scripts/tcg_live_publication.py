@@ -226,6 +226,7 @@ def publish_tcg_live_bundle(
     _lease.assert_destination(
         state_path=state_path, target_dir=target_dir
     )
+    _lease.assert_plan(plan)
     if "state_before_publish" not in plan:
         raise ValueError(
             "TCG plan is missing state_before_publish (freshness evidence)"
