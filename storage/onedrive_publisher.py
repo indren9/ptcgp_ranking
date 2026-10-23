@@ -240,6 +240,7 @@ def publish_transaction(
     manifest_relative_path: str,
     failure_injector: FailureInjector | None = None,
     publication_lease: PublicationLease | None = None,
+    publication_plan: Mapping[str, Any] | None = None,
 ) -> PublicationResult:
     source_root = source_root.resolve()
     target_root = target_root.resolve()
@@ -250,6 +251,9 @@ def publish_transaction(
                 "TCG generic publication requires a coordinated lease"
             )
         publication_lease.assert_onedrive_target(target_root)
+        if publication_plan is None:
+            raise PublicationError("TCG generic publication requires a release plan")
+        publication_lease.assert_plan(publication_plan)
     allowed = {_relative_path(path) for path in allowed_paths}
     manifest_relative_path = _relative_path(manifest_relative_path)
     items = tuple(artifacts)
@@ -452,6 +456,7 @@ def publish_tcg_bundle(
             "TCG OneDrive publication requires a coordinated full-destination lease"
         )
     _lease.assert_onedrive_target(destination)
+    _lease.assert_plan(plan)
     return publish_transaction(
         game="PTCG",
         source_root=bundle_dir,
@@ -461,6 +466,7 @@ def publish_tcg_bundle(
         manifest_relative_path="manifest.json",
         failure_injector=failure_injector,
         publication_lease=_lease,
+        publication_plan=plan,
     )
 
 
