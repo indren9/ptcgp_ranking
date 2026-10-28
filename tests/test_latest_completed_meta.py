@@ -236,3 +236,105 @@ def test_f08r4_historical_publisher_denies_physical_alias_to_tcg(tmp_path):
         )
     assert list(target.iterdir()) == []
     assert not (tmp_path / "state.json").exists()
+
+
+@pytest.mark.parametrize("entrypoint", ("api", "cli", "rollback"))
+@pytest.mark.parametrize("protected", ("state_existing", "state_missing", "readme_existing", "readme_missing", "bundle"))
+def test_f08r6_legacy_all_destinations_fail_closed(tmp_path, entrypoint, protected):
+    import acquisition  # Initialize the existing release-catalog import graph first.
+    from scripts.automatic_completed_meta_rollover import publish_bundle_rollback_safe
+
+    bundle = tmp_path / "bundle"
+    write_bundle(bundle)
+    plan_path = tmp_path / "plan.json"
+    plan_path.write_text(
+        json.dumps(build_publication_plan(entries("B3a", "B3b", "B4"), generated_at=NOW)),
+        encoding="utf-8",
+    )
+    target = tmp_path / "public" / "latest-meta"
+    target.mkdir(parents=True)
+    for name in ("heatmap.png", "ranking.csv", "manifest.json"):
+        (target / name).write_bytes(("old-" + name).encode("utf-8"))
+    readme = tmp_path / "README.md"
+    readme.write_text(f"{README_START}\nold\n{README_END}\n", encoding="utf-8")
+    state = tmp_path / ".github" / "pocket-state.json"
+    state.parent.mkdir()
+    state.write_bytes(b"old-state")
+
+    if protected.startswith("state"):
+        state = tmp_path / ".github" / "tcg-live-latest-completed-meta-state.json"
+    elif protected.startswith("readme"):
+        readme = tmp_path / "public" / "tcg-live" / "README.md"
+    else:
+        target = tmp_path / "public" / "tcg-live" / "latest-meta"
+    if protected.endswith("existing") or protected == "bundle":
+        if protected == "bundle":
+            target.mkdir(parents=True)
+            for name in ("heatmap.png", "ranking.csv", "manifest.json"):
+                (target / name).write_bytes(("protected-" + name).encode())
+        elif protected.startswith("readme"):
+            readme.parent.mkdir(parents=True)
+            readme.write_text(f"{README_START}\nold\n{README_END}\n", encoding="utf-8")
+        else:
+            state.write_bytes(b"protected-state")
+
+    existing = {p: hashlib.sha256(p.read_bytes()).hexdigest()
+                for p in tmp_path.rglob("*") if p.is_file()}
+    kwargs = dict(bundle_dir=bundle, plan_path=plan_path, readme_path=readme,
+                  state_path=state, target_dir=target)
+    with pytest.raises(ValueError, match="protected TCG"):
+        if entrypoint == "cli":
+            main(["publish", "--bundle", str(bundle), "--plan", str(plan_path),
+                  "--readme", str(readme), "--state", str(state), "--target", str(target)])
+        elif entrypoint == "rollback":
+            publish_bundle_rollback_safe(**kwargs)
+        else:
+            publish_bundle(**kwargs)
+    after = {p: hashlib.sha256(p.read_bytes()).hexdigest()
+             for p in tmp_path.rglob("*") if p.is_file()}
+    assert after == existing
+
+
+@pytest.mark.parametrize("protected", ("readme", "state"))
+def test_f08r6_legacy_denies_linked_secondary_destinations(tmp_path, protected):
+    import os
+    import subprocess
+
+    bundle = tmp_path / "bundle"
+    write_bundle(bundle)
+    plan_path = tmp_path / "plan.json"
+    plan_path.write_text(
+        json.dumps(build_publication_plan(entries("B3a", "B3b", "B4"), generated_at=NOW)),
+        encoding="utf-8",
+    )
+    readme = tmp_path / "README.md"
+    readme.write_text(f"{README_START}\nold\n{README_END}\n", encoding="utf-8")
+    state = tmp_path / "state.json"
+    state.write_bytes(b"old-state")
+    protected_dir = (tmp_path / "public" / "tcg-live") if protected == "readme" else (tmp_path / ".github")
+    protected_dir.mkdir(parents=True)
+    protected_file = protected_dir / ("README.md" if protected == "readme"
+                                      else "tcg-live-latest-completed-meta-state.json")
+    protected_file.write_bytes(readme.read_bytes() if protected == "readme" else b"tcg-state")
+    alias = tmp_path / "alias"
+    try:
+        alias.symlink_to(protected_dir, target_is_directory=True)
+    except (OSError, NotImplementedError) as exc:
+        if os.name != "nt":
+            pytest.skip(f"symlink unavailable: {exc}")
+        junction = subprocess.run(["cmd.exe", "/c", "mklink", "/J", str(alias), str(protected_dir)],
+                                  capture_output=True, text=True, check=False)
+        if junction.returncode:
+            pytest.skip(f"junction unavailable: {junction.stderr.strip()}")
+        assert alias.is_junction()
+    if protected == "readme":
+        readme = alias / "README.md"
+    else:
+        state = alias / "tcg-live-latest-completed-meta-state.json"
+    before = {p: p.read_bytes() for p in (protected_file,)}
+    with pytest.raises(ValueError, match="protected TCG"):
+        publish_bundle(bundle_dir=bundle, plan_path=plan_path,
+                       readme_path=readme, state_path=state,
+                       target_dir=tmp_path / "public" / "latest-meta")
+    assert {p: p.read_bytes() for p in before} == before
+    assert not (tmp_path / "public" / "latest-meta").exists()

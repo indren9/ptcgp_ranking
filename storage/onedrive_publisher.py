@@ -126,16 +126,17 @@ def _inside_tcg_namespace(path: Path) -> bool:
 
 def _physical_tcg_alias(lexical: Path, physical: Path) -> bool:
     """Detect when Meta/TCG resolves to a sibling's physical target."""
-    for index, part in enumerate(lexical.parts):
-        if part.casefold() != "meta":
-            continue
-        tcg_declared = Path(*lexical.parts[:index + 1]) / "TCG"
-        try:
-            tcg_physical = tcg_declared.resolve()
-        except (OSError, RuntimeError) as exc:
-            raise PublicationError("Cannot validate canonical TCG alias") from exc
-        if physical == tcg_physical or tcg_physical in physical.parents:
-            return True
+    for view in (lexical, physical):
+        for index, part in enumerate(view.parts):
+            if part.casefold() != "meta":
+                continue
+            tcg_declared = Path(*view.parts[:index + 1]) / "TCG"
+            try:
+                tcg_physical = tcg_declared.resolve()
+            except (OSError, RuntimeError) as exc:
+                raise PublicationError("Cannot validate canonical TCG alias") from exc
+            if physical == tcg_physical or tcg_physical in physical.parents:
+                return True
     return False
 
 

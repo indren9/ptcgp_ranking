@@ -779,3 +779,78 @@ def test_f08r4_pocket_allows_unaliased_meta_shared(tmp_path):
     assert (shared / "ranking.csv").is_file()
     assert (shared / "manifest.json").is_file()
     assert list((meta / "TCG").iterdir()) == []
+
+
+@pytest.mark.parametrize("nested_absent", (False, True))
+def test_f08r6_pocket_rejects_double_alias_of_physical_meta_tcg(tmp_path, nested_absent):
+    import hashlib
+
+    result, source = _pocket_result(tmp_path)
+    vault = tmp_path / "vault"
+    meta = vault / "Meta"
+    shared = meta / "shared"
+    shared.mkdir(parents=True)
+    existing = shared / "manifest.json"
+    existing.write_bytes(b"protected-existing")
+    _f08r4_directory_alias(meta / "TCG", shared)
+    _f08r4_directory_alias(vault / "bridge", meta)
+    target = vault / "bridge" / "shared"
+    if nested_absent:
+        target = target / "future" / "nested"
+    relative_ranking = "ranking.csv"
+    relative_manifest = "manifest.json"
+    before = hashlib.sha256(existing.read_bytes()).hexdigest()
+    with pytest.raises(PublicationError, match="POCKET cannot target a TCG"):
+        _f08r4_pocket_attempt(
+            result, source, target, relative_ranking, relative_manifest,
+        )
+    assert hashlib.sha256(existing.read_bytes()).hexdigest() == before
+    assert not (shared / "ranking.csv").exists()
+    assert not (shared / "future").exists()
+
+
+def test_f08r6_pocket_denies_physical_meta_ancestor_when_lexical_is_unrelated(tmp_path):
+    result, source = _pocket_result(tmp_path)
+    meta = tmp_path / "vault" / "Meta"
+    shared = meta / "shared"
+    _f08r4_directory_alias(meta / "TCG", shared)
+    bridge = tmp_path / "vault" / "bridge"
+    _f08r4_directory_alias(bridge, meta)
+    # The declared target contains no Meta component, but resolves under Meta.
+    with pytest.raises(PublicationError, match="POCKET cannot target a TCG"):
+        _f08r4_pocket_attempt(
+            result, source, bridge / "shared", "ranking.csv", "manifest.json",
+        )
+    assert list(shared.iterdir()) == []
+
+
+def test_f08r6_unrelated_tcg_ancestor_still_allows_pocket(tmp_path):
+    result, source = _pocket_result(tmp_path)
+    root = tmp_path / "TCG" / "unrelated" / "Meta"
+    target = root / "POCKET"
+    published = _f08r4_pocket_attempt(
+        result, source, target, "ranking.csv", "manifest.json",
+    )
+    assert published.status == "PASS"
+    assert (target / "ranking.csv").is_file()
+    assert (target / "manifest.json").is_file()
+
+
+@pytest.mark.skipif(__import__("os").name != "nt", reason="Windows directory symlink QA")
+def test_f08r6_windows_real_symlink_not_just_junction(tmp_path):
+    result, source = _pocket_result(tmp_path)
+    meta = tmp_path / "Meta"
+    meta.mkdir()
+    bridge = tmp_path / "bridge"
+    try:
+        bridge.symlink_to(meta, target_is_directory=True)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"Windows symlink privilege unavailable: {exc}")
+    assert bridge.is_symlink() and not bridge.is_junction()
+    shared = meta / "shared"
+    _f08r4_directory_alias(meta / "TCG", shared)
+    with pytest.raises(PublicationError, match="POCKET cannot target a TCG"):
+        _f08r4_pocket_attempt(
+            result, source, bridge / "shared", "ranking.csv", "manifest.json",
+        )
+    assert list(shared.iterdir()) == []

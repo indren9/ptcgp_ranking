@@ -22,7 +22,7 @@ PUBLIC_BUNDLE_FILES = ("heatmap.png", "ranking.csv", "manifest.json")
 
 
 def _check_pocket_public_destination(target_dir: Path) -> None:
-    """Reject the protected TCG public tree before any legacy Pocket write."""
+    """Reject TCG public, state and cloud namespaces before legacy Pocket writes."""
     declared = Path(target_dir).expanduser()
     lexical = Path(os.path.abspath(declared))
     try:
@@ -30,12 +30,42 @@ def _check_pocket_public_destination(target_dir: Path) -> None:
     except (OSError, RuntimeError) as exc:
         raise ValueError("Cannot validate public destination identity") from exc
 
-    def is_tcg_public(path: Path) -> bool:
+    def protected(path: Path) -> bool:
         parts = tuple(part.casefold() for part in path.parts)
-        return any(parts[i:i + 2] == ("public", "tcg-live") for i in range(len(parts) - 1))
+        pairs = tuple(zip(parts, parts[1:]))
+        return (
+            ("public", "tcg-live") in pairs
+            or ("meta", "tcg") in pairs
+            or (".github", "tcg-live-latest-completed-meta-state.json") in pairs
+        )
 
-    if is_tcg_public(lexical) or is_tcg_public(resolved):
-        raise ValueError("Pocket publisher cannot target protected TCG public namespace")
+    if protected(lexical) or protected(resolved):
+        raise ValueError("Pocket publisher cannot target protected TCG public namespace or state")
+
+    # A canonical Meta/TCG link can resolve to an apparently ordinary sibling.
+    # Inspect both declared and physical Meta ancestors (including linked roots).
+    for view in (lexical, resolved):
+        for index, component in enumerate(view.parts):
+            if component.casefold() != "meta":
+                continue
+            try:
+                tcg_physical = (Path(*view.parts[:index + 1]) / "TCG").resolve()
+            except (OSError, RuntimeError) as exc:
+                raise ValueError("Cannot validate protected TCG destination identity") from exc
+            if resolved == tcg_physical or tcg_physical in resolved.parents:
+                raise ValueError("Pocket publisher cannot target protected TCG public namespace or state")
+
+
+def _preflight_pocket_public_destinations(
+    target_dir: Path, readme_path: Path, state_path: Path,
+) -> None:
+    """Validate every legacy write target before any bundle/README/state mutation."""
+    for destination in (
+        *(Path(target_dir) / name for name in PUBLIC_BUNDLE_FILES),
+        Path(readme_path),
+        Path(state_path),
+    ):
+        _check_pocket_public_destination(destination)
 
 
 PUBLIC_RANKING_COLUMNS = (
@@ -271,7 +301,7 @@ def publish_bundle(
     target_dir: Path,
     dry_run: bool = False,
 ) -> dict[str, Any]:
-    _check_pocket_public_destination(target_dir)
+    _preflight_pocket_public_destinations(target_dir, readme_path, state_path)
     plan = read_json(plan_path)
     validate_bundle(bundle_dir, plan)
     updated_readme = replace_readme_block(
