@@ -21,6 +21,7 @@ from scripts.automatic_completed_meta_rollover import (
     run_rollover_transaction,
 )
 from scripts.latest_completed_meta import (
+    _preflight_uncoordinated_file_output,
     build_publication_plan,
     read_catalog,
     read_json,
@@ -350,6 +351,9 @@ def main() -> int:
         raise SystemExit(
             "--allow-public-write is required for the production rollover job"
         )
+
+    if args.report is not None:
+        _preflight_uncoordinated_file_output(args.report)
 
     repo_root = args.repo_root.resolve()
     original_cwd = Path.cwd()

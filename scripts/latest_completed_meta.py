@@ -5,6 +5,7 @@ import csv
 import hashlib
 import json
 import os
+import stat
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -39,7 +40,9 @@ def _resolve_public_destination(path: Path) -> Path:
         raise ValueError("Cannot validate public destination identity") from exc
 
 
-def _check_uncoordinated_output_destination(target_dir: Path) -> None:
+def _check_uncoordinated_output_destination(
+    target_dir: Path, *, inspect_artifact_aliases: bool = False,
+) -> None:
     """Reject TCG public, state and cloud namespaces for uncoordinated output."""
     declared = Path(target_dir).expanduser()
     lexical = Path(os.path.abspath(declared))
@@ -71,6 +74,33 @@ def _check_uncoordinated_output_destination(target_dir: Path) -> None:
         ancestor / "TCG" for ancestor in (*lexical.parents, *resolved.parents)
         if ancestor.name.casefold() == "meta"
     )
+    if inspect_artifact_aliases:
+        # Direct writers can follow a protected artifact link pointing OUT of
+        # a namespace. Inspect those namespace entries as well as their roots.
+        # Follow directory aliases with an inode visited set to bound cycles.
+        def unreadable(error: OSError) -> None:
+            raise ValueError("Cannot inspect protected TCG destination identity") from error
+
+        entries = set()
+        for namespace in canonical_paths:
+            if not _resolve_public_destination(namespace).is_dir():
+                continue
+            visited = set()
+            try:
+                for base, directories, files in os.walk(
+                    namespace, followlinks=True, onerror=unreadable,
+                ):
+                    base_path = Path(base)
+                    info = base_path.stat()
+                    identity = (info.st_dev, info.st_ino)
+                    if identity in visited:
+                        directories[:] = []
+                        continue
+                    visited.add(identity)
+                    entries.update(base_path / name for name in directories + files)
+            except OSError as exc:
+                raise ValueError("Cannot inspect protected TCG destination identity") from exc
+        canonical_paths.update(entries)
     for canonical in canonical_paths:
         try:
             tcg_physical = _resolve_public_destination(canonical)
@@ -79,6 +109,27 @@ def _check_uncoordinated_output_destination(target_dir: Path) -> None:
             raise ValueError("Cannot validate protected TCG destination identity") from exc
         if same_file or resolved == tcg_physical or tcg_physical in resolved.parents:
             raise ValueError("Uncoordinated output cannot target protected TCG public namespace or state")
+
+
+def _preflight_uncoordinated_file_output(path: Path) -> None:
+    """Preflight a direct writer; no mutation and no concurrent-link guarantee.
+
+    Multiple hard links are refused conservatively: resolving a pathname cannot
+    enumerate every other name for that inode, including protected aliases.
+    """
+    # Match Path.open semantics: a literal ~ component is not expanded.
+    path = Path.cwd() / path
+    _check_uncoordinated_output_destination(path, inspect_artifact_aliases=True)
+    try:
+        info = Path(path).stat()
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        raise ValueError("Cannot validate output file identity") from exc
+    if not stat.S_ISREG(info.st_mode):
+        raise ValueError("Output destination must be a regular file")
+    if info.st_nlink != 1:
+        raise ValueError("Uncoordinated output cannot overwrite a multiply-linked file")
 
 
 def _check_pocket_public_destination(target_dir: Path) -> None:
