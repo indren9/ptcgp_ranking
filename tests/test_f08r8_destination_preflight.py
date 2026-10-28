@@ -64,8 +64,10 @@ def protected_destination(root, form, existing):
         return root / "public" / "tcg-live" / "new" / "plan.json"
     if form == "cloud":
         return root / "Meta" / "TCG" / "new" / "plan.json"
-    if form == "loop":
+    if form in {"loop", "missing_before_loop"}:
         directory_alias(root / "loop", root / "loop")
+        if form == "missing_before_loop":
+            return root / "missing" / ".." / "loop" / "plan.json"
         return root / "loop" / "plan.json"
     alias = root / "ordinary.json"
     try:
@@ -85,7 +87,7 @@ def protected_destination(root, form, existing):
 
 FORMS = (
     "direct", "directory_alias", "double_alias", "reverse_directory_alias",
-    "file_alias", "reverse_file_alias", "public", "cloud", "loop",
+    "file_alias", "reverse_file_alias", "public", "cloud", "loop", "missing_before_loop",
 )
 
 

@@ -21,14 +21,29 @@ REQUIRED_BUNDLE_FILES = ("fragment.md", "heatmap.png", "ranking.csv", "manifest.
 PUBLIC_BUNDLE_FILES = ("heatmap.png", "ranking.csv", "manifest.json")
 
 
+def _resolve_public_destination(path: Path) -> Path:
+    # Python 3.14 non-strict resolve tolerates symlink loops. Only a missing
+    # path may fall back to non-strict resolution; ambiguity must fail closed.
+    try:
+        try:
+            return path.resolve(strict=True)
+        except FileNotFoundError:
+            resolved = path.resolve(strict=False)
+            # A missing component followed by '..' can hide an existing loop
+            # from the first strict traversal; check the normalized view too.
+            try:
+                return resolved.resolve(strict=True)
+            except FileNotFoundError:
+                return resolved
+    except (OSError, RuntimeError) as exc:
+        raise ValueError("Cannot validate public destination identity") from exc
+
+
 def _check_pocket_public_destination(target_dir: Path) -> None:
     """Reject TCG public, state and cloud namespaces before legacy Pocket writes."""
     declared = Path(target_dir).expanduser()
     lexical = Path(os.path.abspath(declared))
-    try:
-        resolved = declared.resolve()
-    except (OSError, RuntimeError) as exc:
-        raise ValueError("Cannot validate public destination identity") from exc
+    resolved = _resolve_public_destination(declared)
 
     def protected(path: Path) -> bool:
         parts = tuple(part.casefold() for part in path.parts)
@@ -58,7 +73,7 @@ def _check_pocket_public_destination(target_dir: Path) -> None:
     )
     for canonical in canonical_paths:
         try:
-            tcg_physical = canonical.resolve()
+            tcg_physical = _resolve_public_destination(canonical)
             same_file = resolved.exists() and canonical.exists() and resolved.samefile(canonical)
         except (OSError, RuntimeError) as exc:
             raise ValueError("Cannot validate protected TCG destination identity") from exc
