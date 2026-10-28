@@ -37,6 +37,7 @@ from scripts.tcg_live_publication import (
     publish_tcg_live_bundle,
 )
 from scripts.tcg_live_publication_lock import publication_lock
+from scripts.latest_completed_meta import _check_uncoordinated_output_destination
 from sources.limitless.tournament_api.object_store import (
     S3ObjectStoreBackend,
     persist_canonical_raw_run,
@@ -621,6 +622,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = build_parser().parse_args()
+
+    if args.report is not None:
+        _check_uncoordinated_output_destination(args.report)
 
     if args.publish and not args.allow_public_write:
         raise SystemExit(

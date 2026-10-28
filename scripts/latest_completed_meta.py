@@ -39,8 +39,8 @@ def _resolve_public_destination(path: Path) -> Path:
         raise ValueError("Cannot validate public destination identity") from exc
 
 
-def _check_pocket_public_destination(target_dir: Path) -> None:
-    """Reject TCG public, state and cloud namespaces before legacy Pocket writes."""
+def _check_uncoordinated_output_destination(target_dir: Path) -> None:
+    """Reject TCG public, state and cloud namespaces for uncoordinated output."""
     declared = Path(target_dir).expanduser()
     lexical = Path(os.path.abspath(declared))
     resolved = _resolve_public_destination(declared)
@@ -55,7 +55,7 @@ def _check_pocket_public_destination(target_dir: Path) -> None:
         )
 
     if protected(lexical) or protected(resolved):
-        raise ValueError("Pocket publisher cannot target protected TCG public namespace or state")
+        raise ValueError("Uncoordinated output cannot target protected TCG public namespace or state")
 
     # Canonical links can point out of their protected namespace. Inspect
     # both ancestries, plus this checkout, to retain that reverse identity.
@@ -78,7 +78,12 @@ def _check_pocket_public_destination(target_dir: Path) -> None:
         except (OSError, RuntimeError) as exc:
             raise ValueError("Cannot validate protected TCG destination identity") from exc
         if same_file or resolved == tcg_physical or tcg_physical in resolved.parents:
-            raise ValueError("Pocket publisher cannot target protected TCG public namespace or state")
+            raise ValueError("Uncoordinated output cannot target protected TCG public namespace or state")
+
+
+def _check_pocket_public_destination(target_dir: Path) -> None:
+    """Compatibility entrypoint for the shared uncoordinated-output policy."""
+    _check_uncoordinated_output_destination(target_dir)
 
 
 def _preflight_pocket_public_destinations(
@@ -397,6 +402,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         for destination in (args.output, args.github_output):
             if destination is not None:
                 _check_pocket_public_destination(destination)
+                if destination.is_dir():
+                    raise IsADirectoryError(f"Output destination is a directory: {destination}")
         plan = build_publication_plan(
             read_catalog(args.catalog),
             read_json(args.state, missing=None),

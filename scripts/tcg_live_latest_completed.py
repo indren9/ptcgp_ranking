@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from scripts.latest_completed_meta import _check_uncoordinated_output_destination
 from sources.limitless.tournament_api.release_catalog import (
     load_release_catalog_snapshot,
     resolve_release,
@@ -149,6 +150,7 @@ def _write_json(
     path: Path,
     payload: Mapping[str, Any],
 ) -> None:
+    _check_uncoordinated_output_destination(path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
     path.write_text(
@@ -194,6 +196,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+
+    if args.output is not None:
+        _check_uncoordinated_output_destination(args.output)
 
     state = read_json(
         args.state,
