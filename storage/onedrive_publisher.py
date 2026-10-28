@@ -12,7 +12,9 @@ from typing import Any, Callable, Iterable, Mapping
 
 from openpyxl import load_workbook
 
-from scripts.latest_completed_meta import PUBLIC_RANKING_COLUMNS, validate_bundle
+from scripts.latest_completed_meta import (
+    PUBLIC_RANKING_COLUMNS, _check_pocket_public_destination, validate_bundle,
+)
 from scripts.tcg_live_publication_snapshot import validated_tcg_snapshot
 from scripts.tcg_live_publication_lock import (
     PublicationLease,
@@ -153,6 +155,10 @@ def _check_pocket_destination(target: Path, relative_paths: Iterable[str]) -> No
     for proposed in relative_paths:
         relative = _relative_path(proposed)
         destination = target / Path(*PurePosixPath(relative).parts)
+        try:
+            _check_pocket_public_destination(destination)
+        except ValueError as exc:
+            raise PublicationError("Publication game POCKET cannot target a TCG destination") from exc
         lexical, physical = _destination_views(destination)
         if (
             PurePosixPath(relative).parts[0].casefold() == "tcg"

@@ -42,18 +42,28 @@ def _check_pocket_public_destination(target_dir: Path) -> None:
     if protected(lexical) or protected(resolved):
         raise ValueError("Pocket publisher cannot target protected TCG public namespace or state")
 
-    # A canonical Meta/TCG link can resolve to an apparently ordinary sibling.
-    # Inspect both declared and physical Meta ancestors (including linked roots).
-    for view in (lexical, resolved):
-        for index, component in enumerate(view.parts):
-            if component.casefold() != "meta":
-                continue
-            try:
-                tcg_physical = (Path(*view.parts[:index + 1]) / "TCG").resolve()
-            except (OSError, RuntimeError) as exc:
-                raise ValueError("Cannot validate protected TCG destination identity") from exc
-            if resolved == tcg_physical or tcg_physical in resolved.parents:
-                raise ValueError("Pocket publisher cannot target protected TCG public namespace or state")
+    # Canonical links can point out of their protected namespace. Inspect
+    # both ancestries, plus this checkout, to retain that reverse identity.
+    roots = {Path(__file__).resolve().parents[1], *lexical.parents, *resolved.parents}
+    canonical_paths = {
+        root / relative for root in roots for relative in (
+            "public/tcg-live", "Meta/TCG",
+            ".github/tcg-live-latest-completed-meta-state.json",
+        )
+    }
+    # Preserve R6's case-insensitive recognition of declared Meta ancestors.
+    canonical_paths.update(
+        ancestor / "TCG" for ancestor in (*lexical.parents, *resolved.parents)
+        if ancestor.name.casefold() == "meta"
+    )
+    for canonical in canonical_paths:
+        try:
+            tcg_physical = canonical.resolve()
+            same_file = resolved.exists() and canonical.exists() and resolved.samefile(canonical)
+        except (OSError, RuntimeError) as exc:
+            raise ValueError("Cannot validate protected TCG destination identity") from exc
+        if same_file or resolved == tcg_physical or tcg_physical in resolved.parents:
+            raise ValueError("Pocket publisher cannot target protected TCG public namespace or state")
 
 
 def _preflight_pocket_public_destinations(
@@ -367,6 +377,11 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "plan":
+        # Validate both outputs before either replacement or append, including
+        # when the second destination is forbidden and the first is legitimate.
+        for destination in (args.output, args.github_output):
+            if destination is not None:
+                _check_pocket_public_destination(destination)
         plan = build_publication_plan(
             read_catalog(args.catalog),
             read_json(args.state, missing=None),
