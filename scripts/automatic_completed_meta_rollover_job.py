@@ -105,6 +105,7 @@ def _write_production_config(
     )
 
     out = work_root / "production_pocket.yaml"
+    _preflight_uncoordinated_file_output(out, identity_roots=(repo_root,))
     out.write_text(
         yaml.safe_dump(cfg, sort_keys=False, allow_unicode=True),
         encoding="utf-8",

@@ -151,7 +151,9 @@ def _check_uncoordinated_output_destination(
                 raise ValueError("Uncoordinated cleanup cannot delete protected TCG contents")
 
 
-def _preflight_uncoordinated_file_output(path: Path) -> None:
+def _preflight_uncoordinated_file_output(
+    path: Path, *, identity_roots: Sequence[Path] = (),
+) -> None:
     """Preflight a direct writer; no mutation and no concurrent-link guarantee.
 
     Multiple hard links are refused conservatively: resolving a pathname cannot
@@ -159,7 +161,9 @@ def _preflight_uncoordinated_file_output(path: Path) -> None:
     """
     # Match Path.open semantics: a literal ~ component is not expanded.
     path = Path.cwd() / path
-    _check_uncoordinated_output_destination(path, inspect_artifact_aliases=True)
+    _check_uncoordinated_output_destination(
+        path, inspect_artifact_aliases=True, identity_roots=identity_roots,
+    )
     try:
         info = Path(path).stat()
     except FileNotFoundError:
