@@ -13,6 +13,13 @@ from test_f08r10_output_preflight import directory_alias
 from test_f08r12_pocket_outputs import snapshot
 
 
+def file_alias(link, target):
+    try:
+        link.symlink_to(target)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"Native file symlink unavailable: {exc}")
+
+
 def caller(monkeypatch, repo, work, *, positive=False):
     plan = {"action": "publish", "reason": "synthetic", "current_set": {},
             "completed_set": {"code": "X1", "name": "Synthetic"}}
@@ -74,14 +81,14 @@ def test_caller_refuses_before_rmtree_and_preserves_entire_tree(
         directory_alias(repo / "Meta/TCG", nested)
     elif form == "state_reverse":
         (repo / ".github").mkdir()
-        (repo / ".github/tcg-live-latest-completed-meta-state.json").symlink_to(arbitrary)
+        file_alias(repo / ".github/tcg-live-latest-completed-meta-state.json", arbitrary)
     elif form == "forward":
         public.mkdir()
         (public / "extra").write_bytes(b"protected")
         directory_alias(bundle / "forward", public)
         # A forward directory link alone isn't traversed by rmtree. Put the
         # protected namespace's reverse reference inside the deleted tree too.
-        (public / "reverse-extra").symlink_to(arbitrary)
+        file_alias(public / "reverse-extra", arbitrary)
     elif form in {"reverse_file", "hardlink"}:
         public.mkdir()
         try:
