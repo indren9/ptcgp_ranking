@@ -112,9 +112,15 @@ def _check_uncoordinated_output_destination(
     cleanup_identities = set()
     if cleanup_tree:
         try:
-            for base, directories, files in os.walk(
-                lexical, followlinks=False, onerror=unreadable,
-            ):
+            # A first replay has no stale tree. Still run canonical identity
+            # checks below; only an absent root has no entries to inspect.
+            try:
+                lexical.lstat()
+            except FileNotFoundError:
+                cleanup_walk = ()
+            else:
+                cleanup_walk = os.walk(lexical, followlinks=False, onerror=unreadable)
+            for base, directories, files in cleanup_walk:
                 for entry in (Path(base), *(Path(base) / n for n in directories + files)):
                     physical_entry = _resolve_public_destination(entry)
                     if protected(entry) or protected(physical_entry):

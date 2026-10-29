@@ -198,6 +198,9 @@ def run_job(
         return result
 
     def replay_offline(run_id: str, plan, window) -> ReplayEvidence:
+        _check_uncoordinated_output_destination(
+            replay_raw_root, cleanup_tree=True, identity_roots=(repo_root,),
+        )
         if replay_raw_root.exists():
             shutil.rmtree(replay_raw_root)
         restore_canonical_raw_run(
