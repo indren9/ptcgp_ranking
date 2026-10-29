@@ -25,10 +25,19 @@ from scripts.tcg_live_latest_completed import (
     build_plan,
     read_json,
 )
+from scripts.tcg_live_candidate_receipt import (
+    candidate_identity,
+    candidate_lock,
+    candidate_workspace,
+    load_verified_candidate,
+    save_verified_candidate,
+)
 from scripts.tcg_live_publication import (
     build_tcg_live_bundle,
     publish_tcg_live_bundle,
 )
+from scripts.tcg_live_publication_lock import publication_lock
+from scripts.latest_completed_meta import _check_uncoordinated_output_destination
 from sources.limitless.tournament_api.object_store import (
     S3ObjectStoreBackend,
     persist_canonical_raw_run,
@@ -39,6 +48,7 @@ from sources.limitless.tournament_api.release_catalog import (
 )
 from storage.routing import base_for_expansion
 from storage.onedrive_publisher import (
+    canonical_game_root,
     onedrive_publication_enabled,
     publish_tcg_bundle,
 )
@@ -263,222 +273,298 @@ def run_job(
     scope = _scope(plan, api)
     eligibility = _eligibility(api)
 
-    live_raw_root = work_root / "raw-live"
-    replay_raw_root = work_root / "raw-replay"
-
     revision = _git_revision(repo_root)
+    identity = candidate_identity(
+        window=plan["latest_completed_window"],
+        config_path=config_path,
+        catalog_path=catalog_path,
+        revision=revision,
+    )
+    # Both different identities and the publishing transaction use
+    # separate scratch and artifact trees. Never overwrite a prior receipt's
+    # RAW replay or Core/MARS output while preparing a new candidate.
+    transaction_root = candidate_workspace(
+        work_root=work_root, identity=identity, publish=publish
+    )
+    live_raw_root = transaction_root / "raw-live"
+    replay_raw_root = transaction_root / "raw-replay"
 
-    live = run_limitless_api_acquisition(
-        game="PTCG",
-        format="STANDARD",
-        set_mode="code",
-        set_code=scope.set_code,
-        resolved_scope=scope,
-        acquisition_started_at=started,
-        execution_mode="live",
-        raw_store_root=live_raw_root,
-        release_catalog=catalog_path,
-        cache_root=work_root / "cache-live",
-        cache_ttl_min=float(
-            api.get("cache_ttl_min", 0)
-        ),
-        min_request_interval_seconds=float(
-            api.get(
-                "min_request_interval_seconds",
-                4.0,
+    # Hold through both lookup and execution so concurrent invocations
+    # cannot each launch a full LIVE candidate before the receipt exists.
+    with candidate_lock(work_root=work_root, identity=identity):
+        if not publish:
+            reusable = load_verified_candidate(
+                work_root=work_root,
+                identity=identity,
             )
-        ),
-        eligibility=eligibility,
-        run_id=None,
-        replay_run_id=None,
-        software_git_revision=revision,
-        discovery_page_size=int(
-            api.get("discovery_page_size", 50)
-        ),
-        discovery_max_pages=int(
-            api.get("discovery_max_pages", 100)
-        ),
-        reuse_latest_raw=bool(
-            api.get("reuse_latest_raw", True)
-        ),
-    )
-
-    run_id = str(live.manifest.run_id)
-
-    live_manifest = (
-        live_raw_root
-        / "runs"
-        / run_id
-        / "manifest.json"
-    )
-
-    backend = backend_factory()
-
-    persisted = persist_canonical_raw_run(
-        live_raw_root,
-        run_id,
-        backend,
-    )
-
-    if replay_raw_root.exists():
-        shutil.rmtree(replay_raw_root)
-
-    restore_canonical_raw_run(
-        replay_raw_root,
-        run_id,
-        backend,
-    )
-
-    offline_config = _write_offline_config(
-        source_config=config_path,
-        destination=(
-            work_root / "tcg-live-offline.yaml"
-        ),
-        raw_root=replay_raw_root,
-        cache_root=work_root / "cache-offline",
-        output_root=work_root / "source-output",
-        release_catalog=catalog_path,
-        replay_run_id=run_id,
-        completed_code=scope.set_code,
-    )
-
-    production = run_deck_ranking(
-        base_dir=repo_root,
-        config_path=offline_config,
-        output_dir=work_root / "source-output",
-        run_scrape=True,
-        run_core=True,
-        run_mars=True,
-        run_heatmap=False,
-        run_report=False,
-        configure_logs=True,
-        show_progress=False,
-    )
-
-    offline_run_id = str(
-        production.diagnostics[
-            "tournament_api_run_id"
-        ]
-    )
-
-    replay = ReplayEvidence(
-        source_run=base_for_expansion(
-            production.paths.outputs,
-            production.expansion,
-        ),
-        manifest_path=(
-            replay_raw_root
+            if reusable is not None:
+                return reusable
+    
+        live = run_limitless_api_acquisition(
+            game="PTCG",
+            format="STANDARD",
+            set_mode="code",
+            set_code=scope.set_code,
+            resolved_scope=scope,
+            acquisition_started_at=started,
+            execution_mode="live",
+            raw_store_root=live_raw_root,
+            release_catalog=catalog_path,
+            cache_root=transaction_root / "cache-live",
+            cache_ttl_min=float(
+                api.get("cache_ttl_min", 0)
+            ),
+            min_request_interval_seconds=float(
+                api.get(
+                    "min_request_interval_seconds",
+                    4.0,
+                )
+            ),
+            eligibility=eligibility,
+            run_id=None,
+            replay_run_id=None,
+            software_git_revision=revision,
+            discovery_page_size=int(
+                api.get("discovery_page_size", 50)
+            ),
+            discovery_max_pages=int(
+                api.get("discovery_max_pages", 100)
+            ),
+            reuse_latest_raw=bool(
+                api.get("reuse_latest_raw", True)
+            ),
+        )
+    
+        run_id = str(live.manifest.run_id)
+    
+        live_manifest = (
+            live_raw_root
             / "runs"
-            / offline_run_id
+            / run_id
             / "manifest.json"
-        ),
-        diagnostics_path=(
-            replay_raw_root
-            / "runs"
-            / offline_run_id
-            / "diagnostics.json"
-        ),
-    )
-
-    validate_exact_offline_replay(
-        live_manifest,
-        replay,
-    )
-
-    network_calls = int(
-        production.diagnostics.get(
-            "tournament_api_network_calls",
-            -1,
         )
-    )
-
-    if network_calls != 0:
-        raise RuntimeError(
-            "TCG Live OFFLINE replay used network"
+    
+        backend = backend_factory()
+    
+        persisted = persist_canonical_raw_run(
+            live_raw_root,
+            run_id,
+            backend,
         )
-
-    bundle_dir = None
-    publication_result = None
-    onedrive_publication_result = None
-
-    if publish:
-        bundle_dir = work_root / "bundle"
-
-        if bundle_dir.exists():
-            shutil.rmtree(bundle_dir)
-
-        build_tcg_live_bundle(
-            source_run=replay.source_run,
+    
+        if replay_raw_root.exists():
+            shutil.rmtree(replay_raw_root)
+    
+        restore_canonical_raw_run(
+            replay_raw_root,
+            run_id,
+            backend,
+        )
+    
+        offline_config = _write_offline_config(
+            source_config=config_path,
+            destination=(
+                transaction_root / "tcg-live-offline.yaml"
+            ),
+            raw_root=replay_raw_root,
+            cache_root=transaction_root / "cache-offline",
+            output_root=transaction_root / "source-output",
+            release_catalog=catalog_path,
+            replay_run_id=run_id,
+            completed_code=scope.set_code,
+        )
+    
+        production = run_deck_ranking(
+            base_dir=repo_root,
             config_path=offline_config,
-            acquisition_manifest=live_manifest,
-            bundle_dir=bundle_dir,
-            plan=plan,
-            source_revision=revision,
+            output_dir=transaction_root / "source-output",
+            run_scrape=True,
+            run_core=True,
+            run_mars=True,
+            run_heatmap=False,
+            run_report=False,
+            configure_logs=True,
+            show_progress=False,
         )
-        log.info("LOCAL_PRODUCTION = PASS")
+    
+        offline_run_id = str(
+            production.diagnostics[
+                "tournament_api_run_id"
+            ]
+        )
+    
+        replay = ReplayEvidence(
+            source_run=base_for_expansion(
+                production.paths.outputs,
+                production.expansion,
+            ),
+            manifest_path=(
+                replay_raw_root
+                / "runs"
+                / offline_run_id
+                / "manifest.json"
+            ),
+            diagnostics_path=(
+                replay_raw_root
+                / "runs"
+                / offline_run_id
+                / "diagnostics.json"
+            ),
+        )
+    
+        validate_exact_offline_replay(
+            live_manifest,
+            replay,
+        )
+    
+        network_calls = int(
+            production.diagnostics.get(
+                "tournament_api_network_calls",
+                -1,
+            )
+        )
+    
+        if network_calls != 0:
+            raise RuntimeError(
+                "TCG Live OFFLINE replay used network"
+            )
+    
+        # Publication remains an intentional, separate operation. Only complete
+        # non-publishing candidates receive a reusable, verified local receipt.
+        candidate_receipt = None
+        if not publish:
+            candidate_receipt = save_verified_candidate(
+                work_root=work_root,
+                identity=identity,
+                live_manifest=live_manifest,
+                replay_manifest=replay.manifest_path,
+                replay_diagnostics=replay.diagnostics_path,
+                outputs=production.outputs,
+                source_run=replay.source_run,
+                live_run_id=run_id,
+                offline_run_id=offline_run_id,
+                object_manifest_key=str(persisted.manifest_key),
+                mars_rows=production.diagnostics.get("mars_rows"),
+            )
+            if load_verified_candidate(
+                work_root=work_root, identity=identity
+            ) is None:
+                raise RuntimeError("candidate receipt readback failed")
+    
+        bundle_dir = None
+        publication_result = None
+        onedrive_publication_result = None
+    
+        if publish:
+            bundle_dir = transaction_root / "bundle"
+    
+            if bundle_dir.exists():
+                shutil.rmtree(bundle_dir)
+    
+            build_tcg_live_bundle(
+                source_run=replay.source_run,
+                config_path=offline_config,
+                acquisition_manifest=live_manifest,
+                bundle_dir=bundle_dir,
+                plan=plan,
+                source_revision=revision,
+            )
+            log.info("LOCAL_PRODUCTION = PASS")
+    
+            target = (
+                public_target
+                or repo_root
+                / "public"
+                / "tcg-live"
+                / "latest-meta"
+            )
 
-        if onedrive_publication_enabled(cfg):
-            try:
-                onedrive_publication_result = publish_tcg_bundle(
+            # Both OneDrive and local/state writers must share one lease.
+            # Candidate-specific locks alone do not serialize publishers.
+            with publication_lock(
+                state_path=state_path,
+                target_dir=target,
+                onedrive_target=(
+                    canonical_game_root("PTCG")
+                    if onedrive_publication_enabled(cfg)
+                    else None
+                ),
+            ) as publication_lease:
+                # Acquisition can take time: a prior publisher may have
+                # advanced state while this candidate was being prepared.
+                # Refuse to publish a stale plan before any public writes.
+                if read_json(state_path, missing=None) != state:
+                    publication_lease.mark_clean()
+                    raise RuntimeError(
+                        "TCG publication state changed after planning; "
+                        "re-plan explicitly before publication"
+                    )
+
+                if onedrive_publication_enabled(cfg):
+                    try:
+                        onedrive_publication_result = publish_tcg_bundle(
+                            bundle_dir=bundle_dir,
+                            plan=plan,
+                            _lease=publication_lease,
+                        ).to_dict()
+                    except Exception:
+                        log.exception("ONEDRIVE_PUBLICATION = FAIL")
+                        raise
+                    log.info(
+                        "ONEDRIVE_PUBLICATION = %s | published=%d | skipped_identical=%d",
+                        onedrive_publication_result["status"],
+                        len(onedrive_publication_result["published"]),
+                        len(onedrive_publication_result["skipped_identical"]),
+                    )
+
+                publication_result = publish_tcg_live_bundle(
                     bundle_dir=bundle_dir,
                     plan=plan,
-                ).to_dict()
-            except Exception:
-                log.exception("ONEDRIVE_PUBLICATION = FAIL")
-                raise
-            log.info(
-                "ONEDRIVE_PUBLICATION = %s | published=%d | skipped_identical=%d",
-                onedrive_publication_result["status"],
-                len(onedrive_publication_result["published"]),
-                len(onedrive_publication_result["skipped_identical"]),
-            )
-
-        target = (
-            public_target
-            or repo_root
-            / "public"
-            / "tcg-live"
-            / "latest-meta"
-        )
-
-        publication_result = publish_tcg_live_bundle(
-            bundle_dir=bundle_dir,
-            plan=plan,
-            state_path=state_path,
-            target_dir=target,
-            dry_run=False,
-        )
-
-    return {
-        "action": (
-            "published"
-            if publish
-            else "candidate_ready"
-        ),
-        "reason": plan["reason"],
-        "latest_completed_window":
-            plan["latest_completed_window"],
-        "canonical_live_run_id": run_id,
-        "object_manifest_key":
-            persisted.manifest_key,
-        "offline_network_calls":
-            network_calls,
-        "mars_rows":
-            production.diagnostics.get(
-                "mars_rows"
+                    state_path=state_path,
+                    target_dir=target,
+                    dry_run=False,
+                    _lease=publication_lease,
+                )
+                # Only after the complete destination sequence succeeded.
+                publication_lease.mark_clean()
+    
+        return {
+            "action": (
+                "published"
+                if publish
+                else "candidate_ready"
             ),
-        "candidate_source_run":
-            str(replay.source_run),
-        "candidate_ready": True,
-        "bundle_dir": (
-            None
-            if bundle_dir is None
-            else str(bundle_dir)
-        ),
-        "publication": publication_result,
-        "onedrive_publication": onedrive_publication_result,
-        "published": bool(publish),
-    }
+            "reason": plan["reason"],
+            "latest_completed_window":
+                plan["latest_completed_window"],
+            "canonical_live_run_id": run_id,
+            "offline_run_id": offline_run_id,
+            "object_manifest_key":
+                persisted.manifest_key,
+            "offline_network_calls":
+                network_calls,
+            "mars_rows":
+                production.diagnostics.get(
+                    "mars_rows"
+                ),
+            "candidate_source_run":
+                str(replay.source_run),
+            "candidate_ready": True,
+            "candidate_reused": False,
+            "candidate_receipt": (
+                str(candidate_receipt)
+                if candidate_receipt is not None
+                else None
+            ),
+            "bundle_dir": (
+                None
+                if bundle_dir is None
+                else str(bundle_dir)
+            ),
+            "publication": publication_result,
+            "onedrive_publication": onedrive_publication_result,
+            "published": bool(publish),
+        }
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -536,6 +622,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = build_parser().parse_args()
+
+    if args.report is not None:
+        _check_uncoordinated_output_destination(args.report)
 
     if args.publish and not args.allow_public_write:
         raise SystemExit(

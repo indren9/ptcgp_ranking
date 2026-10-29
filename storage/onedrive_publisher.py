@@ -12,7 +12,14 @@ from typing import Any, Callable, Iterable, Mapping
 
 from openpyxl import load_workbook
 
-from scripts.latest_completed_meta import PUBLIC_RANKING_COLUMNS, validate_bundle
+from scripts.latest_completed_meta import (
+    PUBLIC_RANKING_COLUMNS, _check_pocket_public_destination, validate_bundle,
+)
+from scripts.tcg_live_publication_snapshot import validated_tcg_snapshot
+from scripts.tcg_live_publication_lock import (
+    PublicationLease,
+    PublicationLockedError,
+)
 from storage.routing import base_for_expansion
 
 
@@ -90,7 +97,8 @@ def canonical_game_root(
         if configured
         else Path.home() / "OneDrive" / "Giochi" / "Pokemon" / "PTCGP" / "Meta"
     )
-    return (root / alias).resolve()
+    # Keep the declared alias visible to destination policy checks.
+    return root / alias
 
 
 def _relative_path(value: str) -> str:
@@ -99,6 +107,66 @@ def _relative_path(value: str) -> str:
     if path.is_absolute() or not path.parts or any(part in {"", ".", ".."} for part in path.parts):
         raise PublicationError(f"Unsafe publication relative path: {value!r}")
     return path.as_posix()
+
+
+def _destination_views(path: Path) -> tuple[Path, Path]:
+    """Return lexical absolute and physically resolved paths independently."""
+    declared = Path(path).expanduser()
+    lexical = Path(os.path.abspath(declared))
+    try:
+        physical = declared.resolve()
+    except (OSError, RuntimeError) as exc:
+        raise PublicationError("Cannot validate publication destination identity") from exc
+    return lexical, physical
+
+
+def _inside_tcg_namespace(path: Path) -> bool:
+    """The protected cloud namespace is Meta/TCG, not any ancestor TCG."""
+    parts = tuple(part.casefold() for part in path.parts)
+    return any(parts[i:i + 2] == ("meta", "tcg") for i in range(len(parts) - 1))
+
+
+def _physical_tcg_alias(lexical: Path, physical: Path) -> bool:
+    """Detect when Meta/TCG resolves to a sibling's physical target."""
+    for view in (lexical, physical):
+        for index, part in enumerate(view.parts):
+            if part.casefold() != "meta":
+                continue
+            tcg_declared = Path(*view.parts[:index + 1]) / "TCG"
+            try:
+                tcg_physical = tcg_declared.resolve()
+            except (OSError, RuntimeError) as exc:
+                raise PublicationError("Cannot validate canonical TCG alias") from exc
+            if physical == tcg_physical or tcg_physical in physical.parents:
+                return True
+    return False
+
+
+def _check_pocket_destination(target: Path, relative_paths: Iterable[str]) -> None:
+    lexical, physical = _destination_views(target)
+    if (
+        lexical.name.casefold() == "tcg"
+        or physical.name.casefold() == "tcg"
+        or _inside_tcg_namespace(lexical)
+        or _inside_tcg_namespace(physical)
+        or _physical_tcg_alias(lexical, physical)
+    ):
+        raise PublicationError("Publication game POCKET cannot target a TCG destination")
+    for proposed in relative_paths:
+        relative = _relative_path(proposed)
+        destination = target / Path(*PurePosixPath(relative).parts)
+        try:
+            _check_pocket_public_destination(destination)
+        except ValueError as exc:
+            raise PublicationError("Publication game POCKET cannot target a TCG destination") from exc
+        lexical, physical = _destination_views(destination)
+        if (
+            PurePosixPath(relative).parts[0].casefold() == "tcg"
+            or _inside_tcg_namespace(lexical)
+            or _inside_tcg_namespace(physical)
+            or _physical_tcg_alias(lexical, physical)
+        ):
+            raise PublicationError("Publication game POCKET cannot target a TCG destination")
 
 
 def sha256_file(path: Path) -> str:
@@ -162,6 +230,25 @@ def _load_manifest(path: Path) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise PublicationError(f"Manifest root must be an object: {path}")
     return payload
+
+
+def _copy_bytes_to_temp(payload: bytes, destination: Path) -> Path:
+    """Stage the precise semantically validated bytes, not a mutable source."""
+    fd, name = tempfile.mkstemp(
+        dir=destination.parent,
+        prefix=f".{destination.name}.onedrive-publish-",
+        suffix=".tmp",
+    )
+    temp = Path(name)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+    except BaseException:
+        temp.unlink(missing_ok=True)
+        raise
+    return temp
 
 
 def _validate_recorded_hashes(
@@ -235,9 +322,33 @@ def publish_transaction(
     allowed_paths: Iterable[str],
     manifest_relative_path: str,
     failure_injector: FailureInjector | None = None,
+    publication_lease: PublicationLease | None = None,
+    publication_plan: Mapping[str, Any] | None = None,
 ) -> PublicationResult:
     source_root = source_root.resolve()
-    target_root = target_root.resolve()
+    declared_target = Path(target_root).expanduser()
+    lexical_target, physical_target = _destination_views(declared_target)
+    target_root = physical_target
+    game_key = str(game).strip().upper()
+    if game_key not in GAME_ALIASES:
+        raise PublicationError(f"Unsupported publication game: {game!r}")
+    if game_key == "PTCG" and (
+        lexical_target.name.casefold() != "tcg"
+        or physical_target.name.casefold() != "tcg"
+        or declared_target.is_symlink()
+        or declared_target.is_junction()
+    ):
+        raise PublicationError("TCG publication requires an unaliased canonical TCG directory")
+    # The generic writer must not be a backdoor into unlocked TCG files.
+    if game_key == "PTCG":
+        if publication_lease is None:
+            raise PublicationError(
+                "TCG generic publication requires a coordinated lease"
+            )
+        publication_lease.assert_onedrive_target(target_root)
+        if publication_plan is None:
+            raise PublicationError("TCG generic publication requires a release plan")
+        publication_lease.assert_plan(publication_plan)
     allowed = {_relative_path(path) for path in allowed_paths}
     manifest_relative_path = _relative_path(manifest_relative_path)
     items = tuple(artifacts)
@@ -246,6 +357,41 @@ def publish_transaction(
         raise PublicationError(f"Source root is not a directory: {source_root}")
     if not items:
         raise PublicationError("Publication artifact set is empty")
+
+    # Validate BOTH lexical and physical identities before staging or writes.
+    # In particular, never erase Meta/TCG by resolving a link first.
+    if game_key == "POCKET":
+        _check_pocket_destination(
+            declared_target,
+            (*(_relative_path(item.relative_path) for item in items), manifest_relative_path),
+        )
+
+    tcg_snapshot = None
+    if game_key == "PTCG":
+        # The three selected sources MUST be precisely the bundle root
+        # artifacts. The caller cannot validate root A and copy subdir B.
+        expected = {
+            "ranking.csv": ("ranking_csv", False),
+            "heatmap.png": ("png", False),
+            "manifest.json": ("manifest", True),
+        }
+        if len(items) != len(expected):
+            raise PublicationError("TCG requires exactly three root artifacts")
+        for item in items:
+            relative = _relative_path(item.relative_path)
+            if (
+                relative not in expected
+                or (item.kind, item.manifest) != expected[relative]
+                or item.source.resolve() != (source_root / relative).resolve()
+            ):
+                raise PublicationError(
+                    "TCG artifact must be the exact validated bundle root file"
+                )
+        assert publication_plan is not None
+        try:
+            tcg_snapshot = validated_tcg_snapshot(source_root, publication_plan)
+        except (OSError, ValueError, TypeError, UnicodeError) as exc:
+            raise PublicationError("TCG immutable snapshot validation failed") from exc
 
     seen: set[str] = set()
     manifests: list[PublicationArtifact] = []
@@ -266,17 +412,53 @@ def publish_transaction(
         except ValueError as exc:
             raise PublicationError(f"Artifact escapes source root: {resolved_source}") from exc
         normalized = PublicationArtifact(resolved_source, relative, item.kind, item.manifest)
-        payload = _validate_artifact(normalized)
+        # TCG content comes only from the fully validated read-once snapshot;
+        # do not re-read mutable PublicationArtifact.source after validation.
+        payload = (
+            tcg_snapshot.manifest
+            if tcg_snapshot is not None and normalized.manifest
+            else None
+            if tcg_snapshot is not None
+            else _validate_artifact(normalized)
+        )
         if normalized.manifest:
             manifests.append(normalized)
             manifest_payload = payload
         normalized_items.append(normalized)
-        source_hashes[relative] = sha256_file(resolved_source)
+        source_hashes[relative] = (
+            tcg_snapshot.hashes[relative]
+            if tcg_snapshot is not None else sha256_file(resolved_source)
+        )
 
     if len(manifests) != 1 or manifests[0].relative_path != manifest_relative_path:
         raise PublicationError("Exactly one declared manifest must match manifest_relative_path")
-    if manifest_payload is not None:
+    if manifest_payload is not None and tcg_snapshot is None:
         _validate_recorded_hashes(manifest_payload, normalized_items)
+
+    if game_key == "PTCG":
+        # The direct generic entrypoint gets the same TCG bundle validation
+        # as the wrapper; the caller-supplied game/kind/allowlist cannot
+        # substitute another release or incomplete artifact set.
+        if (
+            allowed != set(TCG_PUBLIC_PATHS)
+            or set(source_hashes) != set(TCG_PUBLIC_PATHS)
+            or manifest_relative_path != "manifest.json"
+        ):
+            raise PublicationError("TCG requires the exact three-file public contract")
+        assert publication_plan is not None
+        assert publication_lease is not None
+        assert tcg_snapshot is not None
+        checked_manifest = tcg_snapshot.manifest
+        scope = checked_manifest.get("set") or {}
+        window = publication_plan["latest_completed_window"]
+        if (
+            str(checked_manifest.get("game") or "").upper() != "PTCG"
+            or str(checked_manifest.get("format") or "").lower() != "standard"
+            or str(scope.get("code") or "") != str(window.get("code") or "")
+            or str(scope.get("name") or "") != str(window.get("name") or "")
+        ):
+            raise PublicationError("TCG bundle identity does not match release plan")
+        publication_lease.assert_bundle_hashes(source_hashes)
 
     ordered = [item for item in normalized_items if not item.manifest] + manifests
     destination_state: dict[str, str | None] = {}
@@ -293,7 +475,11 @@ def publish_transaction(
             if current == source_hashes[item.relative_path]:
                 continue
             destination.parent.mkdir(parents=True, exist_ok=True)
-            temp = _copy_source_to_temp(item.source, destination)
+            temp = (
+                _copy_bytes_to_temp(tcg_snapshot.payloads[item.relative_path], destination)
+                if tcg_snapshot is not None
+                else _copy_source_to_temp(item.source, destination)
+            )
             staged[item.relative_path] = temp
             if failure_injector is not None:
                 failure_injector("after_temp_copy", item)
@@ -417,6 +603,7 @@ def publish_tcg_bundle(
     plan: Mapping[str, Any],
     meta_root: Path | str | None = None,
     failure_injector: FailureInjector | None = None,
+    _lease: PublicationLease | None = None,
 ) -> PublicationResult:
     validation_plan = {
         "action": "publish",
@@ -433,14 +620,23 @@ def publish_tcg_bundle(
         PublicationArtifact(bundle_dir / "heatmap.png", "heatmap.png", "png"),
         PublicationArtifact(bundle_dir / "manifest.json", "manifest.json", "manifest", True),
     )
+    destination = canonical_game_root("PTCG", meta_root=meta_root)
+    if _lease is None:
+        raise PublicationLockedError(
+            "TCG OneDrive publication requires a coordinated full-destination lease"
+        )
+    _lease.assert_onedrive_target(destination)
+    _lease.assert_plan(plan)
     return publish_transaction(
         game="PTCG",
         source_root=bundle_dir,
-        target_root=canonical_game_root("PTCG", meta_root=meta_root),
+        target_root=destination,
         artifacts=artifacts,
         allowed_paths=TCG_PUBLIC_PATHS,
         manifest_relative_path="manifest.json",
         failure_injector=failure_injector,
+        publication_lease=_lease,
+        publication_plan=plan,
     )
 
 
