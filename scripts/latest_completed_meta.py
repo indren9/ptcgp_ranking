@@ -42,6 +42,7 @@ def _resolve_public_destination(path: Path) -> Path:
 
 def _check_uncoordinated_output_destination(
     target_dir: Path, *, inspect_artifact_aliases: bool = False,
+    cleanup_tree: bool = False, identity_roots: Sequence[Path] = (),
 ) -> None:
     """Reject TCG public, state and cloud namespaces for uncoordinated output."""
     declared = Path(target_dir).expanduser()
@@ -62,7 +63,8 @@ def _check_uncoordinated_output_destination(
 
     # Canonical links can point out of their protected namespace. Inspect
     # both ancestries, plus this checkout, to retain that reverse identity.
-    roots = {Path(__file__).resolve().parents[1], *lexical.parents, *resolved.parents}
+    roots = {Path(__file__).resolve().parents[1], *lexical.parents, *resolved.parents,
+             *identity_roots}
     canonical_paths = {
         root / relative for root in roots for relative in (
             "public/tcg-live", "Meta/TCG",
@@ -74,7 +76,7 @@ def _check_uncoordinated_output_destination(
         ancestor / "TCG" for ancestor in (*lexical.parents, *resolved.parents)
         if ancestor.name.casefold() == "meta"
     )
-    if inspect_artifact_aliases:
+    if inspect_artifact_aliases or cleanup_tree:
         # Direct writers can follow a protected artifact link pointing OUT of
         # a namespace. Inspect those namespace entries as well as their roots.
         # Follow directory aliases with an inode visited set to bound cycles.
@@ -94,6 +96,8 @@ def _check_uncoordinated_output_destination(
                     info = base_path.stat()
                     identity = (info.st_dev, info.st_ino)
                     if identity in visited:
+                        if cleanup_tree:
+                            raise ValueError("Cannot inspect cyclic protected TCG destination identity")
                         directories[:] = []
                         continue
                     visited.add(identity)
@@ -101,6 +105,26 @@ def _check_uncoordinated_output_destination(
             except OSError as exc:
                 raise ValueError("Cannot inspect protected TCG destination identity") from exc
         canonical_paths.update(entries)
+    # Recursive deletion affects arbitrary existing entries, not only future
+    # producer artifacts. Compare their inode identities too, so a canonical
+    # hard link to a stale file cannot lose an entry unnoticed. Do not follow
+    # directory links in the tree being deleted (matching rmtree semantics).
+    cleanup_identities = set()
+    if cleanup_tree:
+        try:
+            for base, directories, files in os.walk(
+                lexical, followlinks=False, onerror=unreadable,
+            ):
+                for entry in (Path(base), *(Path(base) / n for n in directories + files)):
+                    physical_entry = _resolve_public_destination(entry)
+                    if protected(entry) or protected(physical_entry):
+                        raise ValueError("Uncoordinated cleanup cannot delete protected TCG contents")
+                    info = entry.lstat()
+                    cleanup_identities.add((info.st_dev, info.st_ino))
+                directories[:] = [n for n in directories
+                                  if not (Path(base) / n).is_junction()]
+        except OSError as exc:
+            raise ValueError("Cannot inspect cleanup destination identity") from exc
     for canonical in canonical_paths:
         try:
             tcg_physical = _resolve_public_destination(canonical)
@@ -109,6 +133,16 @@ def _check_uncoordinated_output_destination(
             raise ValueError("Cannot validate protected TCG destination identity") from exc
         if same_file or resolved == tcg_physical or tcg_physical in resolved.parents:
             raise ValueError("Uncoordinated output cannot target protected TCG public namespace or state")
+        if cleanup_tree:
+            try:
+                info = canonical.stat()
+            except FileNotFoundError:
+                info = None
+            except OSError as exc:
+                raise ValueError("Cannot inspect protected TCG destination identity") from exc
+            if (resolved in tcg_physical.parents or lexical in canonical.parents
+                    or (info is not None and (info.st_dev, info.st_ino) in cleanup_identities)):
+                raise ValueError("Uncoordinated cleanup cannot delete protected TCG contents")
 
 
 def _preflight_uncoordinated_file_output(path: Path) -> None:

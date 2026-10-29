@@ -21,6 +21,7 @@ from scripts.automatic_completed_meta_rollover import (
     run_rollover_transaction,
 )
 from scripts.latest_completed_meta import (
+    _check_uncoordinated_output_destination,
     _preflight_uncoordinated_file_output,
     build_publication_plan,
     read_catalog,
@@ -254,6 +255,9 @@ def run_job(
         acquisition_manifest: Path,
     ) -> Path:
         bundle_dir = work_root / "bundle"
+        _check_uncoordinated_output_destination(
+            bundle_dir, cleanup_tree=True, identity_roots=(repo_root,),
+        )
         if bundle_dir.exists():
             shutil.rmtree(bundle_dir)
         completed = plan["completed_set"]
