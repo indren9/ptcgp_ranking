@@ -209,7 +209,7 @@ def test_publication_dry_run_changes_nothing(
 def test_f08_direct_publish_success_releases_all_destination_locks(tmp_path):
     bundle = fake_bundle(tmp_path / "bundle")
     state = tmp_path / "state.json"
-    target = tmp_path / "public" / "latest-meta"
+    target = tmp_path / "public" / "tcg-live" / "latest-meta"
     with publication_lock(state_path=state, target_dir=target) as guard:
         publish_tcg_live_bundle(
             bundle_dir=bundle, plan=plan(), state_path=state,
@@ -224,7 +224,7 @@ def test_f08_direct_publish_success_releases_all_destination_locks(tmp_path):
 def test_f08_same_state_or_same_local_destination_blocks_before_write(tmp_path):
     bundle = fake_bundle(tmp_path / "bundle")
     state = tmp_path / "state.json"
-    target = tmp_path / "public" / "latest-meta"
+    target = tmp_path / "public" / "tcg-live" / "latest-meta"
     other_state = tmp_path / "other-state.json"
     other_target = tmp_path / "another" / "latest-meta"
     with publication_lock(state_path=state, target_dir=target) as first:
@@ -270,7 +270,7 @@ def test_f08_rollback_failure_retains_recovery_locks(tmp_path, monkeypatch):
 
     bundle = fake_bundle(tmp_path / "bundle")
     state = tmp_path / "tcg-state.json"
-    target = tmp_path / "public" / "latest-meta"
+    target = tmp_path / "public" / "tcg-live" / "latest-meta"
     target.mkdir(parents=True)
     ranking = target / "ranking.csv"
     ranking.write_bytes(b"old public ranking")
@@ -367,7 +367,7 @@ def test_f08r1_local_stale_plan_a_after_published_b_never_regresses(tmp_path):
     bundle_a = fake_bundle(tmp_path / "bundle-A")
     bundle_b = fake_bundle(tmp_path / "bundle-B")
     state = tmp_path / "state.json"
-    target = tmp_path / "public" / "latest-meta"
+    target = tmp_path / "public" / "tcg-live" / "latest-meta"
     first = plan()
     with publication_lock(state_path=state, target_dir=target) as guard:
         publish_tcg_live_bundle(
@@ -511,3 +511,160 @@ def test_f08r3_local_uses_same_validated_bytes_after_source_mutation(
         guard.mark_clean()
     assert (target / "ranking.csv").read_bytes() == original_ranking
     assert (target / "manifest.json").read_bytes() == original_manifest
+
+
+@pytest.mark.parametrize("kind", ["state", "local"])
+def test_f08r22_job_rejects_pocket_destination_before_work_creation(tmp_path, kind):
+    from scripts.tcg_live_latest_completed_job import run_job
+
+    pocket_state = tmp_path / ".github" / "latest-completed-meta-state.json"
+    pocket_state.parent.mkdir()
+    pocket_state.write_bytes(b'{"pocket":true}\n')
+    pocket_public = tmp_path / "public" / "latest-meta"
+    pocket_public.mkdir(parents=True)
+    old_ranking = pocket_public / "ranking.csv"
+    old_ranking.write_bytes(b"POCKET DATA")
+    scratch = tmp_path / "scratch"
+
+    with pytest.raises(ValueError, match="Pocket"):
+        run_job(
+            repo_root=tmp_path, work_root=scratch, publish=True,
+            state_path=pocket_state if kind == "state" else tmp_path / "tcg.json",
+            public_target=pocket_public if kind == "local" else None,
+        )
+    assert not scratch.exists()
+    assert pocket_state.read_bytes() == b'{"pocket":true}\n'
+    assert old_ranking.read_bytes() == b"POCKET DATA"
+    assert not publication_lock_path(pocket_state).exists()
+
+
+def test_f08r22_cli_state_rejects_pocket_without_network(tmp_path):
+    state = tmp_path / ".github" / "latest-completed-meta-state.json"
+    state.parent.mkdir()
+    state.write_bytes(b"POCKET")
+    work = tmp_path / "work"
+    completed = subprocess.run(
+        [
+            sys.executable, "-m", "scripts.tcg_live_latest_completed_job",
+            "--repo-root", str(tmp_path), "--work-root", str(work),
+            "--state", str(state),
+        ],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True, text=True, timeout=30,
+    )
+    assert completed.returncode != 0
+    assert "Pocket publication state" in completed.stderr
+    assert not work.exists()
+    assert state.read_bytes() == b"POCKET"
+
+
+def test_f08r22_direct_publisher_refuses_pocket_without_lock(tmp_path):
+    bundle = fake_bundle(tmp_path / "bundle")
+    pocket = tmp_path / "public" / "latest-meta"
+    pocket.mkdir(parents=True)
+    prior = {name: b"POCKET-" + name.encode() for name in PUBLIC_FILES}
+    for name, payload in prior.items():
+        (pocket / name).write_bytes(payload)
+
+    with pytest.raises(ValueError, match="Pocket"):
+        publish_tcg_live_bundle(
+            bundle_dir=bundle, plan=plan(), state_path=tmp_path / "tcg-state.json",
+            target_dir=pocket,
+        )
+    assert {name: (pocket / name).read_bytes() for name in PUBLIC_FILES} == prior
+    assert not (tmp_path / "tcg-state.json").exists()
+    assert not (pocket.parent / "latest-meta.publication.lock").exists()
+
+
+def test_f08r22_alias_and_hardlink_refused(tmp_path):
+    from scripts.tcg_live_publication import _check_tcg_pocket_destinations
+
+    pocket = tmp_path / "public" / "latest-meta"
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    try:
+        pocket.parent.mkdir()
+        pocket.symlink_to(shared, target_is_directory=True)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"directory symlinks unavailable: {exc}")
+    ranking = shared / "ranking.csv"
+    ranking.write_bytes(b"untouched")
+    with pytest.raises(ValueError, match="Pocket"):
+        _check_tcg_pocket_destinations(
+            state_path=tmp_path / "tcg.json", target_dir=shared,
+            repo_root=tmp_path,
+        )
+    assert pocket.is_symlink()
+    assert ranking.read_bytes() == b"untouched"
+
+    pocket_state = tmp_path / ".github" / "latest-completed-meta-state.json"
+    pocket_state.parent.mkdir()
+    pocket_state.write_bytes(b"original")
+    alias_state = tmp_path / "alternate-state.json"
+    import os
+    os.link(pocket_state, alias_state)
+    with pytest.raises(ValueError, match="Pocket|multiply-linked"):
+        _check_tcg_pocket_destinations(
+            state_path=alias_state, target_dir=tmp_path / "tcg", repo_root=tmp_path,
+        )
+    assert pocket_state.read_bytes() == alias_state.read_bytes() == b"original"
+    assert pocket_state.stat().st_ino == alias_state.stat().st_ino
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows junction semantics")
+def test_f08r22_windows_junction_directory_alias_refused(tmp_path):
+    from scripts.tcg_live_publication import _check_tcg_pocket_destinations
+
+    pocket = tmp_path / "public" / "latest-meta"
+    pocket.mkdir(parents=True)
+    ranking = pocket / "ranking.csv"
+    ranking.write_bytes(b"POCKET")
+    alias = tmp_path / "tcg-destination"
+    created = subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(alias), str(pocket)],
+        capture_output=True, text=True, timeout=15,
+    )
+    if created.returncode != 0 or not alias.is_junction():
+        pytest.skip(f"junction unavailable: {created.stderr}")
+    with pytest.raises(ValueError, match="Pocket"):
+        _check_tcg_pocket_destinations(
+            state_path=tmp_path / "tcg.json", target_dir=alias,
+            repo_root=tmp_path,
+        )
+    assert alias.is_junction()
+    assert ranking.read_bytes() == b"POCKET"
+
+
+def test_f08r22_native_hardlinks_to_pocket_are_refused(tmp_path):
+    import os
+    from scripts.tcg_live_publication import _check_tcg_pocket_destinations
+
+    pocket_state = tmp_path / ".github" / "latest-completed-meta-state.json"
+    pocket_state.parent.mkdir()
+    pocket_state.write_bytes(b"Pocket state")
+    alternate = tmp_path / "alternate.json"
+    os.link(pocket_state, alternate)
+    before_state = sha(pocket_state)
+    with pytest.raises(ValueError, match="Pocket|multiply-linked"):
+        _check_tcg_pocket_destinations(
+            state_path=alternate, target_dir=tmp_path / "tcg",
+            repo_root=tmp_path,
+        )
+    assert sha(pocket_state) == sha(alternate) == before_state
+    assert pocket_state.samefile(alternate)
+
+    pocket = tmp_path / "public" / "latest-meta"
+    pocket.mkdir(parents=True)
+    ranking = pocket / "ranking.csv"
+    ranking.write_bytes(b"Pocket ranking")
+    tcg = tmp_path / "tcg-output"
+    tcg.mkdir()
+    os.link(ranking, tcg / "ranking.csv")
+    before_ranking = sha(ranking)
+    with pytest.raises(ValueError, match="Pocket|multiply-linked"):
+        _check_tcg_pocket_destinations(
+            state_path=tmp_path / "tcg-state.json",
+            target_dir=tcg, repo_root=tmp_path,
+        )
+    assert sha(ranking) == sha(tcg / "ranking.csv") == before_ranking
+    assert ranking.samefile(tcg / "ranking.csv")

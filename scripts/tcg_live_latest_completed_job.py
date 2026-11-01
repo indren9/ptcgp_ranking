@@ -33,6 +33,7 @@ from scripts.tcg_live_candidate_receipt import (
     save_verified_candidate,
 )
 from scripts.tcg_live_publication import (
+    _check_tcg_pocket_destinations,
     build_tcg_live_bundle,
     publish_tcg_live_bundle,
 )
@@ -48,6 +49,7 @@ from sources.limitless.tournament_api.release_catalog import (
 )
 from storage.routing import base_for_expansion
 from storage.onedrive_publisher import (
+    _check_tcg_cloud_destination,
     canonical_game_root,
     onedrive_publication_enabled,
     publish_tcg_bundle,
@@ -218,12 +220,6 @@ def run_job(
 ) -> dict[str, Any]:
     repo_root = repo_root.resolve()
     work_root = work_root.resolve()
-
-    work_root.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-
     config_path = repo_root / "config" / "tcg.yaml"
 
     state_path = (
@@ -232,9 +228,18 @@ def run_job(
         / ".github"
         / "tcg-live-latest-completed-meta-state.json"
     )
+    target = public_target or repo_root / "public" / "tcg-live" / "latest-meta"
+    _check_tcg_pocket_destinations(
+        state_path=state_path, target_dir=target, repo_root=repo_root,
+    )
 
     cfg = _load_config(config_path)
     api = _api_config(cfg)
+    if publish and onedrive_publication_enabled(cfg):
+        _check_tcg_cloud_destination(canonical_game_root("PTCG"))
+
+    # Only after all configured destinations have passed read-only preflight.
+    work_root.mkdir(parents=True, exist_ok=True)
 
     catalog_path = Path(
         str(api["release_catalog"])
@@ -471,14 +476,6 @@ def run_job(
             )
             log.info("LOCAL_PRODUCTION = PASS")
     
-            target = (
-                public_target
-                or repo_root
-                / "public"
-                / "tcg-live"
-                / "latest-meta"
-            )
-
             # Both OneDrive and local/state writers must share one lease.
             # Candidate-specific locks alone do not serialize publishers.
             with publication_lock(

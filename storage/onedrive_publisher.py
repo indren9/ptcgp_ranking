@@ -120,6 +120,25 @@ def _destination_views(path: Path) -> tuple[Path, Path]:
     return lexical, physical
 
 
+def _check_tcg_cloud_destination(target: Path) -> None:
+    """A TCG cloud destination must not be inside Meta/POCKET or its aliases."""
+    lexical, physical = _destination_views(target)
+    for view in (lexical, physical):
+        parts = tuple(part.casefold() for part in view.parts)
+        if any(
+            parts[i:i + 2] == ("meta", "pocket")
+            for i in range(len(parts) - 1)
+        ):
+            raise PublicationError("TCG cloud destination cannot be inside Pocket")
+        for index, name in enumerate(parts):
+            if name != "meta":
+                continue
+            pocket = Path(*view.parts[:index + 1]) / "POCKET"
+            _, pocket_physical = _destination_views(pocket)
+            if physical == pocket_physical or pocket_physical in physical.parents:
+                raise PublicationError("TCG cloud destination aliases Pocket namespace")
+
+
 def _inside_tcg_namespace(path: Path) -> bool:
     """The protected cloud namespace is Meta/TCG, not any ancestor TCG."""
     parts = tuple(part.casefold() for part in path.parts)
@@ -332,6 +351,8 @@ def publish_transaction(
     game_key = str(game).strip().upper()
     if game_key not in GAME_ALIASES:
         raise PublicationError(f"Unsupported publication game: {game!r}")
+    if game_key == "PTCG":
+        _check_tcg_cloud_destination(declared_target)
     if game_key == "PTCG" and (
         lexical_target.name.casefold() != "tcg"
         or physical_target.name.casefold() != "tcg"
@@ -621,6 +642,7 @@ def publish_tcg_bundle(
         PublicationArtifact(bundle_dir / "manifest.json", "manifest.json", "manifest", True),
     )
     destination = canonical_game_root("PTCG", meta_root=meta_root)
+    _check_tcg_cloud_destination(destination)
     if _lease is None:
         raise PublicationLockedError(
             "TCG OneDrive publication requires a coordinated full-destination lease"

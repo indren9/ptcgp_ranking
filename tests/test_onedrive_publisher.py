@@ -854,3 +854,68 @@ def test_f08r6_windows_real_symlink_not_just_junction(tmp_path):
             result, source, bridge / "shared", "ranking.csv", "manifest.json",
         )
     assert list(shared.iterdir()) == []
+
+
+def test_f08r22_tcg_cloud_rejects_nested_pocket_override(tmp_path, monkeypatch):
+    from storage.onedrive_publisher import _check_tcg_cloud_destination
+
+    meta = tmp_path / "Meta"
+    nested = meta / "POCKET"
+    monkeypatch.setenv("PTCGP_ONEDRIVE_META_ROOT", str(nested))
+    configured = canonical_game_root("PTCG")
+    assert configured == nested / "TCG"
+    with pytest.raises(PublicationError, match="Pocket"):
+        _check_tcg_cloud_destination(configured)
+    with pytest.raises(PublicationError, match="Pocket"):
+        publish_transaction(
+            game="PTCG", source_root=tmp_path / "source",
+            target_root=configured, artifacts=(),
+            allowed_paths=TCG_PUBLIC_PATHS, manifest_relative_path="manifest.json",
+        )
+    assert not nested.exists()
+
+    bundle, plan = _write_tcg_bundle(tmp_path)
+    with pytest.raises(PublicationError, match="Pocket"):
+        publish_tcg_bundle(bundle_dir=bundle, plan=plan, meta_root=nested)
+    assert not configured.exists()
+    # Alternative legitimate Meta roots are still supported.
+    _check_tcg_cloud_destination(tmp_path / "OtherCloud" / "Meta" / "TCG")
+
+
+def test_f08r22_tcg_cloud_rejects_reverse_pocket_alias(tmp_path):
+    from storage.onedrive_publisher import _check_tcg_cloud_destination
+
+    meta = tmp_path / "Meta"
+    shared = meta / "shared"
+    shared.mkdir(parents=True)
+    pocket = meta / "POCKET"
+    try:
+        pocket.symlink_to(shared, target_is_directory=True)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"directory symlinks unavailable: {exc}")
+    target = shared / "TCG"
+    with pytest.raises(PublicationError, match="Pocket"):
+        _check_tcg_cloud_destination(target)
+    assert pocket.is_symlink()
+    assert not target.exists()
+
+
+@pytest.mark.skipif(__import__("sys").platform != "win32", reason="Windows junction semantics")
+def test_f08r22_tcg_cloud_reverse_junction_is_denied(tmp_path):
+    import subprocess
+    from storage.onedrive_publisher import _check_tcg_cloud_destination
+
+    meta = tmp_path / "Meta"
+    shared = meta / "shared"
+    shared.mkdir(parents=True)
+    pocket = meta / "POCKET"
+    created = subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(pocket), str(shared)],
+        capture_output=True, text=True, timeout=15,
+    )
+    if created.returncode != 0 or not pocket.is_junction():
+        pytest.skip(f"junction unavailable: {created.stderr}")
+    with pytest.raises(PublicationError, match="Pocket"):
+        _check_tcg_cloud_destination(shared / "TCG")
+    assert pocket.is_junction()
+    assert not (shared / "TCG").exists()
