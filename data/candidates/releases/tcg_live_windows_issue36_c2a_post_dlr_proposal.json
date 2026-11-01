@@ -1,0 +1,123 @@
+{
+  "proposal_kind": "TCG_LIVE_POST_DLR_NON_RUNTIME_ENVELOPE",
+  "status": "NOT_AUTHORIZED_FOR_DEPLOYMENT",
+  "authorization_required": true,
+  "earliest_deployment_utc": "2026-11-05T17:00:00Z",
+  "automatic_activation": false,
+  "runtime_loadable": false,
+  "c1_archive_sha256": "c06d855104a4348821cb9e37e391288d1c29f12ee690431201b23d2575d71099",
+  "c1_payload_sha256": "b7ca8549b14a87b1a6dfacd9b278c97898e63790f110f52e4e0529639093e443",
+  "instructions": "No top-level releases: the unmodified runtime loader rejects this envelope at every time. Only synthetic tests may extract proposed_catalog. Future deployment requires separate approval and a UTC time check; no activation utility is supplied.",
+  "proposed_catalog": {
+    "catalog_version": "tcgl-expansion-boundaries-2026-11-05-gate-c1-post-dlr-proposal-v1",
+    "source": "Official Pokemon TCG Live announcements; historical CRI/PBL/30C evidence preserved; Delta Reign announcement reviewed 2026-11-01 for proposal only",
+    "boundary_policy": {
+      "version": "ptcg-live-v1",
+      "full_expansion_availability": true,
+      "standard_rotation": true,
+      "early_individual_card_availability": false
+    },
+    "candidate_provenance": {
+      "status": "GATE_C1_PROPOSAL_NOT_CANONICAL_NOT_APPROVED_FOR_EXECUTION",
+      "approved_scope": "READ-ONLY preparation deliverable only; no execution, merge, canonical replacement, deployment, acquisition or publication authorized.",
+      "issue_url": "https://github.com/indren9/ptcgp_ranking/issues/36",
+      "prepared_on_utc_date": "2026-11-01",
+      "previous_production_catalog": {
+        "path": "data/reference/ptcg_live_windows.json",
+        "catalog_version": "tcgl-expansion-boundaries-2026-09-04-v1",
+        "git_blob_sha": "84051c83fe0793221f87532d71184496b44a9796",
+        "unchanged": true
+      },
+      "supporting_approved_historical_catalog": {
+        "path": "data/approved/releases/tcg_live_historical_boundaries_reviewed.json",
+        "git_blob_sha": "4775c561d7fe54f12e88b302cde54f40e63a5db3",
+        "review_gate": "GATE_1_11_D2_FINAL_CATALOG_REVIEW",
+        "frozen": true,
+        "unchanged": true
+      },
+      "evidence": [
+        {
+          "code": "CRI",
+          "full_expansion_available_at_utc": "2026-05-21T17:00:00Z",
+          "source_url": "https://community.pokemon.com/en-us/discussion/24085/mega-evolution-chaos-rising-expansion-release",
+          "criterion": "full_expansion_availability_all_game_modes"
+        },
+        {
+          "code": "PBL",
+          "full_expansion_available_at_utc": "2026-07-16T17:00:00Z",
+          "source_url": "https://community.pokemon.com/en-us/discussion/24856/mega-evolution-pitch-black-expansion-release",
+          "criterion": "full_expansion_availability_all_game_modes"
+        },
+        {
+          "code": "30C",
+          "full_expansion_available_at_utc": "2026-09-15T17:00:00Z",
+          "source_url": "https://community.pokemon.com/en-us/discussion/26004/pokemon-tcg-30th-celebration-expansion-release",
+          "criterion": "full_expansion_availability_all_game_modes"
+        },
+        {
+          "code": "DLR",
+          "full_expansion_available_at_utc": "2026-11-05T17:00:00Z",
+          "source_url": "https://community.pokemon.com/en-us/discussion/26743/mega-evolution-delta-reign-expansion-release",
+          "criterion": "full_expansion_availability_all_game_modes"
+        }
+      ],
+      "limits": "Future activation proposal only. Do not deploy before 2026-11-05T17:00:00Z: current loader displays last row as current. No run or pointer change authorized.",
+      "planned_releases": [
+        {
+          "code": "DLR",
+          "name": "Delta Reign Live window",
+          "release_datetime": "2026-11-05T17:00:00Z",
+          "source_url": "https://community.pokemon.com/en-us/discussion/26743/mega-evolution-delta-reign-expansion-release",
+          "code_source_url": "https://www.pokemon.com/us/features/sneak-a-peek-at-cards-from-the-mega-evolution-delta-reign-expansion",
+          "activation": "Separate approval and no activation before release timestamp. Metadata only; ignored by current loader."
+        }
+      ],
+      "temporal_validity": {
+        "not_before_utc": "2026-11-05T17:00:00Z",
+        "automatic_activation": false
+      }
+    },
+    "releases": [
+      {
+        "code": "CRI",
+        "name": "Chaos Rising Live window",
+        "release_datetime": "2026-05-21T17:00:00Z",
+        "next_release_datetime": "2026-07-16T17:00:00Z",
+        "is_current": false,
+        "boundary_kind": "full_expansion_availability",
+        "source": "Official Pokemon TCG Live announcements; historical CRI/PBL/30C evidence preserved; Delta Reign announcement reviewed 2026-11-01 for proposal only",
+        "catalog_version": "tcgl-expansion-boundaries-2026-11-05-gate-c1-post-dlr-proposal-v1"
+      },
+      {
+        "code": "PBL",
+        "name": "Pitch Black Live window",
+        "release_datetime": "2026-07-16T17:00:00Z",
+        "next_release_datetime": "2026-09-15T17:00:00Z",
+        "is_current": false,
+        "boundary_kind": "full_expansion_availability",
+        "source": "Official Pokemon TCG Live announcements; historical CRI/PBL/30C evidence preserved; Delta Reign announcement reviewed 2026-11-01 for proposal only",
+        "catalog_version": "tcgl-expansion-boundaries-2026-11-05-gate-c1-post-dlr-proposal-v1"
+      },
+      {
+        "code": "30C",
+        "name": "30th Celebration Live window",
+        "release_datetime": "2026-09-15T17:00:00Z",
+        "next_release_datetime": "2026-11-05T17:00:00Z",
+        "is_current": false,
+        "boundary_kind": "full_expansion_availability",
+        "source": "Official Pokemon TCG Live announcements; historical CRI/PBL/30C evidence preserved; Delta Reign announcement reviewed 2026-11-01 for proposal only",
+        "catalog_version": "tcgl-expansion-boundaries-2026-11-05-gate-c1-post-dlr-proposal-v1"
+      },
+      {
+        "code": "DLR",
+        "name": "Delta Reign Live window",
+        "release_datetime": "2026-11-05T17:00:00Z",
+        "next_release_datetime": null,
+        "is_current": true,
+        "boundary_kind": "full_expansion_availability",
+        "source": "Official Pokemon TCG Live announcements; historical CRI/PBL/30C evidence preserved; Delta Reign announcement reviewed 2026-11-01 for proposal only",
+        "catalog_version": "tcgl-expansion-boundaries-2026-11-05-gate-c1-post-dlr-proposal-v1"
+      }
+    ]
+  }
+}

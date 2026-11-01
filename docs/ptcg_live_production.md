@@ -64,17 +64,13 @@ The dedicated catalog is:
 
 `data/reference/ptcg_live_windows.json`
 
-The catalog currently freezes the boundary required for the first production
-window:
-
-- Chaos Rising: `2026-05-21T00:00:00Z`
-- Pitch Black: `2026-07-16T00:00:00Z`
-
-Therefore, at the 2026-09-05 integration gate, the latest completed window is:
-
-`[2026-05-21T00:00:00Z, 2026-07-16T00:00:00Z)`
-
-with code `CRI`.
+On the Issue #36 candidate branch, Gate C.2A corrects CRI/PBL/30C to
+17:00 UTC and keeps 30C current/PBL latest-completed before Delta Reign.
+See [the C.2A correction and deployment limits](tcg-live-issue36-c2a.md).
+This branch change is not deployed. The September integration results below
+remain historical evidence of the old midnight CRI window
+`[2026-05-21T00:00:00Z, 2026-07-16T00:00:00Z)`; they do not certify
+the corrected scope and are not rewritten by this correction.
 
 The JSON keeps `boundary_kind` metadata so later catalog updates can represent
 both expansion-availability and Standard-rotation boundaries. Runtime reuses

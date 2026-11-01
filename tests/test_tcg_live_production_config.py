@@ -57,14 +57,14 @@ def test_tcg_live_catalog_resolves_latest_completed_cri():
 
     assert selected.code == "CRI"
     assert selected.release_datetime == datetime(
-        2026, 5, 21, tzinfo=UTC
+        2026, 5, 21, 17, tzinfo=UTC
     )
     assert selected.next_release_datetime == datetime(
-        2026, 7, 16, tzinfo=UTC
+        2026, 7, 16, 17, tzinfo=UTC
     )
 
 
-def test_tcg_production_scope_matches_frozen_t4_window():
+def test_tcg_production_scope_matches_corrected_cri_window():
     cfg = _cfg()
 
     scope = _api_resolved_scope_from_config(
@@ -79,14 +79,14 @@ def test_tcg_production_scope_matches_frozen_t4_window():
     assert scope.set_code == "CRI"
     assert scope.set_name == "Chaos Rising Live window"
     assert scope.start_datetime == datetime(
-        2026, 5, 21, tzinfo=UTC
+        2026, 5, 21, 17, tzinfo=UTC
     )
     assert scope.end_datetime == datetime(
-        2026, 7, 16, tzinfo=UTC
+        2026, 7, 16, 17, tzinfo=UTC
     )
     assert (
         scope.catalog_version
-        == "tcgl-expansion-boundaries-2026-09-04-v1"
+        == "tcgl-expansion-boundaries-2026-11-01-issue36-c2a-pre-dlr-v1"
     )
 
 

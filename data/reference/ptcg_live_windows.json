@@ -1,32 +1,101 @@
 {
-  "catalog_version": "tcgl-expansion-boundaries-2026-09-04-v1",
-  "source": "Official Pokemon TCG Live availability and Standard rotation evidence frozen 2026-09-04",
+  "catalog_version": "tcgl-expansion-boundaries-2026-11-01-issue36-c2a-pre-dlr-v1",
+  "source": "Official Pokemon TCG Live full-expansion availability announcements; Issue 36 Gate C.2A branch-only correction",
   "boundary_policy": {
     "version": "ptcg-live-v1",
     "full_expansion_availability": true,
     "standard_rotation": true,
     "early_individual_card_availability": false
   },
+  "candidate_provenance": {
+    "status": "GATE_C2A_BRANCH_IMPLEMENTATION_NOT_DEPLOYED",
+    "approved_scope": "Canonical path correction on PR 37 candidate branch only; no merge, deployment, acquisition, publication or pointer edits.",
+    "issue_url": "https://github.com/indren9/ptcgp_ranking/issues/36",
+    "prepared_on_utc_date": "2026-11-01",
+    "previous_production_catalog": {
+      "path": "data/reference/ptcg_live_windows.json",
+      "catalog_version": "tcgl-expansion-boundaries-2026-09-04-v1",
+      "git_blob_sha": "84051c83fe0793221f87532d71184496b44a9796",
+      "unchanged": false,
+      "preserved_in_git_at_revision": "fc15b26d6c2253987ecd1941c93977c6ea8bf74a"
+    },
+    "supporting_approved_historical_catalog": {
+      "path": "data/approved/releases/tcg_live_historical_boundaries_reviewed.json",
+      "git_blob_sha": "4775c561d7fe54f12e88b302cde54f40e63a5db3",
+      "review_gate": "GATE_1_11_D2_FINAL_CATALOG_REVIEW",
+      "frozen": true,
+      "unchanged": true
+    },
+    "evidence": [
+      {
+        "code": "CRI",
+        "full_expansion_available_at_utc": "2026-05-21T17:00:00Z",
+        "source_url": "https://community.pokemon.com/en-us/discussion/24085/mega-evolution-chaos-rising-expansion-release",
+        "criterion": "full_expansion_availability_all_game_modes"
+      },
+      {
+        "code": "PBL",
+        "full_expansion_available_at_utc": "2026-07-16T17:00:00Z",
+        "source_url": "https://community.pokemon.com/en-us/discussion/24856/mega-evolution-pitch-black-expansion-release",
+        "criterion": "full_expansion_availability_all_game_modes"
+      },
+      {
+        "code": "30C",
+        "full_expansion_available_at_utc": "2026-09-15T17:00:00Z",
+        "source_url": "https://community.pokemon.com/en-us/discussion/26004/pokemon-tcg-30th-celebration-expansion-release",
+        "criterion": "full_expansion_availability_all_game_modes"
+      }
+    ],
+    "limits": "Branch-only pre-DLR snapshot: 30C stays OPEN/current and PBL latest-completed, including after the announced DLR boundary until an explicitly authorized catalog replacement. No automatic activation or runtime freshness guard is claimed.",
+    "planned_releases": [
+      {
+        "code": "DLR",
+        "name": "Delta Reign Live window",
+        "release_datetime": "2026-11-05T17:00:00Z",
+        "source_url": "https://community.pokemon.com/en-us/discussion/26743/mega-evolution-delta-reign-expansion-release",
+        "code_source_url": "https://www.pokemon.com/us/features/sneak-a-peek-at-cards-from-the-mega-evolution-delta-reign-expansion",
+        "activation": "Separate approval and no activation before release timestamp. Metadata only; ignored by current loader."
+      }
+    ],
+    "temporal_validity": {
+      "review_or_replace_at_utc": "2026-11-05T17:00:00Z",
+      "automatic_activation": false
+    },
+    "authorization_url": "https://github.com/indren9/ptcgp_ranking/issues/36#issuecomment-6561406638",
+    "baseline_revision": "fc15b26d6c2253987ecd1941c93977c6ea8bf74a",
+    "c1_archive_sha256": "c06d855104a4348821cb9e37e391288d1c29f12ee690431201b23d2575d71099",
+    "c1_pre_proposal_sha256": "3ddc58bca4b2ebb1a4aa8371a6ed337b8edc06cd052eeb921bc376faca0686e3"
+  },
   "releases": [
     {
       "code": "CRI",
       "name": "Chaos Rising Live window",
-      "release_datetime": "2026-05-21T00:00:00Z",
-      "next_release_datetime": "2026-07-16T00:00:00Z",
+      "release_datetime": "2026-05-21T17:00:00Z",
+      "next_release_datetime": "2026-07-16T17:00:00Z",
       "is_current": false,
       "boundary_kind": "full_expansion_availability",
-      "source": "Official Pokemon TCG Live availability and Standard rotation evidence frozen 2026-09-04",
-      "catalog_version": "tcgl-expansion-boundaries-2026-09-04-v1"
+      "source": "Official Pokemon TCG Live full-expansion availability announcements; Issue 36 Gate C.2A branch-only correction",
+      "catalog_version": "tcgl-expansion-boundaries-2026-11-01-issue36-c2a-pre-dlr-v1"
     },
     {
       "code": "PBL",
       "name": "Pitch Black Live window",
-      "release_datetime": "2026-07-16T00:00:00Z",
+      "release_datetime": "2026-07-16T17:00:00Z",
+      "next_release_datetime": "2026-09-15T17:00:00Z",
+      "is_current": false,
+      "boundary_kind": "full_expansion_availability",
+      "source": "Official Pokemon TCG Live full-expansion availability announcements; Issue 36 Gate C.2A branch-only correction",
+      "catalog_version": "tcgl-expansion-boundaries-2026-11-01-issue36-c2a-pre-dlr-v1"
+    },
+    {
+      "code": "30C",
+      "name": "30th Celebration Live window",
+      "release_datetime": "2026-09-15T17:00:00Z",
       "next_release_datetime": null,
       "is_current": true,
       "boundary_kind": "full_expansion_availability",
-      "source": "Official Pokemon TCG Live availability and Standard rotation evidence frozen 2026-09-04",
-      "catalog_version": "tcgl-expansion-boundaries-2026-09-04-v1"
+      "source": "Official Pokemon TCG Live full-expansion availability announcements; Issue 36 Gate C.2A branch-only correction",
+      "catalog_version": "tcgl-expansion-boundaries-2026-11-01-issue36-c2a-pre-dlr-v1"
     }
   ]
 }
