@@ -1,0 +1,82 @@
+{
+  "catalog_version": "tcgl-expansion-boundaries-2026-10-21-issue36-b1-candidate-v2",
+  "source": "Official Pokemon TCG Live News & Announcements - full-expansion availability; approved historical evidence reviewed 2026-10-21",
+  "boundary_policy": {
+    "version": "ptcg-live-v1",
+    "full_expansion_availability": true,
+    "standard_rotation": true,
+    "early_individual_card_availability": false
+  },
+  "candidate_provenance": {
+    "status": "B1_DRAFT_NOT_CANONICAL",
+    "approved_scope": "B1 catalog candidate preparation only; not approved for production promotion, merge, live acquisition, daily deployment or publication",
+    "issue_url": "https://github.com/indren9/ptcgp_ranking/issues/36",
+    "prepared_on_utc_date": "2026-10-21",
+    "previous_production_catalog": {
+      "path": "data/reference/ptcg_live_windows.json",
+      "catalog_version": "tcgl-expansion-boundaries-2026-09-04-v1",
+      "git_blob_sha": "84051c83fe0793221f87532d71184496b44a9796",
+      "unchanged": true
+    },
+    "supporting_approved_historical_catalog": {
+      "path": "data/approved/releases/tcg_live_historical_boundaries_reviewed.json",
+      "git_blob_sha": "4775c561d7fe54f12e88b302cde54f40e63a5db3",
+      "review_gate": "GATE_1_11_D2_FINAL_CATALOG_REVIEW",
+      "frozen": true,
+      "unchanged": true
+    },
+    "evidence": [
+      {
+        "code": "CRI",
+        "full_expansion_available_at_utc": "2026-05-21T17:00:00Z",
+        "source_url": "https://community.pokemon.com/en-us/discussion/24085/mega-evolution-chaos-rising-expansion-release",
+        "criterion": "full_expansion_availability_all_game_modes"
+      },
+      {
+        "code": "PBL",
+        "full_expansion_available_at_utc": "2026-07-16T17:00:00Z",
+        "source_url": "https://community.pokemon.com/en-us/discussion/24856/mega-evolution-pitch-black-expansion-release",
+        "criterion": "full_expansion_availability_all_game_modes"
+      },
+      {
+        "code": "30C",
+        "full_expansion_available_at_utc": "2026-09-15T17:00:00Z",
+        "source_url": "https://community.pokemon.com/en-us/discussion/26004/pokemon-tcg-30th-celebration-expansion-release",
+        "criterion": "full_expansion_availability_all_game_modes"
+      }
+    ],
+    "limits": "No production routing/config/state/pointer change. Scope exclusion/inclusion, frozen lineage and daily candidate-repeat handling reserved for separately authorized B2/B3/C."
+  },
+  "releases": [
+    {
+      "code": "CRI",
+      "name": "Chaos Rising Live window",
+      "release_datetime": "2026-05-21T17:00:00Z",
+      "next_release_datetime": "2026-07-16T17:00:00Z",
+      "is_current": false,
+      "boundary_kind": "full_expansion_availability",
+      "source": "Official Pokemon TCG Live News & Announcements - full-expansion availability; approved historical evidence reviewed 2026-10-21",
+      "catalog_version": "tcgl-expansion-boundaries-2026-10-21-issue36-b1-candidate-v2"
+    },
+    {
+      "code": "PBL",
+      "name": "Pitch Black Live window",
+      "release_datetime": "2026-07-16T17:00:00Z",
+      "next_release_datetime": "2026-09-15T17:00:00Z",
+      "is_current": false,
+      "boundary_kind": "full_expansion_availability",
+      "source": "Official Pokemon TCG Live News & Announcements - full-expansion availability; approved historical evidence reviewed 2026-10-21",
+      "catalog_version": "tcgl-expansion-boundaries-2026-10-21-issue36-b1-candidate-v2"
+    },
+    {
+      "code": "30C",
+      "name": "30th Celebration Live window",
+      "release_datetime": "2026-09-15T17:00:00Z",
+      "next_release_datetime": null,
+      "is_current": true,
+      "boundary_kind": "full_expansion_availability",
+      "source": "Official Pokemon TCG Live News & Announcements - full-expansion availability; approved historical evidence reviewed 2026-10-21",
+      "catalog_version": "tcgl-expansion-boundaries-2026-10-21-issue36-b1-candidate-v2"
+    }
+  ]
+}

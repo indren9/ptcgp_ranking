@@ -49,6 +49,10 @@ STARTED = datetime(
 def test_job_noop_never_initializes_backend(
     tmp_path,
 ):
+    # A NOOP requires the corrected complete identity, not the old public state.
+    state = tmp_path / "corrected-state.json"
+    plan = build_plan(catalog_path=CATALOG, acquisition_started_at=STARTED)
+    state.write_text(json.dumps(plan["state_after_publish"]), encoding="utf-8")
     called = False
 
     def backend_factory():
@@ -61,6 +65,7 @@ def test_job_noop_never_initializes_backend(
     report = run_job(
         repo_root=ROOT,
         work_root=tmp_path,
+        state_path=state,
         acquisition_started_at=STARTED,
         backend_factory=backend_factory,
     )
@@ -71,7 +76,7 @@ def test_job_noop_never_initializes_backend(
     assert called is False
 
 
-def test_scope_matches_frozen_cri_window():
+def test_scope_matches_corrected_cri_window():
     cfg = _load_config(CONFIG)
     api = cfg["source"]["tournament_api"]
 
@@ -90,10 +95,10 @@ def test_scope_matches_frozen_cri_window():
     assert scope.format == "STANDARD"
     assert scope.set_code == "CRI"
     assert scope.start_datetime.isoformat() == (
-        "2026-05-21T00:00:00+00:00"
+        "2026-05-21T17:00:00+00:00"
     )
     assert scope.end_datetime.isoformat() == (
-        "2026-07-16T00:00:00+00:00"
+        "2026-07-16T17:00:00+00:00"
     )
 
 
