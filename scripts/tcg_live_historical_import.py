@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import asdict
+import hashlib
 import json
 from pathlib import Path
 import subprocess
@@ -220,6 +221,39 @@ def verify_source(request, repo):
     return provenance, frames, core, mars
 
 
+# Runtime code used to interpret and verify an historical import. A clean
+# tracked tree is necessary, but not sufficient without binding the executed file.
+IMPORTER_RELATIVE = "scripts/tcg_live_historical_import.py"
+RUNTIME_PATHS = ("historical_rebuild", "acquisition", "core", "mars", "pipelines",
+                 "sources", "storage", "config", "data/reference", IMPORTER_RELATIVE)
+
+
+def git_result(repo, *arguments):
+    result = subprocess.run(["git", "-C", str(repo), *arguments], capture_output=True)
+    require(result.returncode == 0, "Git verification failed: " + arguments[0])
+    return result.stdout
+
+
+def verify_software(repo, revision):
+    """Pin executed importer bytes to the requested commit and reject dirty dependencies."""
+    importer = plain_path(Path(__file__))
+    require(importer == repo / IMPORTER_RELATIVE, "executed importer outside pinned repository")
+    raw = importer.read_bytes()
+    implementation = hashlib.sha256(raw).hexdigest()
+    committed_oid = git_result(repo, "rev-parse", revision + ":" + IMPORTER_RELATIVE).strip()
+    # Hash the very same bytes whose SHA-256 is recorded, using Git's checkout
+    # filters. A clean CRLF checkout must match the committed LF blob on Windows.
+    filtered = subprocess.run(["git", "-C", str(repo), "hash-object", "--stdin",
+                               "--path=" + IMPORTER_RELATIVE], input=raw, capture_output=True)
+    require(filtered.returncode == 0, "Git verification failed: hash-object")
+    require(filtered.stdout.strip() == committed_oid,
+            "executed importer differs from pinned Git blob")
+    git_result(repo, "diff", "--quiet", revision, "--", *RUNTIME_PATHS)
+    require(not git_result(repo, "ls-files", "--others", "--exclude-standard", "--", *RUNTIME_PATHS),
+            "untracked runtime dependency")
+    return implementation
+
+
 def import_historical(*, repo_root: Path, request_path: Path):
     repo = plain_path(repo_root)
     request_path = plain_path(request_path)
@@ -228,14 +262,10 @@ def import_historical(*, repo_root: Path, request_path: Path):
     require(set(request) == {"schema_version", "source_kind", "source_root", "source_state_sha256",
             "historical_scope", "target_scope", "config_sha256", "catalog_sha256", "software_revision"}, "request schema")
     require(request["schema_version"] == 1 and request["source_kind"] == "historical_import", "explicit opt-in required")
-    revision = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"], text=True).strip()
+    revision = git_result(repo, "rev-parse", "HEAD").decode("ascii").strip()
     require(revision == request["software_revision"], "software revision")
-    clean = subprocess.run(["git", "-C", str(repo), "diff", "--quiet", "HEAD", "--",
-                            "historical_rebuild", "acquisition", "core", "mars", "pipelines",
-                            "sources", "storage", "config", "data/reference"], check=False)
-    require(clean.returncode == 0, "uncommitted runtime dependencies")
+    implementation = verify_software(repo, revision)
     provenance, frames, core, mars = verify_source(request, repo)
-    implementation = file_digest(Path(__file__))
     payload = {"schema_version": 1, "source_kind": "historical_import", "production_receipt": False,
                "publication_authorized": False, "runtime_usable": False, "network_calls": 0,
                "software_revision": revision, "implementation_sha256": implementation,
@@ -271,8 +301,9 @@ def import_historical(*, repo_root: Path, request_path: Path):
         require(request_path.read_bytes() == request_bytes, "request changed during import")
         for item in (provenance["config"], provenance["catalog"]):
             require(file_digest(Path(item["path"])) == item["sha256"], "config/catalog changed during import")
-        require(file_digest(Path(__file__)) == implementation, "implementation changed during import")
-        require(subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"], text=True).strip() == revision, "revision changed during import")
+        require(git_result(repo, "rev-parse", "HEAD").decode("ascii").strip() == revision,
+                "revision changed during import")
+        require(verify_software(repo, revision) == implementation, "implementation changed during import")
         manifest = {**payload, "import_id": import_id, "outputs": output_hashes}
         write_json(pending / "import_manifest.json", manifest)
         run = {"schema_version": 1, "source_kind": "historical_import", "run_id": import_id,
@@ -281,6 +312,17 @@ def import_historical(*, repo_root: Path, request_path: Path):
                "import_manifest_sha256": file_digest(pending / "import_manifest.json"),
                "outputs": output_hashes, "qa": provenance["qa"], "blockers": provenance["blockers"]}
         write_json(pending / "run_manifest.json", run)
+        # Last pre-rename gate: a concurrent change to a .pending CSV is not sealed.
+        plain_path(pending)
+        for name, checksum in output_hashes.items():
+            require(file_digest(plain_path(pending / name)) == checksum,
+                    "pending output changed before rename: " + name)
+        require(file_digest(pending / "import_manifest.json") == run["import_manifest_sha256"],
+                "import manifest changed before rename")
+        require(git_result(repo, "rev-parse", "HEAD").decode("ascii").strip() == revision,
+                "revision changed before rename")
+        require(verify_software(repo, revision) == implementation,
+                "software changed before rename")
         pending.rename(final)
     return {"candidate": str(final), "import_id": import_id, "qa": provenance["qa"],
             "manifest_sha256": file_digest(final / "import_manifest.json"),

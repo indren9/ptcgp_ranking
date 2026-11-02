@@ -46,9 +46,15 @@ def build_env(tmp_path, code="CRI"):
     (repo / "data/reference").mkdir(parents=True)
     for name in ("config/tcg.yaml", "data/reference/ptcg_live_windows.json"):
         (repo / name).write_bytes((BASE / name).read_bytes())
+    (repo / "scripts").mkdir()
+    # Git-backed synthetic software pin, while executing the real imported module.
+    (repo / imp.IMPORTER_RELATIVE).write_bytes(Path(imp.__file__).read_bytes())
     subprocess.run(["git", "init", str(repo)], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(repo), "add", "config/tcg.yaml",
+                    "data/reference/ptcg_live_windows.json", imp.IMPORTER_RELATIVE],
+                   check=True, capture_output=True)
     subprocess.run(["git", "-C", str(repo), "-c", "user.name=Offline", "-c", "user.email=offline@example.invalid",
-                    "commit", "--allow-empty", "-m", "synthetic"], check=True, capture_output=True)
+                    "commit", "-m", "synthetic"], check=True, capture_output=True)
     revision = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"], text=True).strip()
     cfg = yaml.safe_load((repo / "config/tcg.yaml").read_bytes())
     backend = ProductionBackend(cfg)
@@ -109,7 +115,14 @@ def build_env(tmp_path, code="CRI"):
 
 
 def run(env):
-    return imp.import_historical(repo_root=env[0], request_path=env[4])
+    # The real imported functions execute; only their __file__ identity points to
+    # the versioned synthetic copy, so the pin is exercised without a real source run.
+    actual = imp.__file__
+    try:
+        imp.__file__ = str(env[0] / imp.IMPORTER_RELATIVE)
+        return imp.import_historical(repo_root=env[0], request_path=env[4])
+    finally:
+        imp.__file__ = actual
 
 
 def reseal(env, stage, value):
@@ -133,6 +146,7 @@ def test_actual_import_and_readback(tmp_path, code):
     run_manifest = json.loads((out / "run_manifest.json").read_bytes())
     assert run_manifest["import_manifest_sha256"] == file_digest(out / "import_manifest.json")
     assert manifest["source_kind"] == "historical_import"
+    assert manifest["implementation_sha256"] == file_digest(env[0] / imp.IMPORTER_RELATIVE)
     assert manifest["lineage"]["selection_caveats"]["invalid_record_count"] == (4 if code == "PBL" else 0)
     assert manifest["lineage"]["source_urls"]["producer_compatible"] is False
     assert run_manifest["production_receipt"] is run_manifest["published"] is run_manifest["runtime_usable"] is False
@@ -359,3 +373,104 @@ def test_explicit_request_contract(tmp_path, kind):
     with pytest.raises(ValueError):
         run(env)
     assert not (tmp_path / "historical-import-candidates").exists()
+
+
+@pytest.mark.parametrize("kind", ["importer", "untracked_dependency", "git_failure"])
+def test_software_pin_fails_closed_before_candidate(tmp_path, kind):
+    env = build_env(tmp_path)
+    repo = env[0]
+    if kind == "importer":
+        path = repo / imp.IMPORTER_RELATIVE
+        path.write_bytes(path.read_bytes() + b"\n# unapproved local edit\n")
+    elif kind == "untracked_dependency":
+        (repo / "historical_rebuild").mkdir()
+        (repo / "historical_rebuild/untracked.py").write_text("x = 1\n")
+    else:
+        (repo / ".git/HEAD").write_text("ref: refs/heads/nonexistent\n")
+    with pytest.raises(ValueError, match="importer|dependency|Git verification"):
+        run(env)
+    assert not (tmp_path / "historical-import-candidates").exists()
+
+
+def test_importer_mutation_during_import_never_seals(tmp_path, monkeypatch):
+    env = build_env(tmp_path)
+    original = imp.qa_frames
+    calls = []
+    def mutate(core, mars):
+        result = original(core, mars)
+        calls.append(True)
+        if len(calls) == 2:
+            path = env[0] / imp.IMPORTER_RELATIVE
+            path.write_bytes(path.read_bytes() + b"\n# changed concurrently\n")
+        return result
+    monkeypatch.setattr(imp, "qa_frames", mutate)
+    with pytest.raises(ValueError, match="importer"):
+        run(env)
+    scratch = tmp_path / "historical-import-candidates"
+    assert list(scratch.glob("*.pending"))
+    assert not list(scratch.rglob("run_manifest.json"))
+
+
+@pytest.mark.parametrize("location", ["path", "filename"])
+def test_artifact_reference_traversal_rejected(tmp_path, location):
+    env = build_env(tmp_path)
+    ref = env[2]["stages"]["CORE"]["artifact"]
+    if location == "path":
+        ref["path"] = "../../outside"
+    else:
+        ref["files"]["../outside.csv"] = "0" * 64
+    save_state(env[1] / "state/current.json", env[2])
+    env[3]["source_state_sha256"] = file_digest(env[1] / "state/current.json")
+    write_json(env[4], env[3])
+    with pytest.raises((ValueError, RuntimeError)):
+        run(env)
+    assert not (tmp_path / "historical-import-candidates").exists()
+
+
+@pytest.mark.skipif(__import__("os").name != "nt", reason="Windows junction test")
+def test_windows_junction_source_rejected(tmp_path):
+    env = build_env(tmp_path)
+    alias = tmp_path / "source-junction"
+    create = subprocess.run(["cmd", "/c", "mklink", "/J", str(alias), str(env[1])],
+                            capture_output=True, text=True)
+    if create.returncode != 0:
+        pytest.skip("Windows junction creation unavailable: " + create.stderr.strip())
+    try:
+        env[3]["source_root"] = str(alias)
+        write_json(env[4], env[3])
+        with pytest.raises(ValueError, match="symlink/junction"):
+            run(env)
+        assert not (tmp_path / "historical-import-candidates").exists()
+    finally:
+        alias.rmdir()
+
+
+def test_pending_csv_mutation_at_pre_rename_gate(tmp_path, monkeypatch):
+    env = build_env(tmp_path)
+    original = imp.write_json
+    def externally_changed(path, value):
+        original(path, value)
+        if path.name == "run_manifest.json":
+            # Race injected after the last manifest write, before the rename.
+            csv = path.parent / "score_latest.csv"
+            csv.write_bytes(csv.read_bytes() + b"\nexternally changed\n")
+    monkeypatch.setattr(imp, "write_json", externally_changed)
+    with pytest.raises(ValueError, match="pending output changed before rename"):
+        run(env)
+    scratch = tmp_path / "historical-import-candidates"
+    assert list(scratch.glob("*.pending"))
+    assert not list(scratch.glob("historical-import-*")) or all(
+        path.name.endswith(".pending") for path in scratch.glob("historical-import-*"))
+
+
+def test_clean_crlf_checkout_matches_git_blob(tmp_path):
+    env = build_env(tmp_path)
+    importer = env[0] / imp.IMPORTER_RELATIVE
+    data = importer.read_bytes().replace(b"\r\n", b"\n")
+    importer.write_bytes(data.replace(b"\n", b"\r\n"))
+    subprocess.run(["git", "-C", str(env[0]), "config", "core.autocrlf", "true"],
+                   check=True, capture_output=True)
+    result = run(env)
+    manifest = json.loads((Path(result["candidate"]) / "import_manifest.json").read_bytes())
+    assert manifest["implementation_sha256"] == file_digest(importer)
+    assert result["qa"]["qa"] == "PASS"

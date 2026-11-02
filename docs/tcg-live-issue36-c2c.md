@@ -49,8 +49,12 @@ original state, acquisition metadata, stage semantics and timestamps remain in
 the lineage; the import does not assert a new acquisition date or freshness.
 
 The import manifest records `source_kind=historical_import`, the pinned request,
-actual software revision and importer hash (tracked runtime dependencies must
-be clean), full effective config, original and
+actual software revision and verified raw-byte importer SHA-256. The executed
+importer must match the Git blob at the pinned revision after Git's documented
+checkout filters (allowing clean LF/CRLF conversion); tracked runtime paths (including
+the importer) must be clean, with no untracked runtime dependencies. Git
+verification errors fail closed; software checks repeat before sealing.
+The manifest also records the full effective config, original and
 target catalog identities, stage actions `import_result`, input inventory,
 tournament IDs, selection caveats, independent QA and output hashes. Its ID is
 content-derived; no wall-clock timestamp is used to impersonate acquisition.
@@ -63,7 +67,11 @@ scratch tree must not overlap repo or source, and the request must be outside it
 writer lock covers the output transaction. All CSVs are reread with their
 original explicit packed axes/types and compared before sealing. Original
 inputs, request, config, catalog, implementation and HEAD are checked again
-before the final rename. Existing completed candidates are never overwritten.
+before sealing. A last pre-rename gate repeats the importer/Git checks and
+compares every pending CSV with its recorded SHA-256, failing closed on a
+concurrent modification. This is a pre-rename check, not an OS-level guarantee
+against an adversary able to replace bytes after the check. Existing completed
+candidates are never overwritten.
 
 An interrupted attempt leaves a `.pending` tree and cannot be mistaken for a
 completed candidate. Retry fails closed. Inspect the process and preserve/archive
