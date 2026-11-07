@@ -166,7 +166,7 @@ Validation and immutability readback are recorded after execution below.
 Python 3.12, Git 2.52.0, repository requirements installed in a dedicated venv:
 - Historical-import suite: 89 passed / 1 Windows-only junction skip, exit 0.
 - Related regression suite: 115 passed, exit 0.
-- Full suite: 1881 passed / 5 platform-specific skips / 6 existing plotting
+- Full suite: 1881 passed / 5 skips / 6 existing plotting
   deprecation warnings, exit 0, 62.11 seconds.
 - Git 2.36.0 built from upstream v2.36.0: the full historical-import suite
   also passed 89 / 1 platform skip, exit 0, including real fsmonitor controls,
@@ -180,3 +180,89 @@ Python 3.12, Git 2.52.0, repository requirements installed in a dedicated venv:
 
 Final Linux logs are retained in the Windows evidence directory alongside
 Windows results, immutable artifact readback and file hashes.
+
+## Candidate CI
+
+Implementation commit `2043d0fce542162e28158a23ee65009fe8c9d683`:
+[Tests #167](https://github.com/indren9/ptcgp_ranking/actions/runs/42401181785)
+SUCCESS; Ubuntu/Python 3.14, Git 2.56.0: 1882 passed, 4 skipped,
+6 plotting deprecation warnings, pytest exit 0 (62.25 seconds).
+CI checks exactly this candidate; neither CI nor this implementation closes the
+independent gate or authorizes production. Final documentation-only commit and
+its CI identity are reported in the concluding handoff.
+
+## Windows verification — final implementation
+
+Native Windows, existing Python 3.12. Both jobs exit 0:
+- Git 2.36.0.windows.1 portable: historical-import suite plus latest-completed
+  job, B3, C2A and historical-rebuild regressions: **204 passed, 1 skipped**,
+  530.76 seconds. Skip: source-symlink privilege unavailable; junction test ran.
+- Installed Git 2.56.0.windows.4: final startup adversarial/positive subset:
+  **14 passed, 76 deselected**, 214.00 seconds. This includes real fsmonitor
+  controls, LF/CRLF imports, index/ignored/init/shadow/attributes/HEAD refusals,
+  invalid version probes, environment redirection and checkout Git shadowing.
+- Earlier pre-lookup-hardening cycle on installed Git: 88 passed, 1 symlink
+  privilege skip, exit 0. The final results above supersede it for acceptance.
+
+No fsmonitor sentinel executed on the supported path. Positive unsafe controls
+proved the hook executable on each OS/version; direct legacy `python -m` still
+executes its intentional package-init sentinel and remains unsupported. Synthetic
+LF/CRLF imports succeeded with manifest/QA and raw executed-byte hashes read back.
+
+Minimum Windows binary came from the official portable release, extracted only
+under the evidence directory, without changing installed Git or global PATH:
+https://github.com/git-for-windows/git/releases/tag/v2.36.0.windows.1
+`MinGit-2.36.0-64-bit.zip` SHA256 matched the official release body:
+`0c6611fc04b9b111777a4f219e198bded07fea80fb14dedb01ebbcc231480986`.
+Thus the 2.36.0 support floor was exercised with real binaries on both OSes,
+in addition to source inspection and synthetic refusal tests below the floor.
+
+## Immutability and committed runtime readback
+
+Read-only pre/post SHA256 verification, exit 0:
+- 481 CRI + 578 PBL = 1,059 original source files, no mismatches.
+- 6 CRI + 6 PBL = 12 existing candidate CSVs, no mismatches.
+- 82 protected tracked files, no mismatches.
+- CRI import manifest: `8f16209b69a9a6c2f8a22e6177a9ba8b10976ec890d9c1af366eadeb2c28142c`.
+- CRI run manifest: `a4dde4bfcd403b9b7a229fa1fef714a1ffae759a4b9cb55c79e4298f2b6ea3b1`.
+- PBL import manifest: `70707acb896403cf32f7ae3bcec305a4b7ae24bc51ae7bcbeafdc7010f78229b`.
+- PBL run manifest: `2c6570a53b8ee541dac3285f819457fa767930673449f149c227e4aa23be59b7`.
+
+The existing inventories were reused; no duplicate global register or real-source
+import/rebuild was created. Original manifests, candidates and state were only
+read. Both manifests per window remain identical to the previous verified run.
+The committed candidate's 99 runtime files passed the raw Git/tree/index pin.
+
+Changed code/test SHA256 (raw LF checkout bytes, also verified on Windows):
+- `tcg_live_historical_import_safe.py`:
+  `a98b57ba925b720ae7c3cd1118527cb18fc81ad8ea04caf353d63d8f47af3932`.
+- `scripts/tcg_live_historical_import.py`:
+  `199eb61b62a6c0ccc9d67ed51d280312e7fc9e63f23bece70fdbce43a73f897e`.
+- `tests/test_tcg_live_historical_import.py`:
+  `53ec83f1efec87f45dcb5f57acd7f6d0dba6875ccd00bb9360c701df3b553ac4`.
+
+Changes are confined to those three files and these three documents:
+`docs/tcg-live-issue36-c2c-b.md`, `docs/tcg-live-issue36-c2c-r3.md`,
+`docs/tcg-live-issue36-c2c.md`. The last two only label the superseded startup;
+the previous evidence/history is retained.
+
+Evidence on Andrea's PC: `C:\dev\Pokemon\c2c-b-qa-20261107`.
+This contains Linux/current-Git/minimum-Git logs, Windows logs, before/after
+immutability JSON and committed readback with all six file hashes. Original
+historical inventories are referenced by the existing verification harness.
+
+## Handoff / gate
+
+RESULT: bounded architecture B implementation. EVIDENCE: tests, real subprocess
+sentinels, CI, raw runtime pin and unchanged historical hashes as recorded above.
+CHANGES: one shared Git policy before any repository command, neutralized local
+callbacks, explicit trusted executable lookup, existing runtime and sealing
+checks reused, LF/CRLF preserved; no manifest schema migration.
+BLOCKERS: C2C-R1-01 remains OPEN pending the one concluding independent review.
+The LOW finding remains closed. Production blockers remain original URLs,
+four PBL invalid_record, uncertified freshness/completeness and missing bridge.
+NEXT: Chat Madre 05 dispatches exactly one independent concluding review of
+baseline-to-final diff and the frozen acceptance contract. No automatic further
+remediation, merge, LIVE, publication or production activation is authorized.
+
+SESSION CLOSE after the concluding handoff. Notion was not modified.
