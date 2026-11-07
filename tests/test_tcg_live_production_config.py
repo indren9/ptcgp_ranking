@@ -86,7 +86,7 @@ def test_tcg_production_scope_matches_corrected_cri_window():
     )
     assert (
         scope.catalog_version
-        == "tcgl-expansion-boundaries-2026-11-01-issue36-c2a-pre-dlr-v1"
+        == "tcgl-expansion-boundaries-2026-11-07-issue36-c4-post-dlr-branch-v1"
     )
 
 

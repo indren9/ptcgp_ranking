@@ -1,6 +1,6 @@
 {
-  "catalog_version": "tcgl-expansion-boundaries-2026-11-01-issue36-c2a-pre-dlr-v1",
-  "source": "Official Pokemon TCG Live full-expansion availability announcements; Issue 36 Gate C.2A branch-only correction",
+  "catalog_version": "tcgl-expansion-boundaries-2026-11-07-issue36-c4-post-dlr-branch-v1",
+  "source": "Official Pokemon TCG Live full-expansion availability announcements; Issue 36 Gate C.4 post-DLR branch-only correction",
   "boundary_policy": {
     "version": "ptcg-live-v1",
     "full_expansion_availability": true,
@@ -8,10 +8,10 @@
     "early_individual_card_availability": false
   },
   "candidate_provenance": {
-    "status": "GATE_C2A_BRANCH_IMPLEMENTATION_NOT_DEPLOYED",
-    "approved_scope": "Canonical path correction on PR 37 candidate branch only; no merge, deployment, acquisition, publication or pointer edits.",
+    "status": "GATE_C4_POST_DLR_BRANCH_CANDIDATE_NOT_DEPLOYED",
+    "approved_scope": "Andrea approved branch-only post-DLR catalog update, offline tests and independent review. No merge, LIVE acquisition, deployment, publication or pointer edits.",
     "issue_url": "https://github.com/indren9/ptcgp_ranking/issues/36",
-    "prepared_on_utc_date": "2026-11-01",
+    "prepared_on_utc_date": "2026-11-07",
     "previous_production_catalog": {
       "path": "data/reference/ptcg_live_windows.json",
       "catalog_version": "tcgl-expansion-boundaries-2026-09-04-v1",
@@ -44,27 +44,34 @@
         "full_expansion_available_at_utc": "2026-09-15T17:00:00Z",
         "source_url": "https://community.pokemon.com/en-us/discussion/26004/pokemon-tcg-30th-celebration-expansion-release",
         "criterion": "full_expansion_availability_all_game_modes"
-      }
-    ],
-    "limits": "Branch-only pre-DLR snapshot: 30C stays OPEN/current and PBL latest-completed, including after the announced DLR boundary until an explicitly authorized catalog replacement. No automatic activation or runtime freshness guard is claimed.",
-    "planned_releases": [
+      },
       {
         "code": "DLR",
-        "name": "Delta Reign Live window",
-        "release_datetime": "2026-11-05T17:00:00Z",
+        "full_expansion_available_at_utc": "2026-11-05T17:00:00Z",
         "source_url": "https://community.pokemon.com/en-us/discussion/26743/mega-evolution-delta-reign-expansion-release",
-        "code_source_url": "https://www.pokemon.com/us/features/sneak-a-peek-at-cards-from-the-mega-evolution-delta-reign-expansion",
-        "activation": "Separate approval and no activation before release timestamp. Metadata only; ignored by current loader."
+        "criterion": "full_expansion_availability_all_game_modes"
       }
     ],
+    "limits": "Branch-only post-DLR runtime candidate, not merged or deployed. At/after 2026-11-05T17:00:00Z DLR is current and 30C is latest-completed; no automatic activation, no guarantee of API freshness. Explicit independent review and later deployment/LIVE/publication gates remain required.",
     "temporal_validity": {
-      "review_or_replace_at_utc": "2026-11-05T17:00:00Z",
-      "automatic_activation": false
+      "not_before_utc": "2026-11-05T17:00:00Z",
+      "automatic_activation": false,
+      "live_or_deployment_authorized": false,
+      "note": "The branch-only candidate is prepared after the announced boundary; this metadata alone does not enforce a runtime time gate."
     },
-    "authorization_url": "https://github.com/indren9/ptcgp_ranking/issues/36#issuecomment-6561406638",
-    "baseline_revision": "fc15b26d6c2253987ecd1941c93977c6ea8bf74a",
+    "authorization_url": "https://github.com/indren9/ptcgp_ranking/issues/36#issuecomment-6713318351",
+    "baseline_revision": "3ece96dfe82279f4e780f1aba4031ba29e138211",
     "c1_archive_sha256": "c06d855104a4348821cb9e37e391288d1c29f12ee690431201b23d2575d71099",
-    "c1_pre_proposal_sha256": "3ddc58bca4b2ebb1a4aa8371a6ed337b8edc06cd052eeb921bc376faca0686e3"
+    "c1_pre_proposal_sha256": "3ddc58bca4b2ebb1a4aa8371a6ed337b8edc06cd052eeb921bc376faca0686e3",
+    "prior_branch_catalog": {
+      "path": "data/reference/ptcg_live_windows.json",
+      "catalog_version": "tcgl-expansion-boundaries-2026-11-01-issue36-c2a-pre-dlr-v1",
+      "git_blob_sha": "495aab2d4b92023738f4f0f9e0c5fa33bad053c4",
+      "preserved_in_git_at_revision": "3ece96dfe82279f4e780f1aba4031ba29e138211"
+    },
+    "original_c2a_baseline_revision": "fc15b26d6c2253987ecd1941c93977c6ea8bf74a",
+    "c1_post_proposal_sha256": "b7ca8549b14a87b1a6dfacd9b278c97898e63790f110f52e4e0529639093e443",
+    "post_dlr_non_runtime_envelope_git_blob_sha": "6dedf07722bc493ca4433e9816ff8ae9e66fa040"
   },
   "releases": [
     {
@@ -74,8 +81,8 @@
       "next_release_datetime": "2026-07-16T17:00:00Z",
       "is_current": false,
       "boundary_kind": "full_expansion_availability",
-      "source": "Official Pokemon TCG Live full-expansion availability announcements; Issue 36 Gate C.2A branch-only correction",
-      "catalog_version": "tcgl-expansion-boundaries-2026-11-01-issue36-c2a-pre-dlr-v1"
+      "source": "Official Pokemon TCG Live full-expansion availability announcements; Issue 36 Gate C.4 post-DLR branch-only correction",
+      "catalog_version": "tcgl-expansion-boundaries-2026-11-07-issue36-c4-post-dlr-branch-v1"
     },
     {
       "code": "PBL",
@@ -84,18 +91,28 @@
       "next_release_datetime": "2026-09-15T17:00:00Z",
       "is_current": false,
       "boundary_kind": "full_expansion_availability",
-      "source": "Official Pokemon TCG Live full-expansion availability announcements; Issue 36 Gate C.2A branch-only correction",
-      "catalog_version": "tcgl-expansion-boundaries-2026-11-01-issue36-c2a-pre-dlr-v1"
+      "source": "Official Pokemon TCG Live full-expansion availability announcements; Issue 36 Gate C.4 post-DLR branch-only correction",
+      "catalog_version": "tcgl-expansion-boundaries-2026-11-07-issue36-c4-post-dlr-branch-v1"
     },
     {
       "code": "30C",
       "name": "30th Celebration Live window",
       "release_datetime": "2026-09-15T17:00:00Z",
+      "next_release_datetime": "2026-11-05T17:00:00Z",
+      "is_current": false,
+      "boundary_kind": "full_expansion_availability",
+      "source": "Official Pokemon TCG Live full-expansion availability announcements; Issue 36 Gate C.4 post-DLR branch-only correction",
+      "catalog_version": "tcgl-expansion-boundaries-2026-11-07-issue36-c4-post-dlr-branch-v1"
+    },
+    {
+      "code": "DLR",
+      "name": "Delta Reign Live window",
+      "release_datetime": "2026-11-05T17:00:00Z",
       "next_release_datetime": null,
       "is_current": true,
       "boundary_kind": "full_expansion_availability",
-      "source": "Official Pokemon TCG Live full-expansion availability announcements; Issue 36 Gate C.2A branch-only correction",
-      "catalog_version": "tcgl-expansion-boundaries-2026-11-01-issue36-c2a-pre-dlr-v1"
+      "source": "Official Pokemon TCG Live full-expansion availability announcements; Issue 36 Gate C.4 post-DLR branch-only correction",
+      "catalog_version": "tcgl-expansion-boundaries-2026-11-07-issue36-c4-post-dlr-branch-v1"
     }
   ]
 }

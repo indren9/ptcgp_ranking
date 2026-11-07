@@ -1,4 +1,4 @@
-"""Issue #36 C.2A: canonical 17:00 boundaries, no deployment or network."""
+"""Issue #36 C.4: post-DLR branch candidate boundaries, offline only."""
 from datetime import UTC, datetime, timedelta
 import hashlib
 import json
@@ -20,7 +20,8 @@ ROOT = Path(__file__).resolve().parents[1]
 CANONICAL = ROOT / "data/reference/ptcg_live_windows.json"
 POST_PROPOSAL = ROOT / "data/candidates/releases/tcg_live_windows_issue36_c2a_post_dlr_proposal.json"
 STATE = ROOT / ".github/tcg-live-latest-completed-meta-state.json"
-VERSION = "tcgl-expansion-boundaries-2026-11-01-issue36-c2a-pre-dlr-v1"
+VERSION = "tcgl-expansion-boundaries-2026-11-07-issue36-c4-post-dlr-branch-v1"
+PRE_VERSION = "tcgl-expansion-boundaries-2026-11-01-issue36-c2a-pre-dlr-v1"
 MICROSECOND = timedelta(microseconds=1)
 
 
@@ -45,23 +46,52 @@ def post_catalog(tmp_path):
     return path
 
 
-def test_canonical_pre_dlr_chain_and_provenance():
+@pytest.fixture
+def pre_catalog(tmp_path):
+    # Synthetic historical pre-DLR semantics; never a production catalog.
+    payload = json.loads(CANONICAL.read_text(encoding="utf-8"))
+    payload["catalog_version"] = PRE_VERSION
+    payload["releases"] = payload["releases"][:-1]
+    payload["releases"][-1]["next_release_datetime"] = None
+    payload["releases"][-1]["is_current"] = True
+    for release in payload["releases"]:
+        release["catalog_version"] = PRE_VERSION
+    path = tmp_path / "synthetic-pre-dlr.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path
+
+
+def test_canonical_post_dlr_chain_and_provenance():
     payload = json.loads(CANONICAL.read_text(encoding="utf-8"))
     catalog = load_release_catalog_snapshot(CANONICAL)
     assert catalog.catalog_version == VERSION
-    assert [r.code for r in catalog.releases] == ["CRI", "PBL", "30C"]
+    assert [r.code for r in catalog.releases] == ["CRI", "PBL", "30C", "DLR"]
     assert [r.release_datetime for r in catalog.releases] == [
         dt("2026-05-21T17:00:00Z"), dt("2026-07-16T17:00:00Z"),
-        dt("2026-09-15T17:00:00Z"),
+        dt("2026-09-15T17:00:00Z"), dt("2026-11-05T17:00:00Z"),
     ]
-    assert [r.code for r in catalog.releases if r.is_current] == ["30C"]
+    assert [r.code for r in catalog.releases if r.is_current] == ["DLR"]
     assert catalog.releases[-1].next_release_datetime is None
     for left, right in zip(catalog.releases, catalog.releases[1:]):
         assert left.next_release_datetime == right.release_datetime
     provenance = payload["candidate_provenance"]
     assert provenance["c1_archive_sha256"] == "c06d855104a4348821cb9e37e391288d1c29f12ee690431201b23d2575d71099"
     assert provenance["supporting_approved_historical_catalog"]["unchanged"] is True
-    assert {e["code"] for e in provenance["evidence"]} == {"CRI", "PBL", "30C"}
+    assert {e["code"] for e in provenance["evidence"]} == {"CRI", "PBL", "30C", "DLR"}
+    assert provenance["status"] == "GATE_C4_POST_DLR_BRANCH_CANDIDATE_NOT_DEPLOYED"
+    assert provenance["prior_branch_catalog"]["git_blob_sha"] == "495aab2d4b92023738f4f0f9e0c5fa33bad053c4"
+    assert provenance["authorization_url"].endswith("#issuecomment-6713318351")
+    assert provenance["temporal_validity"]["automatic_activation"] is False
+    assert provenance["temporal_validity"]["live_or_deployment_authorized"] is False
+    historical = json.loads(POST_PROPOSAL.read_text(encoding="utf-8"))["proposed_catalog"]
+    for actual, proposed in zip(catalog.releases, historical["releases"]):
+        assert actual.code == proposed["code"]
+        assert actual.release_datetime == dt(proposed["release_datetime"])
+        assert actual.next_release_datetime == (
+            dt(proposed["next_release_datetime"])
+            if proposed["next_release_datetime"] is not None else None
+        )
+        assert actual.is_current is proposed["is_current"]
     assert all(e["source_url"].startswith("https://community.pokemon.com/")
                for e in provenance["evidence"])
     assert payload["boundary_policy"] == {
@@ -75,10 +105,10 @@ def test_canonical_pre_dlr_chain_and_provenance():
     "2026-11-05T16:59:59.999999Z", "2026-11-05T17:00:00Z",
     "2026-11-05T17:00:00.000001Z", "2026-11-06T18:00:00Z",
 ])
-def test_pre_dlr_does_not_automatically_activate_future_release(when):
-    catalog = load_release_catalog_snapshot(CANONICAL)
+def test_pre_dlr_does_not_automatically_activate_future_release(pre_catalog, when):
+    catalog = load_release_catalog_snapshot(pre_catalog)
     assert resolve_release(catalog, mode="auto", acquisition_started_at=dt(when)).code == "30C"
-    assert build_plan(catalog_path=CANONICAL, acquisition_started_at=dt(when))[
+    assert build_plan(catalog_path=pre_catalog, acquisition_started_at=dt(when))[
         "latest_completed_window"]["code"] == "PBL"
 
 
@@ -133,31 +163,38 @@ def test_tournament_membership_at_midnight_and_microsecond_edges(post_catalog, c
     ("2026-07-16T17:00:00Z", None, "CRI"),
     ("2026-09-15T17:00:00Z", "CRI", "PBL"),
 ])
-def test_pre_dlr_planner_midnight_and_exact_completed_boundary(boundary, before, after):
+def test_pre_dlr_planner_midnight_and_exact_completed_boundary(pre_catalog, boundary, before, after):
     edge = dt(boundary)
     for when in [edge.replace(hour=0), edge - MICROSECOND]:
         if before is None:
             with pytest.raises(ValueError, match="no completed release"):
-                build_plan(catalog_path=CANONICAL, acquisition_started_at=when)
+                build_plan(catalog_path=pre_catalog, acquisition_started_at=when)
         else:
-            assert build_plan(catalog_path=CANONICAL, acquisition_started_at=when)[
+            assert build_plan(catalog_path=pre_catalog, acquisition_started_at=when)[
                 "latest_completed_window"]["code"] == before
     for when in [edge, edge + MICROSECOND]:
-        assert build_plan(catalog_path=CANONICAL, acquisition_started_at=when)[
+        assert build_plan(catalog_path=pre_catalog, acquisition_started_at=when)[
             "latest_completed_window"]["code"] == after
 
 
 @pytest.mark.parametrize("delta,expected", [(-1, "PBL"), (0, "30C"), (1, "30C")])
-def test_synthetic_post_dlr_planner_boundary(post_catalog, delta, expected):
+def test_canonical_post_dlr_planner_boundary(post_catalog, delta, expected):
     when = dt("2026-11-05T17:00:00Z") + delta * MICROSECOND
+    result = build_plan(catalog_path=CANONICAL, acquisition_started_at=when)
+    assert result["latest_completed_window"]["code"] == expected
     assert build_plan(catalog_path=post_catalog, acquisition_started_at=when)[
         "latest_completed_window"]["code"] == expected
+    current = resolve_release(
+        load_release_catalog_snapshot(CANONICAL),
+        mode="auto", acquisition_started_at=when,
+    )
+    assert current.code == ("30C" if delta < 0 else "DLR")
 
 
 def test_preserved_public_state_is_stale_and_planning_does_not_write():
     before = STATE.read_bytes()
     state = read_json(STATE)
-    for when, code in [("2026-09-06T10:00:00Z", "CRI"), ("2026-11-01T18:00:00Z", "PBL")]:
+    for when, code in [("2026-09-06T10:00:00Z", "CRI"), ("2026-11-01T18:00:00Z", "PBL"), ("2026-11-07T18:00:00Z", "30C")]:
         plan = build_plan(catalog_path=CANONICAL, state=state, acquisition_started_at=dt(when))
         assert plan["action"] == "publish_required"
         assert plan["latest_completed_window"]["code"] == code
