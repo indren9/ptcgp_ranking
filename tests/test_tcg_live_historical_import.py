@@ -479,43 +479,15 @@ def test_clean_crlf_checkout_matches_git_blob(tmp_path):
     assert result["qa"]["qa"] == "PASS"
 
 
-# C.2C-R3: This -I -c bootstrap is the supported pre-import trust boundary.
-# It intentionally imports only interpreter/stdlib code before pinning the
-# repository launcher; keeping it here makes subprocess tests independent of it.
-BOOTSTRAP = """
-import json
-from pathlib import Path
-import runpy
-import subprocess
-import sys
-
-if sys.flags.isolated != 1:
-    raise SystemExit("isolated Python -I required")
-repo, request = (Path(s).absolute() for s in sys.argv[1:3])
-launcher = repo / "tcg_live_historical_import_safe.py"
-if (not repo.is_dir() or repo.is_symlink()
-        or getattr(repo, "is_junction", lambda: False)()
-        or not launcher.is_file() or launcher.is_symlink()):
-    raise SystemExit("unsafe launcher/repository path")
-revision = json.loads(request.read_bytes())["software_revision"]
-head = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"]).decode().strip()
-if revision != head:
-    raise SystemExit("requested revision is not HEAD")
-blob = subprocess.check_output(["git", "-C", str(repo), "show",
-                                revision + ":tcg_live_historical_import_safe.py"])
-if launcher.read_bytes().replace(b"\\r\\n", b"\\n") != blob:
-    raise SystemExit("launcher not pinned to Git blob")
-sys._mars_historical_import_bootstrap_verified = True
-sys.argv = [str(launcher), "--request", str(request)]
-runpy.run_path(str(launcher), run_name="__main__")
-"""
+# Test the single reviewed policy used by the external bootstrap and runtime.
+from tcg_live_historical_import_safe import BOOTSTRAP
 
 
-def bootstrap_subprocess(env):
+def bootstrap_subprocess(env, process_env=None):
     import sys
     return subprocess.run(
         [sys.executable, "-I", "-c", BOOTSTRAP, str(env[0]), str(env[4])],
-        cwd=env[0], text=True, capture_output=True, timeout=120)
+        cwd=env[0], text=True, capture_output=True, timeout=120, env=process_env)
 
 
 def _sentinel_init(repo, marker):
@@ -599,7 +571,8 @@ def test_bootstrap_rejects_git_revision_failure(tmp_path):
     assert not (tmp_path / "historical-import-candidates").exists()
 
 
-def test_safe_bootstrap_full_offline_crlf_import(tmp_path):
+@pytest.mark.parametrize("line_endings", ["LF", "CRLF"])
+def test_safe_bootstrap_full_offline_crlf_import(tmp_path, line_endings):
     """Real isolated subprocess, real imports, synthetic history and CRLF code."""
     import shutil
     env = build_env(tmp_path)
@@ -625,9 +598,11 @@ def test_safe_bootstrap_full_offline_crlf_import(tmp_path):
     for rel in ("scripts/tcg_live_historical_import.py", "tcg_live_historical_import_safe.py"):
         path = repo / rel
         normalized = path.read_bytes().replace(b"\r\n", b"\n")
-        path.write_bytes(normalized.replace(b"\n", b"\r\n"))
+        path.write_bytes(normalized.replace(b"\n", b"\r\n") if line_endings == "CRLF" else normalized)
+    marker = install_fsmonitor(env[0], tmp_path)
     proc = bootstrap_subprocess(env)
     assert proc.returncode == 0, proc.stderr[-2500:]
+    assert not marker.exists()
     result = json.loads(proc.stdout.strip().splitlines()[-1])
     manifest = json.loads((Path(result["candidate"]) / "import_manifest.json").read_bytes())
     assert manifest["implementation_sha256"] == file_digest(repo / imp.IMPORTER_RELATIVE)
@@ -649,3 +624,120 @@ def test_bootstrap_blocks_untracked_repo_root_import_shadow(tmp_path):
     assert "unverified local import" in proc.stderr
     assert not marker.exists()
     assert not (tmp_path / "historical-import-candidates").exists()
+
+
+
+
+def install_fsmonitor(repo, tmp_path):
+    """Prove the synthetic callback works before testing its neutralization."""
+    import shlex
+    marker = tmp_path / "fsmonitor-sentinel"
+    hook = tmp_path / "fsmonitor-hook.sh"
+    hook.write_text("#!/bin/sh\nprintf EXECUTED > " + shlex.quote(marker.as_posix()) + "\nexit 1\n",
+                    encoding="utf-8")
+    hook.chmod(0o755)
+    subprocess.run(["git", "-C", str(repo), "config", "core.fsmonitor",
+                    "sh " + shlex.quote(hook.as_posix())], check=True, capture_output=True)
+    # Deliberately unsafe positive control, only in this synthetic repository.
+    control = subprocess.run(["git", "-C", str(repo), "ls-files", "--stage"], capture_output=True)
+    assert control.returncode == 0
+    assert marker.read_text() == "EXECUTED"
+    marker.unlink()
+    return marker
+
+
+@pytest.mark.parametrize("failure", ["init", "shadow", "index", "ignored", "filter", "head"])
+def test_git_callbacks_never_execute_before_fail_closed(tmp_path, failure):
+    env = build_env(tmp_path)
+    repo = env[0]
+    marker = install_fsmonitor(repo, tmp_path)
+    python_marker = tmp_path / "python-sentinel"
+    if failure == "init":
+        _sentinel_init(repo, python_marker)
+    elif failure == "shadow":
+        (repo / "yaml.py").write_text("from pathlib import Path\nPath(" + repr(str(python_marker)) +
+                                      ").write_text('EXECUTED')\n", encoding="utf-8")
+    elif failure == "index":
+        (repo / "config/tcg.yaml").write_bytes(b"changed index\n")
+        subprocess.run(["git", "-c", "core.fsmonitor=false", "-C", str(repo), "add", "config/tcg.yaml"],
+                       check=True, capture_output=True)
+        # Restore worktree bytes: the index alone must still fail.
+        (repo / "config/tcg.yaml").write_bytes((BASE / "config/tcg.yaml").read_bytes())
+    elif failure == "ignored":
+        (repo / ".git/info/exclude").write_text("scripts/hidden.py\n")
+        (repo / "scripts/hidden.py").write_text("raise AssertionError('not executable')\n")
+    elif failure == "filter":
+        (repo / ".git/info/attributes").write_text("scripts/* filter=sentinel\n")
+        subprocess.run(["git", "-C", str(repo), "config", "filter.sentinel.clean",
+                        "sh -c 'exit 99'"], check=True, capture_output=True)
+    else:
+        env[3]["software_revision"] = "0" * 40
+        write_json(env[4], env[3])
+    proc = bootstrap_subprocess(env)
+    assert proc.returncode != 0, proc.stdout
+    assert not marker.exists()
+    assert not python_marker.exists()
+    assert not (tmp_path / "historical-import-candidates").exists()
+
+
+@pytest.mark.parametrize("version", ["2.35.1", "2.35.99", "unknown", "broken"])
+def test_incompatible_git_refused_before_repository_command(tmp_path, version):
+    import os
+    env = build_env(tmp_path)
+    fake = tmp_path / "fake-git"
+    fake.mkdir()
+    marker = tmp_path / "git-repository-command-sentinel"
+    if os.name == "nt":
+        script = fake / "git.cmd"
+        script.write_text('@echo off\nif "%~1"=="--version" (\n echo git version ' + version +
+                          '\n exit /b ' + ('1' if version == 'broken' else '0') +
+                          '\n)\n echo EXECUTED > "' + str(marker) + '"\nexit /b 1\n')
+    else:
+        import shlex
+        script = fake / "git"
+        script.write_text('#!/bin/sh\nif [ "$1" = "--version" ]; then\n echo "git version ' + version +
+                          '"\n exit ' + ('1' if version == 'broken' else '0') +
+                          '\nfi\nprintf EXECUTED > ' + shlex.quote(str(marker)) + '\nexit 1\n')
+        script.chmod(0o755)
+    process_env = dict(os.environ, PATH=str(fake) + os.pathsep + os.environ["PATH"])
+    proc = bootstrap_subprocess(env, process_env)
+    assert proc.returncode != 0
+    assert "Git >=2.36.0 required" in proc.stderr
+    assert not marker.exists()
+    assert not (tmp_path / "historical-import-candidates").exists()
+
+
+def test_git_environment_cannot_redirect_pin(tmp_path):
+    import os
+    env = build_env(tmp_path)
+    marker = install_fsmonitor(env[0], tmp_path)
+    _sentinel_init(env[0], tmp_path / "init-sentinel")
+    process_env = dict(os.environ, GIT_DIR=str(tmp_path / "absent-git-dir"),
+                       GIT_CONFIG_COUNT="1", GIT_CONFIG_KEY_0="core.fsmonitor",
+                       GIT_CONFIG_VALUE_0="untrusted-callback")
+    proc = bootstrap_subprocess(env, process_env)
+    assert proc.returncode != 0
+    assert "untracked runtime dependency" in proc.stderr
+    assert not marker.exists()
+    assert not (tmp_path / "init-sentinel").exists()
+
+
+def test_documented_bootstrap_matches_single_policy():
+    document = (BASE / "docs/tcg-live-issue36-c2c-b.md").read_text(encoding="utf-8")
+    assert document.split("```python\n", 1)[1].split("\n```", 1)[0] + "\n" == BOOTSTRAP
+
+
+def test_checkout_git_executable_cannot_shadow_trusted_git(tmp_path):
+    env = build_env(tmp_path)
+    marker = tmp_path / "git-shadow-sentinel"
+    # A current-directory batch executable used to be an implicit Windows
+    # lookup candidate even when PATH only named trusted external directories.
+    fake = env[0] / "git.cmd"
+    fake.write_text('@echo off\necho EXECUTED > "' + str(marker) + '"\nexit /b 1\n')
+    fake.chmod(0o755)
+    _sentinel_init(env[0], tmp_path / "python-shadow-sentinel")
+    proc = bootstrap_subprocess(env)
+    assert proc.returncode != 0
+    assert "untracked runtime dependency" in proc.stderr
+    assert not marker.exists()
+    assert not (tmp_path / "python-shadow-sentinel").exists()

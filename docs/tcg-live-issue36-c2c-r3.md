@@ -1,5 +1,7 @@
 # MARS / Issue #36 — C.2C-R3 isolated historical_import startup
 
+> Startup superseded by [C.2C-B](tcg-live-issue36-c2c-b.md). R3 fsmonitor finding remains OPEN pending the concluding independent review. Prior evidence below is historical.
+
 Authority: [Andrea, 2026-11-07, C2C-R3 APPROVED WRITE LIMITED](https://github.com/indren9/ptcgp_ranking/issues/36#issuecomment-6709737575).
 Scope: only C2C-R1-01 (MEDIUM); C2C-R1-02 (LOW) remains closed.
 Initial candidate revision: `f30d728a2aabf07556b1bc6f0953a7a1a9b8d8ab`.

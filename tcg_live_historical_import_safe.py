@@ -10,7 +10,6 @@ import json
 from importlib.machinery import PathFinder
 from pathlib import Path
 import runpy
-import subprocess
 import sys
 import tempfile
 
@@ -32,11 +31,109 @@ def _require(ok: bool, message: str) -> None:
         raise ValueError("historical_import startup: " + message)
 
 
+# This literal is the reviewed external -I -c trust anchor. Documentation
+# carries an exact copy, tested for equality. Never load it from an unverified
+# checkout in an operational invocation.
+BOOTSTRAP = r'''import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import tempfile
+
+# One policy for bootstrap, launcher and importer. No repository command runs
+# until the trusted executable reports a supported version outside the checkout.
+def make_git(repo):
+    env = {k: v for k, v in os.environ.items() if not k.upper().startswith("GIT_")}
+    env.update(GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull,
+               GIT_NO_REPLACE_OBJECTS="1", GIT_NO_LAZY_FETCH="1",
+               GIT_TERMINAL_PROMPT="0", GIT_OPTIONAL_LOCKS="0", LC_ALL="C")
+    # Explicit absolute PATH lookup avoids Windows' implicit current-directory
+    # executable search (a checkout-local git.exe is not a trust anchor).
+    executable = None
+    names = ("git.exe", "git.cmd", "git.bat", "git.com") if os.name == "nt" else ("git",)
+    for entry in env.get("PATH", "").split(os.pathsep):
+        directory = Path(entry)
+        if not directory.is_absolute():
+            continue
+        for name in names:
+            candidate = directory / name
+            if (candidate.is_file() and os.access(candidate, os.X_OK)
+                    and not candidate.resolve().is_relative_to(Path(repo).resolve())):
+                executable = str(candidate)
+                break
+        if executable:
+            break
+    if not executable:
+        raise ValueError("historical_import startup: Git executable missing")
+    version = subprocess.run([executable, "--version"], cwd=tempfile.gettempdir(),
+                             env=env, capture_output=True)
+    match = re.fullmatch(rb"git version (\d+)\.(\d+)\.(\d+)(?:[.\-][A-Za-z0-9.\-]+)?\s*",
+                         version.stdout)
+    if version.returncode or not match or tuple(map(int, match.groups())) < (2, 36, 0):
+        raise ValueError("historical_import startup: Git >=2.36.0 required; version probe failed/unsupported")
+    options = ["--no-pager", "--no-optional-locks", "-c", "core.fsmonitor=false",
+               "-c", "core.hooksPath=" + os.devnull, "-c", "core.untrackedCache=false",
+               "-c", "core.attributesFile=" + os.devnull, "-c", "maintenance.auto=false",
+               "-c", "gc.auto=0", "-c", "protocol.allow=never"]
+    allowed = {"rev-parse", "ls-tree", "ls-files", "check-attr", "cat-file"}
+    def git(repo, *args, stdin=None):
+        if not args or args[0] not in allowed:
+            raise ValueError("historical_import startup: Git command outside read-only policy")
+        proc = subprocess.run([executable, *options, "-C", str(repo), *args],
+                              input=stdin, env=env, capture_output=True)
+        if proc.returncode:
+            raise ValueError("historical_import startup: Git verification failed: " + args[0])
+        return proc.stdout
+    return git
+
+
+def bootstrap():
+    if sys.flags.isolated != 1:
+        raise ValueError("isolated Python -I required")
+    if len(sys.argv) != 3:
+        raise ValueError("expected repository and request")
+    repo, request = (Path(s).absolute() for s in sys.argv[1:3])
+    git = make_git(repo)
+    launcher = repo / "tcg_live_historical_import_safe.py"
+    if (not repo.is_dir() or repo.is_symlink()
+            or getattr(repo, "is_junction", lambda: False)()
+            or not launcher.is_file() or launcher.is_symlink()
+            or not request.is_file() or request.is_symlink()):
+        raise ValueError("unsafe launcher/repository/request path")
+    revision = json.loads(request.read_bytes())["software_revision"]
+    if not isinstance(revision, str) or not re.fullmatch(r"[0-9a-f]{40}", revision):
+        raise ValueError("expected full SHA-1 revision")
+    if git(repo, "rev-parse", "HEAD").decode().strip() != revision:
+        raise ValueError("requested revision is not HEAD")
+    blob = git(repo, "cat-file", "blob", revision + ":tcg_live_historical_import_safe.py")
+    raw = launcher.read_bytes()
+    if raw != blob and raw.replace(b"\r\n", b"\n") != blob:
+        raise ValueError("launcher not pinned to Git blob")
+    sys._mars_historical_git = git
+    sys._mars_historical_import_bootstrap_verified = True
+    sys.argv = [str(launcher), "--request", str(request)]
+    # Execute the exact verified bytes; don't reopen the launcher through runpy.
+    exec(compile(raw, str(launcher), "exec"),
+         {"__name__": "__main__", "__file__": str(launcher)})
+
+if __name__ == "__main__":
+    bootstrap()
+'''
+_policy = {"__name__": "_mars_historical_git_policy"}
+exec(compile(BOOTSTRAP, "<historical-import-trusted-policy>", "exec"), _policy)
+_policy_git = None
+
+
 def _git(repo: Path, *args: str, stdin: bytes | None = None) -> bytes:
-    proc = subprocess.run(["git", "-C", str(repo), *args], input=stdin,
-                          capture_output=True)
-    _require(proc.returncode == 0, "Git " + (args[0] if args else "command") + " failed")
-    return proc.stdout
+    global _policy_git
+    git = getattr(sys, "_mars_historical_git", None)
+    if git is None:
+        if _policy_git is None:
+            _policy_git = _policy["make_git"](repo)
+        git = _policy_git
+    return git(repo, *args, stdin=stdin)
 
 
 def _records(data: bytes):

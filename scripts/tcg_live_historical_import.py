@@ -12,7 +12,6 @@ from dataclasses import asdict
 import hashlib
 import json
 from pathlib import Path
-import subprocess
 import sys
 
 import numpy as np
@@ -231,9 +230,8 @@ IMPORTER_RELATIVE = "scripts/tcg_live_historical_import.py"
 
 
 def git_result(repo, *arguments):
-    result = subprocess.run(["git", "-C", str(repo), *arguments], capture_output=True)
-    require(result.returncode == 0, "Git verification failed: " + arguments[0])
-    return result.stdout
+    from tcg_live_historical_import_safe import _git
+    return _git(repo, *arguments)
 
 
 def verify_software(repo, revision):

@@ -1,5 +1,7 @@
 # Issue #36 â€” Gate C.2C historical_import
 
+> Startup superseded by [C.2C-B](tcg-live-issue36-c2c-b.md). R3 fsmonitor finding remains OPEN pending the concluding independent review. Prior evidence below is historical.
+
 > **Startup superseded by C.2C-R3:** the original `python -m scripts.tcg_live_historical_import` command below is UNSAFE and unsupported. Python can execute an untracked `scripts/__init__.py` before the importer's checks. The only supported CLI is the isolated pre-pinned `python -I -c` bootstrap in [C.2C-R3](tcg-live-issue36-c2c-r3.md). Original C.2C evidence is retained for historical traceability.
 
 Authority: [Andrea's C.2C mandate](https://github.com/indren9/ptcgp_ranking/issues/36#issuecomment-6561899282).
