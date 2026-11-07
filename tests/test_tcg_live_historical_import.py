@@ -49,9 +49,12 @@ def build_env(tmp_path, code="CRI"):
     (repo / "scripts").mkdir()
     # Git-backed synthetic software pin, while executing the real imported module.
     (repo / imp.IMPORTER_RELATIVE).write_bytes(Path(imp.__file__).read_bytes())
+    launcher = "tcg_live_historical_import_safe.py"
+    (repo / launcher).write_bytes((BASE / launcher).read_bytes())
     subprocess.run(["git", "init", str(repo)], check=True, capture_output=True)
     subprocess.run(["git", "-C", str(repo), "add", "config/tcg.yaml",
-                    "data/reference/ptcg_live_windows.json", imp.IMPORTER_RELATIVE],
+                    "data/reference/ptcg_live_windows.json", imp.IMPORTER_RELATIVE,
+                    launcher],
                    check=True, capture_output=True)
     subprocess.run(["git", "-C", str(repo), "-c", "user.name=Offline", "-c", "user.email=offline@example.invalid",
                     "commit", "-m", "synthetic"], check=True, capture_output=True)
@@ -474,3 +477,175 @@ def test_clean_crlf_checkout_matches_git_blob(tmp_path):
     manifest = json.loads((Path(result["candidate"]) / "import_manifest.json").read_bytes())
     assert manifest["implementation_sha256"] == file_digest(importer)
     assert result["qa"]["qa"] == "PASS"
+
+
+# C.2C-R3: This -I -c bootstrap is the supported pre-import trust boundary.
+# It intentionally imports only interpreter/stdlib code before pinning the
+# repository launcher; keeping it here makes subprocess tests independent of it.
+BOOTSTRAP = """
+import json
+from pathlib import Path
+import runpy
+import subprocess
+import sys
+
+if sys.flags.isolated != 1:
+    raise SystemExit("isolated Python -I required")
+repo, request = (Path(s).absolute() for s in sys.argv[1:3])
+launcher = repo / "tcg_live_historical_import_safe.py"
+if (not repo.is_dir() or repo.is_symlink()
+        or getattr(repo, "is_junction", lambda: False)()
+        or not launcher.is_file() or launcher.is_symlink()):
+    raise SystemExit("unsafe launcher/repository path")
+revision = json.loads(request.read_bytes())["software_revision"]
+head = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"]).decode().strip()
+if revision != head:
+    raise SystemExit("requested revision is not HEAD")
+blob = subprocess.check_output(["git", "-C", str(repo), "show",
+                                revision + ":tcg_live_historical_import_safe.py"])
+if launcher.read_bytes().replace(b"\\r\\n", b"\\n") != blob:
+    raise SystemExit("launcher not pinned to Git blob")
+sys._mars_historical_import_bootstrap_verified = True
+sys.argv = [str(launcher), "--request", str(request)]
+runpy.run_path(str(launcher), run_name="__main__")
+"""
+
+
+def bootstrap_subprocess(env):
+    import sys
+    return subprocess.run(
+        [sys.executable, "-I", "-c", BOOTSTRAP, str(env[0]), str(env[4])],
+        cwd=env[0], text=True, capture_output=True, timeout=120)
+
+
+def _sentinel_init(repo, marker):
+    (repo / "scripts/__init__.py").write_text(
+        "from pathlib import Path\nPath(" + repr(str(marker)) + ").write_text('EXECUTED')\n",
+        encoding="utf-8")
+
+
+def test_real_python_m_executes_untracked_init_before_late_refusal(tmp_path):
+    import sys
+    env = build_env(tmp_path)
+    marker = tmp_path / "direct-m-sentinel"
+    _sentinel_init(env[0], marker)
+    proc = subprocess.run(
+        [sys.executable, "-m", "scripts.tcg_live_historical_import",
+         "--request", str(env[4])],
+        cwd=env[0], text=True, capture_output=True, timeout=60)
+    assert proc.returncode != 0
+    assert marker.read_text() == "EXECUTED"  # This old entrypoint is UNSAFE.
+    assert not (tmp_path / "historical-import-candidates").exists()
+
+
+def test_isolated_bootstrap_rejects_untracked_init_before_execution(tmp_path):
+    env = build_env(tmp_path)
+    marker = tmp_path / "safe-sentinel"
+    _sentinel_init(env[0], marker)
+    proc = bootstrap_subprocess(env)
+    assert proc.returncode != 0
+    assert "untracked runtime dependency" in proc.stderr
+    assert not marker.exists()  # The actual safety property.
+    assert not (tmp_path / "historical-import-candidates").exists()
+
+
+@pytest.mark.parametrize("target", [
+    "scripts/tcg_live_historical_import.py",
+    "tcg_live_historical_import_safe.py",
+    "config/tcg.yaml",
+])
+def test_bootstrap_rejects_modified_tracked_bytes(tmp_path, target):
+    env = build_env(tmp_path)
+    path = env[0] / target
+    path.write_bytes(path.read_bytes() + b"\n# unapproved\n")
+    proc = bootstrap_subprocess(env)
+    assert proc.returncode != 0
+    assert "launcher not pinned" in proc.stderr or "runtime bytes differ" in proc.stderr
+    assert not (tmp_path / "historical-import-candidates").exists()
+
+
+def test_bootstrap_rejects_untracked_runtime_dependency(tmp_path):
+    env = build_env(tmp_path)
+    new = env[0] / "acquisition/rogue.py"
+    new.parent.mkdir(exist_ok=True)
+    new.write_text("raise AssertionError('should not import')\n")
+    proc = bootstrap_subprocess(env)
+    assert proc.returncode != 0
+    assert "untracked runtime dependency" in proc.stderr
+    assert not (tmp_path / "historical-import-candidates").exists()
+
+
+@pytest.mark.parametrize("attribute", [
+    "filter=synthetic",
+    "working-tree-encoding=UTF-16",
+])
+def test_bootstrap_rejects_custom_git_attributes(tmp_path, attribute):
+    env = build_env(tmp_path)
+    git_info = env[0] / ".git/info/attributes"
+    git_info.write_text("scripts/tcg_live_historical_import.py " + attribute + "\n")
+    subprocess.run(["git", "-C", str(env[0]), "config",
+                    "filter.synthetic.clean", "cat"], check=True, capture_output=True)
+    proc = bootstrap_subprocess(env)
+    assert proc.returncode != 0
+    assert "untrusted Git attribute" in proc.stderr
+    assert not (tmp_path / "historical-import-candidates").exists()
+
+
+def test_bootstrap_rejects_git_revision_failure(tmp_path):
+    env = build_env(tmp_path)
+    (env[0] / ".git/HEAD").write_text("ref: refs/heads/not-present\n")
+    proc = bootstrap_subprocess(env)
+    assert proc.returncode != 0
+    assert not (tmp_path / "historical-import-candidates").exists()
+
+
+def test_safe_bootstrap_full_offline_crlf_import(tmp_path):
+    """Real isolated subprocess, real imports, synthetic history and CRLF code."""
+    import shutil
+    env = build_env(tmp_path)
+    repo = env[0]
+    from tcg_live_historical_import_safe import RUNTIME_PATHS
+    tracked = subprocess.check_output(
+        ["git", "-C", str(BASE), "ls-files", "--", *RUNTIME_PATHS],
+        text=True).splitlines()
+    for relative in tracked:
+        dest = repo / relative
+        if dest.exists():
+            continue
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(BASE / relative, dest)
+    subprocess.run(["git", "-C", str(repo), "add", "-A"],
+                   check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(repo), "-c", "user.name=Offline",
+                    "-c", "user.email=offline@example.invalid",
+                    "commit", "-m", "synthetic full runtime"], check=True, capture_output=True)
+    env[3]["software_revision"] = subprocess.check_output(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"], text=True).strip()
+    write_json(env[4], env[3])
+    for rel in ("scripts/tcg_live_historical_import.py", "tcg_live_historical_import_safe.py"):
+        path = repo / rel
+        normalized = path.read_bytes().replace(b"\r\n", b"\n")
+        path.write_bytes(normalized.replace(b"\n", b"\r\n"))
+    proc = bootstrap_subprocess(env)
+    assert proc.returncode == 0, proc.stderr[-2500:]
+    result = json.loads(proc.stdout.strip().splitlines()[-1])
+    manifest = json.loads((Path(result["candidate"]) / "import_manifest.json").read_bytes())
+    assert manifest["implementation_sha256"] == file_digest(repo / imp.IMPORTER_RELATIVE)
+    assert manifest["startup_launcher_sha256"] == file_digest(repo / "tcg_live_historical_import_safe.py")
+    assert result["qa"]["qa"] == "PASS"
+    assert manifest["production_receipt"] is False
+    assert not (repo / "public").exists()
+
+
+def test_bootstrap_blocks_untracked_repo_root_import_shadow(tmp_path):
+    env = build_env(tmp_path)
+    marker = tmp_path / "root-shadow-sentinel"
+    (env[0] / "yaml.py").write_text(
+        "from pathlib import Path\nPath(" + repr(str(marker)) +
+        ").write_text('EXECUTED')\n",
+        encoding="utf-8")
+    proc = bootstrap_subprocess(env)
+    assert proc.returncode != 0
+    assert "unverified local import" in proc.stderr
+    assert not marker.exists()
+    assert not (tmp_path / "historical-import-candidates").exists()

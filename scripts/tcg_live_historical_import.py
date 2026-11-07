@@ -1,6 +1,8 @@
 """Explicit offline import of verified CRI/PBL results; never a daily receipt.
 
-Run with ``python -m scripts.tcg_live_historical_import --request request.json``.
+Only the documented isolated -I -c bootstrap may launch this module.
+Direct ``python -m scripts.tcg_live_historical_import`` is UNSAFE and unsupported:
+Python executes scripts/__init__.py before this module can verify the code.
 The caller supplies pinned identities, not an acquisition configuration.
 """
 from __future__ import annotations
@@ -11,6 +13,7 @@ import hashlib
 import json
 from pathlib import Path
 import subprocess
+import sys
 
 import numpy as np
 import pandas as pd
@@ -221,11 +224,10 @@ def verify_source(request, repo):
     return provenance, frames, core, mars
 
 
-# Runtime code used to interpret and verify an historical import. A clean
-# tracked tree is necessary, but not sufficient without binding the executed file.
+# Runtime code used to interpret and verify an historical import.
+# The external -I bootstrap pins the launcher *before* repository code executes;
+# the same raw-blob checks are repeated before candidate sealing and rename.
 IMPORTER_RELATIVE = "scripts/tcg_live_historical_import.py"
-RUNTIME_PATHS = ("historical_rebuild", "acquisition", "core", "mars", "pipelines",
-                 "sources", "storage", "config", "data/reference", IMPORTER_RELATIVE)
 
 
 def git_result(repo, *arguments):
@@ -235,22 +237,16 @@ def git_result(repo, *arguments):
 
 
 def verify_software(repo, revision):
-    """Pin executed importer bytes to the requested commit and reject dirty dependencies."""
+    """Recheck all repo-local runtime code without trusting configured Git filters."""
+    from tcg_live_historical_import_safe import verify_runtime
     importer = plain_path(Path(__file__))
     require(importer == repo / IMPORTER_RELATIVE, "executed importer outside pinned repository")
-    raw = importer.read_bytes()
-    implementation = hashlib.sha256(raw).hexdigest()
-    committed_oid = git_result(repo, "rev-parse", revision + ":" + IMPORTER_RELATIVE).strip()
-    # Hash the very same bytes whose SHA-256 is recorded, using Git's checkout
-    # filters. A clean CRLF checkout must match the committed LF blob on Windows.
-    filtered = subprocess.run(["git", "-C", str(repo), "hash-object", "--stdin",
-                               "--path=" + IMPORTER_RELATIVE], input=raw, capture_output=True)
-    require(filtered.returncode == 0, "Git verification failed: hash-object")
-    require(filtered.stdout.strip() == committed_oid,
-            "executed importer differs from pinned Git blob")
-    git_result(repo, "diff", "--quiet", revision, "--", *RUNTIME_PATHS)
-    require(not git_result(repo, "ls-files", "--others", "--exclude-standard", "--", *RUNTIME_PATHS),
-            "untracked runtime dependency")
+    try:
+        pinned = verify_runtime(repo, revision)
+    except ValueError as exc:
+        raise ValueError("historical_import: importer/runtime Git verification: " + str(exc)) from exc
+    implementation = hashlib.sha256(importer.read_bytes()).hexdigest()
+    require(implementation == pinned["importer_sha256"], "importer changed during pin")
     return implementation
 
 
@@ -269,6 +265,7 @@ def import_historical(*, repo_root: Path, request_path: Path):
     payload = {"schema_version": 1, "source_kind": "historical_import", "production_receipt": False,
                "publication_authorized": False, "runtime_usable": False, "network_calls": 0,
                "software_revision": revision, "implementation_sha256": implementation,
+               "startup_launcher_sha256": file_digest(repo / "tcg_live_historical_import_safe.py"),
                "request": {"path": str(request_path), "sha256": file_digest(request_path), "payload": request},
                "lineage": provenance}
     import_id = "historical-import-" + digest(payload)
@@ -330,6 +327,11 @@ def import_historical(*, repo_root: Path, request_path: Path):
 
 
 def main(argv=None):
+    # A late check cannot make direct python -m safe: package initialization
+    # has already occurred. Refuse unsupported CLI usage; this is NOT the
+    # pre-import security boundary (the isolated bootstrap is).
+    require(getattr(sys, "_mars_historical_import_startup_verified", False) is True,
+            "direct -m invocation unsafe; use documented isolated bootstrap")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--request", required=True, type=Path)
     args = parser.parse_args(argv)
