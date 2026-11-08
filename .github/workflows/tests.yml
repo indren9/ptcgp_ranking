@@ -91,7 +91,7 @@ jobs:
           [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$GITHUB_RUN_ATTEMPT" == 1 ]]
           [[ "$GITHUB_RUN_ID" =~ ^[0-9]+$ ]]
           [[ "$GITHUB_ACTOR" == indren9 && "$GITHUB_TRIGGERING_ACTOR" == indren9 ]]
-          [[ "$(git rev-parse HEAD^)" == 5020cf8551fe3b5b346990de4728de9665a5db87 ]]
+          [[ "$(git rev-parse HEAD^)" == 7cca21a749921d08db7f20595ff7fcc3791c2035 ]]
           [[ "$(git diff --name-only HEAD^ HEAD)" == .github/workflows/tests.yml ]]
           [[ -z "$(git status --porcelain)" ]]
 
@@ -140,6 +140,7 @@ jobs:
           import yaml
           from core.matrices import build_matrices, n_dir_from_WL
           from mars.validate_io import validate_contract
+          from acquisition.scope import ScopePolicy
           from scripts.tcg_live_latest_completed import build_plan, read_json
           from scripts.tcg_live_candidate_receipt import candidate_identity, load_verified_candidate
           from sources.limitless.tournament_api.object_store import S3ObjectStoreBackend, S3ObjectStoreConfig
