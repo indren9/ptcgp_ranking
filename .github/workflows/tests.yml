@@ -91,7 +91,7 @@ jobs:
           [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$GITHUB_RUN_ATTEMPT" == 1 ]]
           [[ "$GITHUB_RUN_ID" =~ ^[0-9]+$ ]]
           [[ "$GITHUB_ACTOR" == indren9 && "$GITHUB_TRIGGERING_ACTOR" == indren9 ]]
-          [[ "$(git rev-parse HEAD^)" == 329ed71351f06e9d5cd5a01ad7b379b0a43aa9c7 ]]
+          [[ "$(git rev-parse HEAD^)" == 5020cf8551fe3b5b346990de4728de9665a5db87 ]]
           [[ "$(git diff --name-only HEAD^ HEAD)" == .github/workflows/tests.yml ]]
           [[ -z "$(git status --porcelain)" ]]
 
@@ -439,4 +439,3 @@ jobs:
           if-no-files-found: error
           retention-days: 14
           include-hidden-files: false
-
