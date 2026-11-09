@@ -388,10 +388,14 @@ def test_workflow_concurrency_separates_all_modes():
     assert 'c5_artifact_audit' in concurrency['cancel-in-progress']
     assert 'c5_30c' in concurrency['cancel-in-progress']
     # Original CI and LIVE job bodies must be byte-for-byte unchanged semantically.
-    old = subprocess.check_output(['git', 'show', audit.CANDIDATE_SHA + ':.github/workflows/tests.yml'], cwd=ROOT, text=True)
-    old = yaml.load(old, Loader=yaml.BaseLoader)
-    for key in ('pytest', 'c5_30c'):
-        assert workflow()['jobs'][key] == old['jobs'][key]
+    # Hashes of BaseLoader-parsed jobs at immutable CANDIDATE_SHA. The ordinary
+    # Actions checkout is shallow, so this test must not require historical Git.
+    original_job_hashes = {
+        'pytest': '26ee3babcce1cf8a13b86a122c8ff87e425f675004ad5c054d4e859c9e28e218',
+        'c5_30c': 'a6ad57f870e86b94ea0cc71f544b9a16876d6f54affeec3a1f36644301af432c',
+    }
+    for key, expected in original_job_hashes.items():
+        assert audit.sha(json.dumps(workflow()['jobs'][key], sort_keys=True).encode()) == expected
 
 
 def test_workflow_bash_guard_executes_and_rejects_bad_identity(tmp_path):
