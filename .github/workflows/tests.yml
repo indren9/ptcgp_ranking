@@ -10,13 +10,17 @@ on:
         description: Tests only, or separately approved C.5 candidate acquisition
         type: choice
         default: test_only
-        options: [test_only, c5_30c]
+        options: [test_only, c5_30c, c5_artifact_audit]
       expected_sha:
-        description: Full candidate commit SHA approved after independent review
+        description: Full execution-code commit SHA approved after independent review
         type: string
         default: ''
       c5_authorization:
         description: Separate R2 diagnostic prefix and single LIVE authorization acknowledgement
+        type: string
+        default: ''
+      audit_authorization:
+        description: Separate authorization for ONE read-only artifact audit, after code review
         type: string
         default: ''
 
@@ -25,8 +29,8 @@ permissions:
 
 concurrency:
   # Preserve ordinary test cancellation; C.5 cannot be cancelled by CI or a new dispatch.
-  group: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'c5_30c' && 'c5-30c-single-candidate' || format('tests-{0}-{1}', github.workflow, github.ref) }}
-  cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.mode == 'c5_30c') }}
+  group: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'c5_artifact_audit' && 'c5-30c-artifact-audit' || github.event_name == 'workflow_dispatch' && inputs.mode == 'c5_30c' && 'c5-30c-single-candidate' || format('tests-{0}-{1}', github.workflow, github.ref) }}
+  cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && (inputs.mode == 'c5_30c' || inputs.mode == 'c5_artifact_audit')) }}
 
 jobs:
   pytest:
@@ -439,4 +443,104 @@ jobs:
           path: ${{ runner.temp }}/c5-safe-evidence/qa.json
           if-no-files-found: error
           retention-days: 14
+          include-hidden-files: false
+
+  # This implementation does not authorize dispatch. Candidate SHA is immutable;
+  # expected_sha must instead identify the independently reviewed AUDIT code.
+  c5_artifact_audit:
+    name: C.5 independent private artifact audit (GET/HEAD only)
+    if: >-
+      github.event_name == 'workflow_dispatch' && inputs.mode == 'c5_artifact_audit' &&
+      github.repository == 'indren9/ptcgp_ranking' &&
+      github.ref == 'refs/heads/fix/issue36-b1-tcg-live-boundary-candidate' &&
+      github.actor == 'indren9' && github.triggering_actor == 'indren9' &&
+      github.run_attempt == 1 && inputs.expected_sha == github.sha &&
+      inputs.expected_sha != '4684da475293d1ba1351c2673122e76d5c6620c4' &&
+      inputs.audit_authorization == 'APPROVED_ONE_C5_ARTIFACT_AUDIT_42523186837_1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    steps:
+      - name: Check out exact reviewed audit code
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Authorize audit before secrets
+        id: audit_guard
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          AUDIT_MODE: ${{ inputs.mode }}
+          AUDIT_AUTHORIZATION: ${{ inputs.audit_authorization }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REPOSITORY" == indren9/ptcgp_ranking ]]
+          [[ "$GITHUB_REF" == refs/heads/fix/issue36-b1-tcg-live-boundary-candidate ]]
+          [[ "$GITHUB_ACTOR" == indren9 && "$GITHUB_TRIGGERING_ACTOR" == indren9 ]]
+          [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$GITHUB_RUN_ATTEMPT" == 1 ]]
+          [[ "$AUDIT_MODE" == c5_artifact_audit ]]
+          [[ "$AUDIT_AUTHORIZATION" == APPROVED_ONE_C5_ARTIFACT_AUDIT_42523186837_1 ]]
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$EXPECTED_SHA" != 4684da475293d1ba1351c2673122e76d5c6620c4 ]]
+          [[ "$GITHUB_SHA" == "$EXPECTED_SHA" && "$(git rev-parse HEAD)" == "$EXPECTED_SHA" ]]
+          [[ "$WORKFLOW_SHA" == "$EXPECTED_SHA" ]]
+          [[ "$WORKFLOW_REF" == "$GITHUB_REPOSITORY/.github/workflows/tests.yml@$GITHUB_REF" ]]
+          [[ -z "$(git status --porcelain)" ]]
+          echo 'authorized=true' >> "$GITHUB_OUTPUT"
+
+      - name: Set up audit Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Install audit dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Audit existing candidate bytes only
+        if: steps.audit_guard.outputs.authorized == 'true'
+        env:
+          MARS_RAW_S3_ENDPOINT: ${{ secrets.MARS_RAW_S3_ENDPOINT }}
+          MARS_RAW_S3_BUCKET: ${{ secrets.MARS_RAW_S3_BUCKET }}
+          MARS_RAW_S3_REGION: ${{ secrets.MARS_RAW_S3_REGION }}
+          MARS_RAW_S3_ACCESS_KEY_ID: ${{ secrets.MARS_RAW_S3_ACCESS_KEY_ID }}
+          MARS_RAW_S3_SECRET_ACCESS_KEY: ${{ secrets.MARS_RAW_S3_SECRET_ACCESS_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir "$RUNNER_TEMP/c5-audit-safe"
+          # No exception, SDK output or private byte is sent to Actions logs.
+          # Existing Secrets may have IAM write permission; code only uses GET/HEAD.
+          python -m scripts.tcg_live_candidate_r2_audit >/dev/null 2>&1
+
+      - name: Finalize audit failure evidence
+        if: always()
+        env:
+          AUDIT_JOB_STATUS: ${{ job.status }}
+        shell: bash
+        run: |
+          python - <<'PY' >/dev/null 2>&1
+          import json
+          import os
+          from pathlib import Path
+          path = Path(os.environ['RUNNER_TEMP']) / 'c5-audit-safe' / 'audit.json'
+          # On failures/timeouts discard all partial evidence. Fixed output only.
+          if os.environ['AUDIT_JOB_STATUS'] != 'success' or not path.is_file():
+              path.parent.mkdir(mode=0o700, exist_ok=True)
+              path.write_text(json.dumps({'schema_version': 1, 'status': 2, 'published': False}) + '\n')
+          PY
+
+      - name: Retain sanitized audit evidence only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: c5-artifact-audit-${{ github.run_id }}
+          path: ${{ runner.temp }}/c5-audit-safe/audit.json
+          if-no-files-found: error
+          retention-days: 7
           include-hidden-files: false
