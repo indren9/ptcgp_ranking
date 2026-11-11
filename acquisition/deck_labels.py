@@ -6,8 +6,6 @@ from typing import Any
 
 import pandas as pd
 
-from sources.limitless.tournament_api.release_catalog import parse_utc_datetime
-
 LABEL_POLICY_VERSION = "latest_tournament_utc_lexicographic_v1"
 
 
@@ -33,6 +31,8 @@ def _tournament_dates(tournaments: pd.DataFrame | None) -> dict[str, Any]:
     required = {"tournament_id", "date"}
     if not required.issubset(tournaments.columns):
         raise KeyError(f"tournaments missing columns: {sorted(required - set(tournaments.columns))}")
+    from sources.limitless.tournament_api.release_catalog import parse_utc_datetime
+
     dates: dict[str, Any] = {}
     observations = tournaments.assign(_tid=tournaments["tournament_id"].map(_text))
     for tid, group in observations.groupby("_tid", sort=True):
