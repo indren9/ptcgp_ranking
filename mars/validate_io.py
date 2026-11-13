@@ -19,7 +19,9 @@ def validate_contract(filtered_wr: pd.DataFrame, n_dir: pd.DataFrame) -> dict:
     wr_sum = (filtered_wr + filtered_wr.T).to_numpy()
     m = ~np.isnan(wr_sum)
     if m.any() and (np.abs(wr_sum[m] - 100.0) > 1.0).sum() > 0:
+        ok = False
         issues.append("WR symmetry off >1.0pp")
     if (n_dir.fillna(0.0) - n_dir.T.fillna(0.0)).to_numpy().any():
+        ok = False
         issues.append("n_dir not symmetric")
     return {"ok": ok and len([e for e in issues if "mismatch" in e]) == 0, "issues": issues}
