@@ -5,13 +5,32 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: Tests only, or separately approved C.5 candidate acquisition
+        type: choice
+        default: test_only
+        options: [test_only, c5_30c, c5_artifact_audit]
+      expected_sha:
+        description: Full execution-code commit SHA approved after independent review
+        type: string
+        default: ''
+      c5_authorization:
+        description: Separate R2 diagnostic prefix and single LIVE authorization acknowledgement
+        type: string
+        default: ''
+      audit_authorization:
+        description: Separate authorization for ONE read-only artifact audit, after code review
+        type: string
+        default: ''
 
 permissions:
   contents: read
 
 concurrency:
-  group: tests-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Preserve ordinary test cancellation; C.5 cannot be cancelled by CI or a new dispatch.
+  group: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'c5_artifact_audit' && 'c5-30c-artifact-audit' || github.event_name == 'workflow_dispatch' && inputs.mode == 'c5_30c' && 'c5-30c-single-candidate' || format('tests-{0}-{1}', github.workflow, github.ref) }}
+  cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && (inputs.mode == 'c5_30c' || inputs.mode == 'c5_artifact_audit')) }}
 
 jobs:
   pytest:
@@ -36,3 +55,492 @@ jobs:
         env:
           MPLBACKEND: Agg
         run: pytest -q
+
+
+  # Implementation is not permission to run. Independent review and Andrea's
+  # separate R2/LIVE authorization are required before ONE dispatch, never a rerun.
+  c5_30c:
+    name: C.5 single 30C candidate (non-publishing)
+    if: >-
+      github.event_name == 'workflow_dispatch' && inputs.mode == 'c5_30c' &&
+      github.repository == 'indren9/ptcgp_ranking' &&
+      github.ref == 'refs/heads/fix/issue36-b1-tcg-live-boundary-candidate' &&
+      github.actor == 'indren9' && github.triggering_actor == 'indren9' &&
+      github.run_attempt == 1 && inputs.expected_sha == github.sha &&
+      inputs.c5_authorization == 'APPROVED_R2_diagnostics/c5_30c_AND_ONE_LIVE'
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    permissions:
+      contents: read
+    steps:
+      - name: Check out exact reviewed candidate
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Verify revision and dispatch identity before secrets
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$(git rev-parse HEAD)" == "$EXPECTED_SHA" ]]
+          [[ "$WORKFLOW_SHA" == "$EXPECTED_SHA" ]]
+          [[ "$WORKFLOW_REF" == "$GITHUB_REPOSITORY/.github/workflows/tests.yml@$GITHUB_REF" ]]
+          [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$GITHUB_RUN_ATTEMPT" == 1 ]]
+          [[ "$GITHUB_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$GITHUB_ACTOR" == indren9 && "$GITHUB_TRIGGERING_ACTOR" == indren9 ]]
+          [[ "$(git rev-parse HEAD^)" == 7cca21a749921d08db7f20595ff7fcc3791c2035 ]]
+          [[ "$(git diff --name-only HEAD^ HEAD)" == .github/workflows/tests.yml ]]
+          [[ -z "$(git status --porcelain)" ]]
+
+      - name: Set up Python for C.5
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Install project dependencies for C.5
+        run: python -m pip install -r requirements.txt
+
+      - name: R2 preflight then one candidate and private QA
+        env:
+          MARS_RAW_S3_ENDPOINT: ${{ secrets.MARS_RAW_S3_ENDPOINT }}
+          MARS_RAW_S3_BUCKET: ${{ secrets.MARS_RAW_S3_BUCKET }}
+          MARS_RAW_S3_REGION: ${{ secrets.MARS_RAW_S3_REGION }}
+          MARS_RAW_S3_ACCESS_KEY_ID: ${{ secrets.MARS_RAW_S3_ACCESS_KEY_ID }}
+          MARS_RAW_S3_SECRET_ACCESS_KEY: ${{ secrets.MARS_RAW_S3_SECRET_ACCESS_KEY }}
+          MPLBACKEND: Agg
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir "$RUNNER_TEMP/c5-private" "$RUNNER_TEMP/c5-safe-evidence"
+          printf '%s\n' '{"schema_version":1,"phase":0,"status":0,"published":false}' >"$RUNNER_TEMP/c5-safe-evidence/qa.json"
+          # Keep all pipeline stdout, exceptions, manifests and RAW private to the runner.
+          # Never print or upload this log, including on failure.
+          if ! python - <<'PY' >"$RUNNER_TEMP/c5-private/execution.log" 2>&1
+          from datetime import UTC, datetime
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+          import uuid
+          public = Path(os.environ["RUNNER_TEMP"]) / "c5-safe-evidence"
+          def checkpoint(phase):
+              # Fixed numeric phases only; exceptions/logs never enter public artifacts.
+              data = {"schema_version": 1, "phase": phase, "status": 0, "published": False}
+              temp = public / "qa.tmp"
+              temp.write_text(json.dumps(data, sort_keys=True) + "\n")
+              temp.replace(public / "qa.json")
+          checkpoint(1)
+          import numpy as np
+          import pandas as pd
+          import yaml
+          from core.matrices import build_matrices, n_dir_from_WL
+          from mars.validate_io import validate_contract
+          from acquisition.scope import ScopePolicy
+          from scripts.tcg_live_latest_completed import build_plan, read_json
+          from scripts.tcg_live_candidate_receipt import candidate_identity, load_verified_candidate
+          from sources.limitless.tournament_api.object_store import S3ObjectStoreBackend, S3ObjectStoreConfig
+          import boto3
+          from botocore.config import Config
+
+          def require(ok):
+              if not ok:
+                  raise RuntimeError("C.5 validation failed; no publication or automatic retry")
+
+          def read(path):
+              return json.loads(path.read_text(encoding="utf-8"))
+
+          def digest(path):
+              return hashlib.sha256(path.read_bytes()).hexdigest()
+
+          # Private candidate archive: same bucket, outside limitless-api/v1 RAW.
+          # A complete manifest is the only commit marker; orphan files are invalid.
+          def persist_candidate(backend, *, work, receipt_path, receipt, report_path,
+                                config, catalog, identity, sha, private):
+              from pathlib import PurePosixPath
+              from scripts.tcg_live_candidate_receipt import candidate_workspace, REQUIRED_FILES
+
+              def safe_relative(value):
+                  require(isinstance(value, str) and bool(value) and "\\" not in value)
+                  relative = PurePosixPath(value)
+                  require(not relative.is_absolute() and relative.as_posix() == value)
+                  require(all(p not in ("", ".", "..") for p in value.split("/")))
+                  return relative
+
+              root = work.resolve(strict=True)
+              def checked(path):
+                  relative = path.relative_to(root).as_posix()
+                  safe_relative(relative)
+                  require(not any(p.is_symlink() for p in (path, *path.parents)))
+                  require(path.is_file() and path.resolve(strict=True).is_relative_to(root))
+                  return "work/" + relative
+
+              require(set(receipt["files"]) == set(REQUIRED_FILES))
+              receipt_bytes = receipt_path.read_bytes()
+              require(json.loads(receipt_bytes) == receipt)
+              require(digest(config) == identity["config_sha256"] and
+                      digest(catalog) == identity["catalog_sha256"])
+              payloads = {checked(receipt_path): receipt_bytes}
+              for record in receipt["files"].values():
+                  relative = safe_relative(record["path"])
+                  path = root / relative
+                  data = path.read_bytes()
+                  require(hashlib.sha256(data).hexdigest() == record["sha256"])
+                  key = checked(path)
+                  require(key not in payloads)
+                  payloads[key] = data
+              effective = candidate_workspace(work_root=root, identity=identity) / "tcg-live-offline.yaml"
+              effective_bytes = effective.read_bytes()
+              effective_cfg = yaml.safe_load(effective_bytes)
+              require(effective_cfg["source"]["tournament_api"]["execution_mode"] == "offline")
+              require(effective_cfg["source"]["tournament_api"]["replay_run_id"] ==
+                      receipt["report"]["canonical_live_run_id"])
+              # Preserve exact config bytes; reject credentials rather than silently redact.
+              def no_credentials(value):
+                  if isinstance(value, dict):
+                      for key, child in value.items():
+                          require(not any(s in str(key).lower() for s in
+                                  ("password", "secret", "credential", "access_key", "session_token", "api_key")))
+                          no_credentials(child)
+                  elif isinstance(value, list):
+                      for child in value:
+                          no_credentials(child)
+              no_credentials(effective_cfg)
+              no_credentials(yaml.safe_load(config.read_bytes()))
+              payloads[checked(effective)] = effective_bytes
+              payloads["metadata/report.json"] = report_path.read_bytes()
+              payloads["metadata/config.yaml"] = config.read_bytes()
+              payloads["metadata/catalog.json"] = catalog.read_bytes()
+              for data in payloads.values():
+                  for name in ("MARS_RAW_S3_ACCESS_KEY_ID", "MARS_RAW_S3_SECRET_ACCESS_KEY"):
+                      secret = os.environ.get(name, "")
+                      require(not secret or secret.encode() not in data)
+              run_id = os.environ["GITHUB_RUN_ID"]
+              attempt = os.environ["GITHUB_RUN_ATTEMPT"]
+              require(run_id.isdigit() and attempt == "1")
+              require(len(sha) == 40 and all(c in "0123456789abcdef" for c in sha))
+              prefix = f"candidates/c5_30c/{run_id}/{attempt}/{sha}"
+
+              def put_verified(key, data):
+                  checksum = hashlib.sha256(data).hexdigest()
+                  # Conditional creation closes HEAD/PUT races. Never retry or DELETE.
+                  backend._client.put_object(
+                      Bucket=backend.config.bucket, Key=key, Body=data,
+                      Metadata={"sha256": checksum, "size": str(len(data))}, IfNoneMatch="*")
+                  head = backend.head(key)
+                  require(head is not None and head.size == len(data) and
+                          head.metadata.get("sha256") == checksum)
+                  restored = backend.get_bytes(key)
+                  require(restored == data and hashlib.sha256(restored).hexdigest() == checksum)
+                  return restored
+
+              inventory = []
+              recovered = private / "recovered"
+              recovered.mkdir()  # Exclusive destination, no merge with previous evidence.
+              for relative, data in sorted(payloads.items()):
+                  safe_relative(relative)
+                  key = f"{prefix}/{relative}"
+                  restored = put_verified(key, data)
+                  destination = recovered / relative
+                  destination.parent.mkdir(parents=True, exist_ok=True)
+                  with destination.open("xb") as stream:
+                      stream.write(restored)
+                  inventory.append({"relative_path": relative, "object_key": key,
+                                    "sha256": hashlib.sha256(data).hexdigest(), "size": len(data)})
+              # Prove the unmodified receipt is reusable under a NEW work root.
+              restored_candidate = load_verified_candidate(work_root=recovered / "work", identity=identity)
+              require(restored_candidate is not None and
+                      restored_candidate["canonical_live_run_id"] == receipt["report"]["canonical_live_run_id"] and
+                      restored_candidate["offline_run_id"] == receipt["report"]["offline_run_id"])
+              manifest = {
+                  "schema_version": 1, "complete": True, "published": False,
+                  "github_repository": "indren9/ptcgp_ranking",
+                  "github_run_id": int(run_id), "github_run_attempt": int(attempt),
+                  "software_sha": sha, "identity": identity,
+                  "original_work_root": str(root),
+                  "original_repo_root": str(config.parent.parent.resolve()),
+                  "receipt_relative_path": checked(receipt_path),
+                  "effective_config_relative_path": checked(effective),
+                  "canonical_raw_manifest_key": receipt["report"]["object_manifest_key"],
+                  "canonical_live_run_id": receipt["report"]["canonical_live_run_id"],
+                  "offline_run_id": receipt["report"]["offline_run_id"],
+                  "config_sha256": digest(config), "catalog_sha256": digest(catalog),
+                  "files": inventory,
+              }
+              manifest_bytes = (json.dumps(manifest, sort_keys=True, allow_nan=False) + "\n").encode()
+              # LAST R2 write. A missing marker always means an incomplete archive.
+              put_verified(f"{prefix}/manifest.json", manifest_bytes)
+              return hashlib.sha256(manifest_bytes).hexdigest(), len(inventory)
+
+
+          repo = Path.cwd()
+          private = Path(os.environ["RUNNER_TEMP"]) / "c5-private"
+          work = private / "work"
+          config = repo / "config/tcg.yaml"
+          cfg = yaml.safe_load(config.read_text())
+          api = cfg["source"]["tournament_api"]
+          catalog = repo / api["release_catalog"]
+          state = repo / ".github/tcg-live-latest-completed-meta-state.json"
+          state_bytes = state.read_bytes() if state.exists() else None
+          plan = build_plan(catalog_path=catalog, state=read_json(state))
+          window = plan["latest_completed_window"]
+          require(plan["action"] == "publish_required" and window["code"] == "30C")
+          require(cfg["source"]["game"] == "PTCG" and api["window"]["mode"] == "latest_completed")
+          require(api["discovery_page_size"] == 50 and api["discovery_max_pages"] == 100)
+          sha = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          require(sha == os.environ["GITHUB_SHA"])
+          identity = candidate_identity(window=window, config_path=config, catalog_path=catalog, revision=sha)
+
+          # The later authorization must include this exact diagnostic prefix.
+          # Innocuous unique object; conditional create, no overwrite, no DELETE.
+          require(all(os.environ.get(k) for k in (
+              "MARS_RAW_S3_ENDPOINT", "MARS_RAW_S3_BUCKET", "MARS_RAW_S3_REGION",
+              "MARS_RAW_S3_ACCESS_KEY_ID", "MARS_RAW_S3_SECRET_ACCESS_KEY")))
+          checkpoint(2)
+          store_config = S3ObjectStoreConfig.from_env()
+          backend = S3ObjectStoreBackend(store_config, client=boto3.client(
+              "s3", endpoint_url=store_config.endpoint, region_name=store_config.region,
+              aws_access_key_id=store_config.access_key_id,
+              aws_secret_access_key=store_config.secret_access_key,
+              aws_session_token=store_config.session_token,
+              config=Config(s3={"addressing_style": store_config.addressing_style},
+                            retries={"total_max_attempts": 1}, connect_timeout=15, read_timeout=60)))
+          key = f"diagnostics/c5_30c/{os.environ['GITHUB_RUN_ID']}/{uuid.uuid4().hex}.txt"
+          probe = b"MARS C.5 R2 PUT HEAD GET diagnostic v1\n"
+          probe_sha = hashlib.sha256(probe).hexdigest()
+          backend._client.put_object(Bucket=backend.config.bucket, Key=key, Body=probe,
+                                    Metadata={"sha256": probe_sha}, IfNoneMatch="*")
+          head = backend.head(key)
+          require(head is not None and head.size == len(probe) and head.metadata.get("sha256") == probe_sha)
+          require(backend.get_bytes(key) == probe)
+
+          # Exactly one existing CLI invocation; no publication flags, retries or fallback.
+          checkpoint(3)
+          report_path = private / "report.json"
+          subprocess.run(["python", "-m", "scripts.tcg_live_latest_completed_job",
+                          "--repo-root", str(repo), "--work-root", str(work),
+                          "--report", str(report_path)], check=True)
+          checkpoint(4)
+          report = read(report_path)
+          require(report.get("candidate_ready") is True and report.get("published") is False)
+          require(report.get("candidate_reused") is False and report.get("offline_network_calls") == 0)
+          require(report["latest_completed_window"] == window)
+          require(all(report.get(k) is None for k in ("publication", "onedrive_publication", "bundle_dir")))
+          verified = load_verified_candidate(work_root=work, identity=identity)
+          require(verified is not None and verified["canonical_live_run_id"] == report["canonical_live_run_id"])
+          require(verified["offline_run_id"] == report["offline_run_id"])
+          receipt_path = Path(report["candidate_receipt"]).resolve(strict=True)
+          require(receipt_path.is_relative_to(work.resolve(strict=True)))
+          receipt = read(receipt_path)
+          require(receipt["identity"] == identity)
+          files = {k: work / v["path"] for k, v in receipt["files"].items()}
+          live = read(files["live_manifest"])
+          replay = read(files["replay_manifest"])
+          require(live["software"]["git_revision"] == sha and replay["software"]["git_revision"] == sha)
+          require(live["scope"]["set_code"] == "30C" and live["scope"]["game"] == "PTCG")
+          require(not live["selection"]["failures"])
+          require(live["selection"]["included_count"] == len(live["selection"]["tournament_ids"]) > 0)
+          # Recheck discovery exhaustion using raw pagination cardinality, not deduplicated count.
+          discovery = read(files["live_manifest"].with_name("diagnostics.json"))
+          raw_count = discovery["discovery_rows"] + discovery["discovery_duplicate_rows"]
+          oldest = discovery["discovery_oldest"]
+          exhausted = raw_count < api["discovery_page_size"] or raw_count % api["discovery_page_size"] != 0
+          require(exhausted or (oldest is not None and
+                  datetime.fromisoformat(oldest) <= datetime.fromisoformat(window["start"])))
+
+          score = pd.read_csv(files["score_flat"])
+          wr = pd.read_csv(files["wr_matrix"], index_col=0)
+          nd = pd.read_csv(files["n_dir_matrix"], index_col=0)
+          require(wr.index.is_unique and wr.columns.is_unique and wr.index.equals(wr.columns) and len(wr) >= 2)
+          qa = validate_contract(wr, nd)
+          require(qa["ok"] and not qa["issues"])
+          require(not score.duplicated(["Deck A", "Deck B"]).any())
+          require((score["Deck A"] != score["Deck B"]).all())
+          require(len(score) == len(wr) * (len(wr) - 1))
+          require(set(score["Deck A"]) == set(wr.index) == set(score["Deck B"]))
+          counts = score[["W", "L", "T", "N"]].to_numpy(float)
+          require(np.isfinite(counts).all() and (counts >= 0).all() and (counts == np.floor(counts)).all())
+          require((score["N"] == score["W"] + score["L"] + score["T"]).all())
+          pairs = score.set_index(["Deck A", "Deck B"])
+          for (a, b), row in pairs.iterrows():
+              reverse = pairs.loc[(b, a)]
+              require(row["W"] == reverse["L"] and row["L"] == reverse["W"] and row["T"] == reverse["T"])
+          w, l, _, expected_wr = build_matrices(score, list(wr.index))
+          expected_nd = n_dir_from_WL(w, l)
+          require(np.allclose(wr, expected_wr, equal_nan=True))
+          require(np.allclose(nd, expected_nd, equal_nan=True))
+          ranking = pd.read_csv(files["mars_ranking"], index_col=0)
+          require(len(ranking) == report["mars_rows"] == len(wr))
+          require(ranking.index.is_unique and ranking["Deck"].is_unique and set(ranking["Deck"]) == set(wr.index))
+          require(np.isfinite(ranking.select_dtypes(include="number").to_numpy()).all())
+          require((state.read_bytes() if state.exists() else None) == state_bytes)
+          require(not subprocess.check_output(["git", "status", "--porcelain", "--untracked-files=no"]))
+
+          checkpoint(5)
+          archive_sha, archive_count = persist_candidate(
+              backend, work=work, receipt_path=receipt_path, receipt=receipt,
+              report_path=report_path, config=config, catalog=catalog, identity=identity,
+              sha=sha, private=private)
+
+          # Public allowlist: generated scalars and hashes only. No source strings,
+          # run IDs from manifests, object keys, paths, deck names, RAW or logs.
+          evidence = {
+              "schema_version": 1, "code": "30C", "published": False,
+              "phase": 6, "status": 1, "private_candidate_verified": True,
+              "private_manifest_sha256": archive_sha, "private_file_count": archive_count,
+              "github_run_id": int(os.environ["GITHUB_RUN_ID"]), "github_run_attempt": 1,
+              "software_sha": sha, "config_sha256": digest(config), "catalog_sha256": digest(catalog),
+              "receipt_sha256": digest(receipt_path), "r2_preflight": True,
+              "lineage_receipt_sha_discovery_core_mars_qa": True,
+              "file_sha256": {k: digest(v) for k, v in files.items()},
+          }
+          public = Path(os.environ["RUNNER_TEMP"]) / "c5-safe-evidence"
+          (public / "qa.json").write_text(json.dumps(evidence, sort_keys=True) + "\n")
+          PY
+          then
+            echo 'C.5 failed. No automatic retry. Sanitized phase retained; private archive may be incomplete.' >&2
+            exit 1
+          fi
+
+      - name: Finalize sanitized failure or timeout evidence
+        if: always()
+        env:
+          C5_JOB_STATUS: ${{ job.status }}
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          path = Path(os.environ["RUNNER_TEMP"]) / "c5-safe-evidence" / "qa.json"
+          try:
+              previous = json.loads(path.read_text())
+          except (OSError, ValueError):
+              previous = {}
+          phase = previous.get("phase", 0)
+          phase = phase if type(phase) is int and 0 <= phase <= 6 else 0
+          if os.environ["C5_JOB_STATUS"] != "success" or previous.get("status") != 1:
+              # No source exception strings, private keys/URLs, or paths.
+              status = 3 if os.environ["C5_JOB_STATUS"] == "cancelled" else 2
+              path.parent.mkdir(parents=True, exist_ok=True)
+              path.write_text(json.dumps({"schema_version": 1, "phase": phase,
+                                         "status": status, "published": False}) + "\n")
+          PY
+
+      - name: Retain only sanitized QA evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: c5-30c-qa-${{ github.run_id }}
+          path: ${{ runner.temp }}/c5-safe-evidence/qa.json
+          if-no-files-found: error
+          retention-days: 14
+          include-hidden-files: false
+
+  # This implementation does not authorize dispatch. Candidate SHA is immutable;
+  # expected_sha must instead identify the independently reviewed AUDIT code.
+  c5_artifact_audit:
+    name: C.5 independent private artifact audit (GET/HEAD only)
+    if: >-
+      github.event_name == 'workflow_dispatch' && inputs.mode == 'c5_artifact_audit' &&
+      github.repository == 'indren9/ptcgp_ranking' &&
+      github.ref == 'refs/heads/fix/issue36-b1-tcg-live-boundary-candidate' &&
+      github.actor == 'indren9' && github.triggering_actor == 'indren9' &&
+      github.run_attempt == 1 && inputs.expected_sha == github.sha &&
+      inputs.expected_sha != '4684da475293d1ba1351c2673122e76d5c6620c4' &&
+      inputs.audit_authorization == 'APPROVED_ONE_C5_ARTIFACT_AUDIT_42523186837_1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    steps:
+      - name: Check out exact reviewed audit code
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Authorize audit before secrets
+        id: audit_guard
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          AUDIT_MODE: ${{ inputs.mode }}
+          AUDIT_AUTHORIZATION: ${{ inputs.audit_authorization }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REPOSITORY" == indren9/ptcgp_ranking ]]
+          [[ "$GITHUB_REF" == refs/heads/fix/issue36-b1-tcg-live-boundary-candidate ]]
+          [[ "$GITHUB_ACTOR" == indren9 && "$GITHUB_TRIGGERING_ACTOR" == indren9 ]]
+          [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$GITHUB_RUN_ATTEMPT" == 1 ]]
+          [[ "$AUDIT_MODE" == c5_artifact_audit ]]
+          [[ "$AUDIT_AUTHORIZATION" == APPROVED_ONE_C5_ARTIFACT_AUDIT_42523186837_1 ]]
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$EXPECTED_SHA" != 4684da475293d1ba1351c2673122e76d5c6620c4 ]]
+          [[ "$GITHUB_SHA" == "$EXPECTED_SHA" && "$(git rev-parse HEAD)" == "$EXPECTED_SHA" ]]
+          [[ "$WORKFLOW_SHA" == "$EXPECTED_SHA" ]]
+          [[ "$WORKFLOW_REF" == "$GITHUB_REPOSITORY/.github/workflows/tests.yml@$GITHUB_REF" ]]
+          [[ -z "$(git status --porcelain)" ]]
+          echo 'authorized=true' >> "$GITHUB_OUTPUT"
+
+      - name: Set up audit Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Install audit dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Audit existing candidate bytes only
+        if: steps.audit_guard.outputs.authorized == 'true'
+        env:
+          MARS_RAW_S3_ENDPOINT: ${{ secrets.MARS_RAW_S3_ENDPOINT }}
+          MARS_RAW_S3_BUCKET: ${{ secrets.MARS_RAW_S3_BUCKET }}
+          MARS_RAW_S3_REGION: ${{ secrets.MARS_RAW_S3_REGION }}
+          MARS_RAW_S3_ACCESS_KEY_ID: ${{ secrets.MARS_RAW_S3_ACCESS_KEY_ID }}
+          MARS_RAW_S3_SECRET_ACCESS_KEY: ${{ secrets.MARS_RAW_S3_SECRET_ACCESS_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir "$RUNNER_TEMP/c5-audit-safe"
+          # No exception, SDK output or private byte is sent to Actions logs.
+          # Existing Secrets may have IAM write permission; code only uses GET/HEAD.
+          python -m scripts.tcg_live_candidate_r2_audit >/dev/null 2>&1
+
+      - name: Finalize audit failure evidence
+        if: always()
+        env:
+          AUDIT_JOB_STATUS: ${{ job.status }}
+        shell: bash
+        run: |
+          python - <<'PY' >/dev/null 2>&1
+          import json
+          import os
+          from pathlib import Path
+          path = Path(os.environ['RUNNER_TEMP']) / 'c5-audit-safe' / 'audit.json'
+          # On failures/timeouts discard all partial evidence. Fixed output only.
+          if os.environ['AUDIT_JOB_STATUS'] != 'success' or not path.is_file():
+              path.parent.mkdir(mode=0o700, exist_ok=True)
+              path.write_text(json.dumps({'schema_version': 1, 'status': 2, 'published': False}) + '\n')
+          PY
+
+      - name: Retain sanitized audit evidence only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: c5-artifact-audit-${{ github.run_id }}
+          path: ${{ runner.temp }}/c5-audit-safe/audit.json
+          if-no-files-found: error
+          retention-days: 7
+          include-hidden-files: false

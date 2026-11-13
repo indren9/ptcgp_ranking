@@ -1,0 +1,993 @@
+"""Issue #36 B3: synthetic, network-free planner and candidate receipt QA."""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime
+import json
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+
+import pytest
+
+import scripts.tcg_live_latest_completed_job as job
+from scripts.tcg_live_candidate_receipt import (
+    REQUIRED_OUTPUTS,
+    _receipt_path,
+    candidate_identity,
+    candidate_lock,
+    candidate_workspace,
+    load_verified_candidate,
+    save_verified_candidate,
+    sha256_file,
+)
+from scripts.tcg_live_latest_completed import build_plan, read_json
+
+
+ROOT = Path(__file__).resolve().parents[1]
+CANDIDATE = (
+    ROOT / "data" / "candidates" / "releases"
+    / "tcg_live_windows_issue36_b1_candidate.json"
+)
+OLD_STATE = ROOT / ".github" / "tcg-live-latest-completed-meta-state.json"
+WHEN = datetime(2026, 10, 21, 12, 0, tzinfo=UTC)
+LIVE_RUN_ID = "limitless-api-live-20261021T120000000000Z"
+OFFLINE_RUN_ID = "limitless-api-offline-20261021T120001000000Z"
+
+
+def _plan(state=None, when=WHEN):
+    return build_plan(
+        catalog_path=CANDIDATE,
+        state=state,
+        acquisition_started_at=when,
+    )
+
+
+def _fixture(
+    tmp_path, *, window=None, revision="synthetic-revision",
+    identity_override=None, publish=False,
+):
+    config = tmp_path / "config.yaml"
+    config.write_text("effective: tcg\n", encoding="utf-8")
+    catalog = tmp_path / "release.json"
+    catalog.write_bytes(CANDIDATE.read_bytes())
+    window = window or _plan()["latest_completed_window"]
+    identity = identity_override or candidate_identity(
+        window=window,
+        config_path=config,
+        catalog_path=catalog,
+        revision=revision,
+    )
+    transaction_root = candidate_workspace(
+        work_root=tmp_path, identity=identity, publish=publish
+    )
+    source = (
+        transaction_root / "source-output" / "TCG" / "PBL__Pitch_Black"
+    )
+    source.mkdir(parents=True)
+    outputs = {}
+    for key in REQUIRED_OUTPUTS:
+        file = source / (key + ".json" if key == "run_manifest" else key + ".csv")
+        file.write_text(
+            "{}\n" if key == "run_manifest" else "deck,count\na,1\n",
+            encoding="utf-8",
+        )
+        outputs[key] = file
+
+    live = (
+        transaction_root / "raw-live" / "runs" / LIVE_RUN_ID / "manifest.json"
+    )
+    replay_dir = transaction_root / "raw-replay" / "runs" / OFFLINE_RUN_ID
+    replay = replay_dir / "manifest.json"
+    replay_diagnostics = replay_dir / "diagnostics.json"
+    for f, run_id in ((live, LIVE_RUN_ID), (replay, OFFLINE_RUN_ID)):
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(json.dumps({"run_id": run_id}) + "\n", encoding="utf-8")
+    replay_diagnostics.write_text(
+        json.dumps({
+            "execution_mode": "offline",
+            "run_id": OFFLINE_RUN_ID,
+            "replay_run_id": LIVE_RUN_ID,
+            "network_calls": 0,
+        }) + "\n", encoding="utf-8"
+    )
+
+    return dict(
+        work_root=tmp_path,
+        identity=identity,
+        config=config,
+        catalog=catalog,
+        source_run=source,
+        outputs=outputs,
+        live_manifest=live,
+        replay_manifest=replay,
+        replay_diagnostics=replay_diagnostics,
+        live_run_id=LIVE_RUN_ID,
+        offline_run_id=OFFLINE_RUN_ID,
+        object_manifest_key="canonical/raw/" + LIVE_RUN_ID + "/manifest.json",
+        mars_rows=1,
+    )
+
+
+def _persist(env):
+    return save_verified_candidate(**{
+        k: env[k] for k in (
+            "work_root", "identity", "source_run", "outputs",
+            "live_manifest", "replay_manifest", "replay_diagnostics",
+            "live_run_id", "offline_run_id", "object_manifest_key", "mars_rows",
+        )
+    })
+
+
+def test_candidate_latest_completed_and_half_open_release_boundaries():
+    previous = read_json(OLD_STATE)
+    plan = _plan(previous)
+    assert plan["action"] == "publish_required"
+    assert plan["latest_completed_window"] == {
+        "code": "PBL",
+        "name": "Pitch Black Live window",
+        "start": "2026-07-16T17:00:00Z",
+        "end": "2026-09-15T17:00:00Z",
+        "catalog_version": (
+            "tcgl-expansion-boundaries-2026-10-21-issue36-b1-candidate-v2"
+        ),
+    }
+    from sources.limitless.tournament_api.release_catalog import (
+        load_release_catalog_snapshot,
+        resolve_release,
+    )
+    catalog = load_release_catalog_snapshot(CANDIDATE)
+    assert [x.code for x in catalog.releases] == ["CRI", "PBL", "30C"]
+    # Midnight is not a full TCG Live expansion-availability boundary.
+    for timestamp in (
+        datetime(2026, 5, 21, 0, 0, tzinfo=UTC),
+        datetime(2026, 7, 16, 0, 0, tzinfo=UTC),
+        datetime(2026, 7, 16, 16, 59, tzinfo=UTC),
+    ):
+        with pytest.raises(ValueError, match="no completed release"):
+            resolve_release(
+                catalog, mode="latest_completed",
+                acquisition_started_at=timestamp,
+            )
+    for timestamp, expected in (
+        (datetime(2026, 7, 16, 17, 0, tzinfo=UTC), "CRI"),
+        (datetime(2026, 9, 15, 0, 0, tzinfo=UTC), "CRI"),
+        (datetime(2026, 9, 15, 16, 59, tzinfo=UTC), "CRI"),
+        (datetime(2026, 9, 15, 17, 0, tzinfo=UTC), "PBL"),
+    ):
+        assert resolve_release(
+            catalog, mode="latest_completed",
+            acquisition_started_at=timestamp,
+        ).code == expected
+    assert catalog.releases[-1].next_release_datetime is None
+
+
+def test_planner_requires_full_window_identity_including_catalog_version():
+    current = _plan()["latest_completed_window"]
+    for changed_key in ("name", "start", "end", "catalog_version"):
+        stale = dict(current)
+        stale[changed_key] = "outdated-value"
+        plan = _plan({"published_completed_window": stale})
+        assert plan["action"] == "publish_required"
+        assert plan["reason"] == "latest_completed_changed"
+    same = _plan({"published_completed_window": dict(current)})
+    assert same["action"] == "noop"
+    assert same["reason"] == "latest_completed_already_published"
+
+
+def test_receipt_reuses_exact_manifest_and_outputs_without_network(tmp_path):
+    env = _fixture(tmp_path)
+    _persist(env)
+    reused = load_verified_candidate(
+        work_root=tmp_path, identity=env["identity"]
+    )
+    assert reused["candidate_reused"] is True
+    assert reused["candidate_ready"] is True
+    assert reused["network_calls"] == 0
+    assert reused["published"] is False
+    assert reused["canonical_live_run_id"] == LIVE_RUN_ID
+    assert reused["offline_run_id"] == OFFLINE_RUN_ID
+    assert reused["canonical_live_run_id"] != reused["offline_run_id"]
+
+
+@pytest.mark.parametrize("input_changed", ["config", "catalog", "revision", "window"])
+def test_receipt_invalidated_by_dependency_change(tmp_path, input_changed):
+    env = _fixture(tmp_path)
+    _persist(env)
+    window = dict(env["identity"]["window"])
+    revision = "synthetic-revision"
+    if input_changed == "config":
+        env["config"].write_text("effective: altered\n", encoding="utf-8")
+    elif input_changed == "catalog":
+        env["catalog"].write_text("{}\n", encoding="utf-8")
+    elif input_changed == "revision":
+        revision = "new-revision"
+    else:
+        window["end"] = "2026-09-16T17:00:00Z"
+    new_identity = candidate_identity(
+        window=window, config_path=env["config"],
+        catalog_path=env["catalog"], revision=revision,
+    )
+    assert load_verified_candidate(
+        work_root=tmp_path, identity=new_identity
+    ) is None
+
+
+@pytest.mark.parametrize(
+    "bad_file",
+    ["mars_ranking", "live_manifest", "replay_manifest", "replay_diagnostics"],
+)
+def test_changed_artifacts_fail_closed(tmp_path, bad_file):
+    env = _fixture(tmp_path)
+    _persist(env)
+    if bad_file in env["outputs"]:
+        target = env["outputs"][bad_file]
+    else:
+        target = env[bad_file]
+    target.write_text("tampered", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="receipt invalid"):
+        load_verified_candidate(work_root=tmp_path, identity=env["identity"])
+
+
+@pytest.mark.parametrize("corruption", ["truncated", "missing_file", "escape"])
+def test_corrupt_receipts_fail_closed(tmp_path, corruption):
+    env = _fixture(tmp_path)
+    receipt_path = _persist(env)
+    obj = json.loads(receipt_path.read_text(encoding="utf-8"))
+    if corruption == "truncated":
+        receipt_path.write_text("{", encoding="utf-8")
+    else:
+        if corruption == "missing_file":
+            obj["files"].pop("n_dir_matrix")
+        else:
+            obj["files"]["mars_ranking"]["path"] = "../outside.csv"
+        receipt_path.write_text(json.dumps(obj), encoding="utf-8")
+    with pytest.raises(RuntimeError, match="receipt invalid"):
+        load_verified_candidate(work_root=tmp_path, identity=env["identity"])
+
+
+def test_candidate_missing_required_outputs_never_commits_receipt(tmp_path):
+    env = _fixture(tmp_path)
+    env["outputs"].pop("n_dir_matrix")
+    with pytest.raises(ValueError, match="missing required"):
+        _persist(env)
+    assert not _receipt_path(tmp_path, env["identity"]).exists()
+
+
+def test_candidate_lock_excludes_overlap_and_cleans_after_normal_failure(tmp_path):
+    env = _fixture(tmp_path)
+    identity = env["identity"]
+    with candidate_lock(work_root=tmp_path, identity=identity):
+        with pytest.raises(RuntimeError, match="locked"):
+            with candidate_lock(work_root=tmp_path, identity=identity):
+                pytest.fail("second lock entered")
+    with pytest.raises(AssertionError):
+        with candidate_lock(work_root=tmp_path, identity=identity):
+            raise AssertionError("synthetic failure")
+    with candidate_lock(work_root=tmp_path, identity=identity):
+        pass
+
+
+def test_candidate_stale_lock_fails_closed_without_network(tmp_path):
+    env = _fixture(tmp_path)
+    locked = _receipt_path(tmp_path, env["identity"]).with_suffix(".lock")
+    locked.parent.mkdir(parents=True)
+    locked.write_text("synthetic stale lock", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="locked"):
+        with candidate_lock(work_root=tmp_path, identity=env["identity"]):
+            pytest.fail("crash lock entered")
+    assert locked.read_text(encoding="utf-8") == "synthetic stale lock"
+
+
+def test_job_reads_receipt_before_creating_backend_or_running_live(tmp_path, monkeypatch):
+    # Local-only integration: intercept every network/acquisition entry point.
+    state = tmp_path / "old.json"
+    state.write_text(
+        json.dumps({"published_completed_window": {"code": "OLD"}}),
+        encoding="utf-8",
+    )
+    target_plan = build_plan(
+        catalog_path=ROOT / "data/reference/ptcg_live_windows.json",
+        state=read_json(state),
+        acquisition_started_at=datetime(2026, 9, 6, 10, tzinfo=UTC),
+    )
+    revision = "integration-synthetic"
+    # Real job hashes shipped YAML/catalog, so build files in its namespace.
+    identity = candidate_identity(
+        window=target_plan["latest_completed_window"],
+        config_path=ROOT / "config" / "tcg.yaml",
+        catalog_path=ROOT / "data/reference/ptcg_live_windows.json",
+        revision=revision,
+    )
+    env = _fixture(
+        tmp_path, window=target_plan["latest_completed_window"],
+        revision=revision, identity_override=identity,
+    )
+    _persist(env)
+    monkeypatch.setattr(job, "_git_revision", lambda _: revision)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("LIVE/backend must not execute on receipt reuse")
+
+    monkeypatch.setattr(job, "run_limitless_api_acquisition", forbidden)
+    report = job.run_job(
+        repo_root=ROOT, work_root=tmp_path, state_path=state,
+        acquisition_started_at=datetime(2026, 9, 6, 10, tzinfo=UTC),
+        backend_factory=forbidden,
+    )
+    assert report["candidate_reused"] is True
+    assert report["network_calls"] == 0
+    assert report["published"] is False
+
+
+def test_job_publish_does_not_reuse_unpublished_receipt(tmp_path, monkeypatch):
+    state = tmp_path / "old.json"
+    state.write_text(
+        json.dumps({"published_completed_window": {"code": "OLD"}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(job, "_git_revision", lambda _: "integration-synthetic")
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("LIVE must be separately authorized")
+
+    monkeypatch.setattr(job, "run_limitless_api_acquisition", forbidden)
+    with pytest.raises(AssertionError, match="LIVE must be"):
+        job.run_job(
+            repo_root=ROOT, work_root=tmp_path, state_path=state,
+            acquisition_started_at=datetime(2026, 9, 6, 10, tzinfo=UTC),
+            backend_factory=forbidden, publish=True,
+        )
+
+
+def test_b3r1_distinct_identities_have_disjoint_candidate_and_publisher_roots(tmp_path):
+    first = _fixture(tmp_path, revision="revision-a")
+    second = _fixture(tmp_path, revision="revision-b")
+    a = candidate_workspace(work_root=tmp_path, identity=first["identity"])
+    b = candidate_workspace(work_root=tmp_path, identity=second["identity"])
+    publisher = candidate_workspace(
+        work_root=tmp_path, identity=first["identity"], publish=True
+    )
+    assert len({a, b, publisher}) == 3
+    assert not a.is_relative_to(b)
+    assert not b.is_relative_to(a)
+    assert publisher.parent.name == "publication-workspaces"
+    assert a.parent.name == b.parent.name == "candidate-workspaces"
+    assert all(path.is_relative_to(a) for path in (
+        first["live_manifest"], first["replay_manifest"],
+        first["source_run"], *first["outputs"].values(),
+    ))
+    assert all(path.is_relative_to(b) for path in (
+        second["live_manifest"], second["replay_manifest"],
+        second["source_run"], *second["outputs"].values(),
+    ))
+
+
+def test_b3r1_sequential_candidates_preserve_earlier_receipt_and_artifact_hashes(
+    tmp_path,
+):
+    first = _fixture(tmp_path, revision="revision-a")
+    receipt_a = _persist(first)
+    original_a = receipt_a.read_bytes()
+    original_output = first["outputs"]["mars_ranking"].read_bytes()
+
+    # A different config/revision causes another legitimate run, including
+    # the destructive cleanup/rebuild that used to clobber the common replay.
+    second = _fixture(tmp_path, revision="revision-b")
+    root_b = candidate_workspace(work_root=tmp_path, identity=second["identity"])
+    replay_b = root_b / "raw-replay"
+    shutil.rmtree(replay_b)
+    second["replay_manifest"].parent.mkdir(parents=True)
+    second["replay_manifest"].write_text(
+        json.dumps({"run_id": OFFLINE_RUN_ID}) + "\n", encoding="utf-8"
+    )
+    second["replay_diagnostics"].write_text(
+        json.dumps({
+            "execution_mode": "offline",
+            "run_id": OFFLINE_RUN_ID,
+            "replay_run_id": LIVE_RUN_ID,
+            "network_calls": 0,
+        }) + "\n", encoding="utf-8"
+    )
+    second["outputs"]["mars_ranking"].write_text("other candidate", encoding="utf-8")
+    _persist(second)
+    assert load_verified_candidate(
+        work_root=tmp_path, identity=second["identity"]
+    )["candidate_ready"] is True
+
+    assert first["outputs"]["mars_ranking"].read_bytes() == original_output
+    assert receipt_a.read_bytes() == original_a
+    assert first["replay_manifest"].exists()
+    assert load_verified_candidate(
+        work_root=tmp_path, identity=first["identity"]
+    )["candidate_reused"] is True
+
+
+def test_b3r1_same_code_different_boundaries_cannot_mutate_existing_candidate(
+    tmp_path,
+):
+    first = _fixture(tmp_path)
+    receipt = _persist(first)
+    changed_window = dict(first["identity"]["window"])
+    changed_window["start"] = "2026-07-16T18:00:00Z"
+    second = _fixture(tmp_path, window=changed_window)
+    assert candidate_workspace(
+        work_root=tmp_path, identity=first["identity"]
+    ) != candidate_workspace(work_root=tmp_path, identity=second["identity"])
+    assert receipt.exists()
+    assert load_verified_candidate(
+        work_root=tmp_path, identity=first["identity"]
+    )["canonical_live_run_id"] == LIVE_RUN_ID
+
+
+def test_b3r1_receipt_refuses_foreign_identity_workspace(tmp_path):
+    first = _fixture(tmp_path, revision="revision-a")
+    second = _fixture(tmp_path, revision="revision-b")
+    first["outputs"] = second["outputs"]
+    with pytest.raises(ValueError, match="not inside its source run"):
+        _persist(first)
+    assert not _receipt_path(tmp_path, first["identity"]).exists()
+
+
+def test_b3r1_independent_processes_do_not_collide_in_shared_work_root(tmp_path):
+    env_a = _fixture(tmp_path, revision="process-a")
+    env_b = _fixture(tmp_path, revision="process-b")
+    child = (
+        "import json, sys, time; from pathlib import Path; "
+        "from scripts.tcg_live_candidate_receipt import candidate_lock, candidate_workspace; "
+        "root=Path(sys.argv[1]); identity=json.loads(sys.argv[2]); "
+        "tag=sys.argv[3]; "
+        "w=candidate_workspace(work_root=root, identity=identity); "
+        "w.mkdir(parents=True, exist_ok=True); "
+        "p=w/'raw-replay'/'marker.txt'; p.parent.mkdir(parents=True, exist_ok=True); "
+        "ctx=candidate_lock(work_root=root, identity=identity); "
+        "ctx.__enter__(); "
+        "p.write_text(tag, encoding='utf-8'); "
+        "time.sleep(0.20); "
+        "assert p.read_text(encoding='utf-8') == tag; "
+        "ctx.__exit__(None, None, None)"
+    )
+    processes = [
+        subprocess.Popen(
+            [sys.executable, "-c", child, str(tmp_path),
+             json.dumps(env["identity"]), label],
+            cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        )
+        for env, label in ((env_a, "a"), (env_b, "b"))
+    ]
+    for process in processes:
+        try:
+            stdout, stderr = process.communicate(timeout=15)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.communicate()
+            pytest.fail("synthetic concurrent candidate process timed out")
+        assert process.returncode == 0, stderr or stdout
+    assert candidate_workspace(
+        work_root=tmp_path, identity=env_a["identity"]
+    ) != candidate_workspace(work_root=tmp_path, identity=env_b["identity"])
+
+
+@pytest.mark.parametrize(
+    "corruption",
+    (
+        "replay_manifest_uses_live_id",
+        "replay_diagnostics_points_to_wrong_live",
+        "replay_diagnostics_wrong_offline_id",
+        "replay_diagnostics_wrong_execution_mode",
+        "replay_diagnostics_has_network",
+    ),
+)
+def test_b3r2_rejects_invalid_live_offline_provenance_before_receipt(
+    tmp_path, corruption,
+):
+    env = _fixture(tmp_path)
+    if corruption == "replay_manifest_uses_live_id":
+        env["replay_manifest"].write_text(
+            json.dumps({"run_id": LIVE_RUN_ID}), encoding="utf-8"
+        )
+    else:
+        diagnostics = json.loads(
+            env["replay_diagnostics"].read_text(encoding="utf-8")
+        )
+        if corruption == "replay_diagnostics_points_to_wrong_live":
+            diagnostics["replay_run_id"] = "different-live-run"
+        elif corruption == "replay_diagnostics_wrong_offline_id":
+            diagnostics["run_id"] = "different-offline-run"
+        elif corruption == "replay_diagnostics_wrong_execution_mode":
+            diagnostics["execution_mode"] = "live"
+        elif corruption == "replay_diagnostics_has_network":
+            diagnostics["network_calls"] = 1
+        env["replay_diagnostics"].write_text(
+            json.dumps(diagnostics), encoding="utf-8"
+        )
+    with pytest.raises(ValueError, match="replay lineage mismatch"):
+        _persist(env)
+    assert not _receipt_path(tmp_path, env["identity"]).exists()
+
+
+def test_b3r2_receipt_records_distinct_ids_and_hashed_replay_diagnostics(tmp_path):
+    env = _fixture(tmp_path)
+    receipt = _persist(env)
+    payload = json.loads(receipt.read_text(encoding="utf-8"))
+    assert payload["schema_version"] == 2
+    assert payload["report"]["canonical_live_run_id"] == LIVE_RUN_ID
+    assert payload["report"]["offline_run_id"] == OFFLINE_RUN_ID
+    assert "replay_diagnostics" in payload["files"]
+    assert len(payload["files"]["replay_diagnostics"]["sha256"]) == 64
+    reused = load_verified_candidate(
+        work_root=tmp_path, identity=env["identity"]
+    )
+    assert reused["offline_run_id"] == OFFLINE_RUN_ID
+    assert reused["candidate_reused"] is True
+
+
+def test_b3r2_fails_closed_when_replay_diagnostics_link_tampered_after_save(
+    tmp_path,
+):
+    env = _fixture(tmp_path)
+    _persist(env)
+    diagnostics = json.loads(
+        env["replay_diagnostics"].read_text(encoding="utf-8")
+    )
+    diagnostics["replay_run_id"] = "wrong-live-run"
+    env["replay_diagnostics"].write_text(
+        json.dumps(diagnostics), encoding="utf-8"
+    )
+    with pytest.raises(RuntimeError, match="receipt invalid"):
+        load_verified_candidate(work_root=tmp_path, identity=env["identity"])
+
+
+def _producer_v2_manifest_pair(env):
+    """Render full producer-shaped manifests using the canonical dataclass.
+
+    This exercises the actual AcquisitionManifest schema-v2 serializer, not
+    hand-authored JSON with only a run_id.
+    """
+    from acquisition.contracts import (
+        AcquisitionContracts,
+        ContractArtifact,
+        DENSE_SCORE_COLUMNS,
+        MATCHUP_COLUMNS,
+        RawPayloadRef,
+        TOP_META_COLUMNS,
+    )
+    from acquisition.manifest import (
+        AcquisitionManifest, AggregationSummary, NormalizedSummary,
+        RawSummary, validate_manifest_dict,
+    )
+    from acquisition.scope import ScopePolicy, EligibilityPolicy
+    from acquisition.selection import TournamentSelection
+
+    window = env["identity"]["window"]
+    def parse(value):
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+    scope = ScopePolicy(
+        policy_id="b3r3-synthetic-scope-v1",
+        game="PTCG",
+        format="STANDARD",
+        set_code=window["code"],
+        set_name=window["name"],
+        start_datetime=parse(window["start"]),
+        end_datetime=parse(window["end"]),
+        catalog_version=window["catalog_version"],
+    )
+    eligibility = EligibilityPolicy(
+        policy_id="b3r3-synthetic-eligibility-v1",
+        game="PTCG",
+        allowed_formats=("STANDARD",),
+        require_public=True,
+        require_decklists=True,
+        require_online=True,
+        allowed_platforms=("PTCGL",),
+    )
+    contracts = AcquisitionContracts(
+        top_meta_decklist=ContractArtifact(
+            name="top_meta_decklist", columns=TOP_META_COLUMNS,
+            row_count=2, sha256="a" * 64,
+        ),
+        matchup_raw=ContractArtifact(
+            name="matchup_raw", columns=MATCHUP_COLUMNS,
+            row_count=2, sha256="b" * 64,
+        ),
+        dense_score=ContractArtifact(
+            name="dense_score", columns=DENSE_SCORE_COLUMNS,
+            row_count=2, sha256="c" * 64,
+        ),
+    )
+    common = dict(
+        schema_version="2",
+        created_at=datetime(2026, 10, 21, 12, 5, tzinfo=UTC),
+        acquisition_started_at=datetime(2026, 10, 21, 12, 0, tzinfo=UTC),
+        source="Limitless Tournament API",
+        software_git_revision="b3r3-synthetic",
+        scope=scope,
+        selection=TournamentSelection(
+            tournament_ids=("synthetic-t1",), exclusion_counts={}, failures=(),
+        ),
+        raw=RawSummary(snapshot_refs=(
+            RawPayloadRef(
+                payload_type="tournament:details",
+                snapshot_id="synthetic-snapshot-01",
+                sha256="d" * 64,
+                fetched_at=datetime(2026, 10, 21, 12, 1, tzinfo=UTC),
+                relative_path="snapshots/synthetic-t1/details.json",
+                tournament_id="synthetic-t1",
+            ),
+        )),
+        normalized=NormalizedSummary(
+            tournaments_rows=1, participants_rows=2, pairings_rows=1,
+            hashes={"tournaments": "e" * 64, "participants": "f" * 64,
+                    "pairings": "0" * 64},
+        ),
+        aggregation=AggregationSummary(
+            total_participants=2, classified_participants=2,
+            unclassified_participants=0, comparable_matches=1,
+            pairing_exclusion_counts={},
+        ),
+        rate_limit_observations=(),
+        contracts=contracts,
+        eligibility=eligibility,
+    )
+
+    live = AcquisitionManifest(run_id=LIVE_RUN_ID, **common)
+    offline = AcquisitionManifest(run_id=OFFLINE_RUN_ID, **common)
+    live_payload = json.loads(live.to_json())
+    offline_payload = json.loads(offline.to_json())
+    validate_manifest_dict(live_payload)
+    validate_manifest_dict(offline_payload)
+    assert live_payload["schema_version"] == offline_payload["schema_version"] == "2"
+    assert live_payload["run_id"] != offline_payload["run_id"]
+    assert len(live_payload["raw"]["snapshot_refs"]) == 1
+    assert live_payload["contracts"] == offline_payload["contracts"]
+
+    # run_job() removes the temporary replay tree before restoration;
+    # the mocked OFFLINE producer must recreate it as the real producer does.
+    env["live_manifest"].parent.mkdir(parents=True, exist_ok=True)
+    env["replay_manifest"].parent.mkdir(parents=True, exist_ok=True)
+    env["live_manifest"].write_text(live.to_json(), encoding="utf-8")
+    env["replay_manifest"].write_text(offline.to_json(), encoding="utf-8")
+    diagnostics = {
+        "execution_mode": "offline",
+        "run_id": OFFLINE_RUN_ID,
+        "replay_run_id": LIVE_RUN_ID,
+        "network_calls": 0,
+    }
+    env["replay_diagnostics"].write_text(
+        json.dumps(diagnostics, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    return live_payload, offline_payload
+
+
+def test_b3r3_producer_schema_v2_manifest_receipt_full_round_trip(tmp_path):
+    from acquisition.manifest import validate_manifest_dict
+    from scripts.automatic_completed_meta_rollover import (
+        ReplayEvidence, validate_exact_offline_replay,
+    )
+
+    env = _fixture(tmp_path)
+    live, offline = _producer_v2_manifest_pair(env)
+    validate_manifest_dict(live)
+    validate_manifest_dict(offline)
+    replay = ReplayEvidence(
+        source_run=env["source_run"],
+        manifest_path=env["replay_manifest"],
+        diagnostics_path=env["replay_diagnostics"],
+    )
+    # Cross-check the exact upstream replay validator before receipt storage.
+    replay_payload = validate_exact_offline_replay(
+        env["live_manifest"], replay
+    )
+    assert replay_payload["run_id"] == OFFLINE_RUN_ID
+
+    receipt_path = _persist(env)
+    recorded = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert recorded["report"]["canonical_live_run_id"] == LIVE_RUN_ID
+    assert recorded["report"]["offline_run_id"] == OFFLINE_RUN_ID
+    assert recorded["files"]["replay_manifest"]["sha256"] == sha256_file(
+        env["replay_manifest"]
+    )
+    reused = load_verified_candidate(
+        work_root=tmp_path, identity=env["identity"]
+    )
+    assert reused["candidate_reused"] is True
+    assert reused["network_calls"] == 0
+    assert reused["canonical_live_run_id"] == LIVE_RUN_ID
+    assert reused["offline_run_id"] == OFFLINE_RUN_ID
+
+
+def test_b3r3_diagnostics_sha_mismatch_is_rejected_before_semantics(tmp_path):
+    env = _fixture(tmp_path)
+    _producer_v2_manifest_pair(env)
+    _persist(env)
+    data = json.loads(env["replay_diagnostics"].read_text(encoding="utf-8"))
+    data["replay_run_id"] = "wrong-canonical-live"
+    env["replay_diagnostics"].write_text(
+        json.dumps(data, sort_keys=True), encoding="utf-8"
+    )
+    with pytest.raises(RuntimeError, match="receipt invalid") as caught:
+        load_verified_candidate(work_root=tmp_path, identity=env["identity"])
+    assert caught.value.__cause__ is not None
+    assert "checksum/path mismatch" in str(caught.value.__cause__)
+
+
+def test_b3r3_diagnostics_semantic_mismatch_with_valid_hash_still_fails(tmp_path):
+    env = _fixture(tmp_path)
+    _producer_v2_manifest_pair(env)
+    receipt_path = _persist(env)
+    data = json.loads(env["replay_diagnostics"].read_text(encoding="utf-8"))
+    data["replay_run_id"] = "wrong-canonical-live"
+    env["replay_diagnostics"].write_text(
+        json.dumps(data, sort_keys=True), encoding="utf-8"
+    )
+    # Keep SHA-256 consistent on purpose to test lineage independently.
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    receipt["files"]["replay_diagnostics"]["sha256"] = sha256_file(
+        env["replay_diagnostics"]
+    )
+    receipt_path.write_text(
+        json.dumps(receipt, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    with pytest.raises(RuntimeError, match="receipt invalid") as caught:
+        load_verified_candidate(work_root=tmp_path, identity=env["identity"])
+    assert caught.value.__cause__ is not None
+    assert "replay lineage mismatch" in str(caught.value.__cause__)
+
+
+def test_b3r3_job_first_run_and_reuse_report_same_two_run_ids(
+    tmp_path, monkeypatch,
+):
+    """Offline-only integration: all acquisition and storage services mocked."""
+    from types import SimpleNamespace
+
+    state = tmp_path / "state.json"
+    state.write_text(
+        json.dumps({"published_completed_window": {"code": "OLD"}}),
+        encoding="utf-8",
+    )
+    started = datetime(2026, 9, 6, 10, tzinfo=UTC)
+    plan = build_plan(
+        catalog_path=ROOT / "data/reference/ptcg_live_windows.json",
+        state=read_json(state),
+        acquisition_started_at=started,
+    )
+    revision = "b3r3-mocked-version"
+    identity = candidate_identity(
+        window=plan["latest_completed_window"],
+        config_path=ROOT / "config/tcg.yaml",
+        catalog_path=ROOT / "data/reference/ptcg_live_windows.json",
+        revision=revision,
+    )
+    env = _fixture(
+        tmp_path, window=plan["latest_completed_window"],
+        revision=revision, identity_override=identity,
+    )
+    _producer_v2_manifest_pair(env)
+    monkeypatch.setattr(job, "_git_revision", lambda _: revision)
+    acquisition_calls = []
+
+    def fake_live(**kwargs):
+        assert kwargs["execution_mode"] == "live"
+        assert kwargs["raw_store_root"] == (
+            candidate_workspace(work_root=tmp_path, identity=identity) / "raw-live"
+        )
+        acquisition_calls.append("synthetic-live")
+        return SimpleNamespace(
+            manifest=SimpleNamespace(run_id=LIVE_RUN_ID)
+        )
+
+    def fake_persist(*args, **kwargs):
+        assert args[1] == LIVE_RUN_ID
+        return SimpleNamespace(
+            manifest_key="mocked-object-store/" + LIVE_RUN_ID + "/manifest.json"
+        )
+
+    def fake_restore(*args, **kwargs):
+        assert args[1] == LIVE_RUN_ID
+        return None
+
+    def fake_core_mars(**kwargs):
+        # The job deletes and restores replay scratch before the OFFLINE
+        # stage; produce canonical schema-v2 manifests in the new scratch.
+        _producer_v2_manifest_pair(env)
+        return SimpleNamespace(
+            diagnostics={
+                "tournament_api_run_id": OFFLINE_RUN_ID,
+                "tournament_api_network_calls": 0,
+                "mars_rows": 1,
+            },
+            paths=SimpleNamespace(outputs=env["source_run"]),
+            expansion="PTCG",
+            outputs=env["outputs"],
+        )
+
+    monkeypatch.setattr(job, "run_limitless_api_acquisition", fake_live)
+    monkeypatch.setattr(job, "persist_canonical_raw_run", fake_persist)
+    monkeypatch.setattr(job, "restore_canonical_raw_run", fake_restore)
+    monkeypatch.setattr(job, "run_deck_ranking", fake_core_mars)
+    monkeypatch.setattr(job, "base_for_expansion", lambda *args: env["source_run"])
+
+    def no_backend():
+        return object()
+
+    first = job.run_job(
+        repo_root=ROOT, work_root=tmp_path, state_path=state,
+        acquisition_started_at=started, backend_factory=no_backend,
+        publish=False,
+    )
+    assert first["action"] == "candidate_ready"
+    assert first["candidate_reused"] is False
+    assert first["canonical_live_run_id"] == LIVE_RUN_ID
+    assert first["offline_run_id"] == OFFLINE_RUN_ID
+    assert len(acquisition_calls) == 1
+
+    second = job.run_job(
+        repo_root=ROOT, work_root=tmp_path, state_path=state,
+        acquisition_started_at=started, backend_factory=no_backend,
+        publish=False,
+    )
+    assert second["candidate_reused"] is True
+    assert second["network_calls"] == 0
+    assert len(acquisition_calls) == 1
+    for key in ("canonical_live_run_id", "offline_run_id"):
+        assert first[key] == second[key]
+
+
+@pytest.mark.parametrize(
+    "mode", ("success", "stale", "onedrive-fail", "local-fail")
+)
+def test_f08_job_shared_lease_encloses_both_publishers_and_stale_guard(
+    tmp_path, monkeypatch, mode,
+):
+    """Whole publishing control path stays mocked: no LIVE or OneDrive writes."""
+    from types import SimpleNamespace
+    from scripts.tcg_live_publication_lock import (
+        PublicationLockedError, publication_lock, publication_lock_path,
+    )
+
+    state = tmp_path / "state.json"
+    initial_state = {"published_completed_window": {"code": "OLD"}}
+    state.write_text(json.dumps(initial_state), encoding="utf-8")
+    started = datetime(2026, 9, 6, 10, tzinfo=UTC)
+    selected = build_plan(
+        catalog_path=ROOT / "data/reference/ptcg_live_windows.json",
+        state=initial_state,
+        acquisition_started_at=started,
+    )
+    revision = "f08-offline-mock-revision"
+    identity = candidate_identity(
+        window=selected["latest_completed_window"],
+        config_path=ROOT / "config/tcg.yaml",
+        catalog_path=ROOT / "data/reference/ptcg_live_windows.json",
+        revision=revision,
+    )
+    env = _fixture(
+        tmp_path, window=selected["latest_completed_window"],
+        revision=revision, identity_override=identity, publish=True,
+    )
+    _producer_v2_manifest_pair(env)
+    local = tmp_path / "public-local"
+    remote = tmp_path / "fake-OneDrive" / "TCG"
+    event_order = []
+
+    monkeypatch.setattr(job, "_git_revision", lambda _: revision)
+    monkeypatch.setattr(
+        job, "run_limitless_api_acquisition",
+        lambda **kw: SimpleNamespace(
+            manifest=SimpleNamespace(run_id=LIVE_RUN_ID)
+        ),
+    )
+    monkeypatch.setattr(
+        job, "persist_canonical_raw_run",
+        lambda *a, **kw: SimpleNamespace(
+            manifest_key="synthetic/" + LIVE_RUN_ID + "/manifest.json"
+        ),
+    )
+    monkeypatch.setattr(
+        job, "restore_canonical_raw_run", lambda *a, **kw: None
+    )
+
+    def core(**kw):
+        _producer_v2_manifest_pair(env)
+        if mode == "stale":
+            state.write_text(
+                json.dumps({"published_completed_window": {"code": "OTHER"}}),
+                encoding="utf-8",
+            )
+        return SimpleNamespace(
+            diagnostics={
+                "tournament_api_run_id": OFFLINE_RUN_ID,
+                "tournament_api_network_calls": 0,
+                "mars_rows": 1,
+            },
+            paths=SimpleNamespace(outputs=env["source_run"]),
+            expansion="PTCG", outputs=env["outputs"],
+        )
+
+    monkeypatch.setattr(job, "run_deck_ranking", core)
+    monkeypatch.setattr(
+        job, "base_for_expansion", lambda *a: env["source_run"]
+    )
+    monkeypatch.setattr(
+        job, "build_tcg_live_bundle", lambda **kw: None
+    )
+    monkeypatch.setattr(
+        job, "onedrive_publication_enabled", lambda cfg: True
+    )
+    monkeypatch.setattr(
+        job, "canonical_game_root", lambda game: remote
+    )
+
+    def one_drive(**kw):
+        kw["_lease"].assert_onedrive_target(remote)
+        assert publication_lock_path(state).is_file()
+        assert local.with_name(local.name + ".publication.lock").is_file()
+        assert remote.with_name(remote.name + ".publication.lock").is_file()
+        with pytest.raises(PublicationLockedError, match="lock exists"):
+            with publication_lock(
+                state_path=tmp_path / "another-state.json",
+                target_dir=tmp_path / "another-public",
+                onedrive_target=remote,
+            ):
+                pytest.fail("another OneDrive publisher entered")
+        event_order.append("onedrive")
+        if mode == "onedrive-fail":
+            raise RuntimeError("simulated OneDrive failure")
+        return SimpleNamespace(
+            to_dict=lambda: {
+                "status": "PASS", "published": ("ranking.csv",),
+                "skipped_identical": (),
+            }
+        )
+
+    def local_publish(**kw):
+        kw["_lease"].assert_destination(
+            state_path=state, target_dir=local
+        )
+        event_order.append("local")
+        if mode == "local-fail":
+            raise RuntimeError("simulated local failure after OneDrive")
+        return {"dry_run": False}
+
+    monkeypatch.setattr(job, "publish_tcg_bundle", one_drive)
+    monkeypatch.setattr(job, "publish_tcg_live_bundle", local_publish)
+
+    if mode == "success":
+        outcome = job.run_job(
+            repo_root=ROOT, work_root=tmp_path, state_path=state,
+            acquisition_started_at=started, backend_factory=lambda: object(),
+            publish=True, public_target=local,
+        )
+        assert outcome["published"] is True
+        assert event_order == ["onedrive", "local"]
+        assert not publication_lock_path(state).exists()
+        assert not remote.with_name(remote.name + ".publication.lock").exists()
+        assert not local.with_name(local.name + ".publication.lock").exists()
+    else:
+        message = {
+            "stale": "state changed after planning",
+            "onedrive-fail": "simulated OneDrive failure",
+            "local-fail": "simulated local failure",
+        }[mode]
+        with pytest.raises(RuntimeError, match=message):
+            job.run_job(
+                repo_root=ROOT, work_root=tmp_path, state_path=state,
+                acquisition_started_at=started, backend_factory=lambda: object(),
+                publish=True, public_target=local,
+            )
+        if mode == "stale":
+            assert event_order == []
+            assert not publication_lock_path(state).exists()
+        else:
+            assert event_order == (
+                ["onedrive"] if mode == "onedrive-fail"
+                else ["onedrive", "local"]
+            )
+            assert publication_lock_path(state).is_file()
+            with pytest.raises(PublicationLockedError):
+                with publication_lock(
+                    state_path=state, target_dir=local, onedrive_target=remote
+                ):
+                    pytest.fail("unsafe automatic retry entered")

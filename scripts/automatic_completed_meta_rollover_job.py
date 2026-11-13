@@ -21,6 +21,8 @@ from scripts.automatic_completed_meta_rollover import (
     run_rollover_transaction,
 )
 from scripts.latest_completed_meta import (
+    _check_uncoordinated_output_destination,
+    _preflight_uncoordinated_file_output,
     build_publication_plan,
     read_catalog,
     read_json,
@@ -103,6 +105,7 @@ def _write_production_config(
     )
 
     out = work_root / "production_pocket.yaml"
+    _preflight_uncoordinated_file_output(out, identity_roots=(repo_root,))
     out.write_text(
         yaml.safe_dump(cfg, sort_keys=False, allow_unicode=True),
         encoding="utf-8",
@@ -196,6 +199,9 @@ def run_job(
         return result
 
     def replay_offline(run_id: str, plan, window) -> ReplayEvidence:
+        _check_uncoordinated_output_destination(
+            replay_raw_root, cleanup_tree=True, identity_roots=(repo_root,),
+        )
         if replay_raw_root.exists():
             shutil.rmtree(replay_raw_root)
         restore_canonical_raw_run(
@@ -253,6 +259,9 @@ def run_job(
         acquisition_manifest: Path,
     ) -> Path:
         bundle_dir = work_root / "bundle"
+        _check_uncoordinated_output_destination(
+            bundle_dir, cleanup_tree=True, identity_roots=(repo_root,),
+        )
         if bundle_dir.exists():
             shutil.rmtree(bundle_dir)
         completed = plan["completed_set"]
@@ -350,6 +359,9 @@ def main() -> int:
         raise SystemExit(
             "--allow-public-write is required for the production rollover job"
         )
+
+    if args.report is not None:
+        _preflight_uncoordinated_file_output(args.report)
 
     repo_root = args.repo_root.resolve()
     original_cwd = Path.cwd()
