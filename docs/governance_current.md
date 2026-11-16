@@ -1,7 +1,7 @@
 # MARS — CURRENT VIEW
 
 **Status:** CURRENT
-**Reviewed:** 2026-10-06
+**Reviewed:** 2026-11-16 (documentary GitHub readback; not runtime recertification)
 
 ## Authority
 
@@ -28,6 +28,18 @@ Observed during the 2026-10-05 governance review:
 - Pocket observed current set: B4a — Team Rocket's Ambition
 
 These observations are context, not permanent authority. Re-check live sources when a task depends on current state.
+
+## Architecture review and provenance — documentary CURRENT (2026-11-16)
+
+- **Roadmap / architecture:** new ordinary development and expansion remain in **STANDBY** under Andrea's [Issue #38 decision](https://github.com/indren9/ptcgp_ranking/issues/38). Critical fixes require separate authorization. The old roadmap must not be rewritten; its definitive live source remains subject to reconciliation.
+- **AR-01:** fail-closed MARS I/O validator bugfix **COMPLETED**, [PR #39 MERGED](https://github.com/indren9/ptcgp_ranking/pull/39) at `df30cd788d6217050f6ba3a59e7d367efa69ef5b`. [Post-merge Tests #180](https://github.com/indren9/ptcgp_ranking/actions/runs/43456283649): **SUCCESS, 1110 passed, 6 warnings**. [Merge close](https://github.com/indren9/ptcgp_ranking/issues/38#issuecomment-6858060305). This does **not** certify production provenance.
+- **PROVENANCE-01:** C1/C2/C3 design and the five concrete contracts **PV-D01 through PV-D05 are APPROVED — CONTRACT ONLY**, **NOT IMPLEMENTED**. The authoritative record is [Issue #38](https://github.com/indren9/ptcgp_ranking/issues/38): [PV-D01 ratification](https://github.com/indren9/ptcgp_ranking/issues/38#issuecomment-6920036079), [PV-D02/D03/D04/D05 ratification](https://github.com/indren9/ptcgp_ranking/issues/38#issuecomment-6920944934); [decision history](https://github.com/indren9/ptcgp_ranking/issues/38#issuecomment-6919849478) remains unchanged.
+- **Approved direction only:** deterministic scientific identities, separately identified operational attempts/publications; minimal verifiable evidence; coherent local promotion; fail-closed verified consumers; no assumed shared cloud commit. Implementation details and tests need a **new, explicit WRITE mandate**. Do not infer publication or methodological authorization.
+- **Immediate next step:** one **READ-ONLY PV-D01 evidence-preparation mandate** for the exact fingerprint descriptor/software-component inventory and independently checkable golden vectors (canonical bytes and expected hashes). These are **mandatory before WRITE**; their preparation does not approve execution, tests or `PV-02A` implementation. After review and separate authorization, `PV-02A` primitives are the first candidate.
+- **Separate / on hold:** `RT-01` canonical filename reconciliation and `AR-02` are separate; [PR #37](https://github.com/indren9/ptcgp_ranking/pull/37) remains **OPEN / DRAFT / UNMERGED**, `C.6` **HOLD**. [Issue #38](https://github.com/indren9/ptcgp_ranking/issues/38) remains OPEN. Preserve FROZEN, `MARSConfig`, Acquisition/Core separation and canonical CSV contracts.
+- **Gates:** `IMPLEMENTATION = NOT AUTHORIZED`; `TESTS/WORKFLOWS = NOT AUTHORIZED` for the next mandate; `PRODUCTION = STOP` for unverified provenance. This is a **documentary snapshot**, not runtime, external-consumer or cloud-readiness certification.
+
+Re-check the live repository, YAML and issue decisions for subsequent work; this section is a compact index, not a duplicate technical register.
 
 ## MARS / Core
 
