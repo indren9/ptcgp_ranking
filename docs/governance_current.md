@@ -1,7 +1,9 @@
 # MARS — CURRENT VIEW
 
 **Status:** CURRENT
-**Reviewed:** 2026-10-06
+**Documentation reviewed:** 2026-11-18 — Agent OS 2.0 procedural alignment only.
+**Technical observations:** historical observations from 2026-10-05 remain preserved, not refreshed.
+**Technical certification:** NOT PERFORMED by this document review; obtain current technical evidence from GitHub LIVE, effective YAML and the state/manifest/artifact/hash chain.
 
 ## Authority
 
@@ -57,28 +59,28 @@ This governance workstream does not authorize changes to MARS science, canonical
 
 ## Bootstrap for a new chat
 
-Normally read only:
+Use the [Agent Operating Guide §1-bis](https://app.notion.com/p/4070b32ce54781f1aa75fe1ebf66a68c) for global bootstrap, delegation, succession and common authorizations. The [MARS specialist succession protocol v2](chat_madre_succession_protocol.md) is OPERATIVE / APPROVED (Andrea, 2026-11-18) and adds compatible technical checks only.
 
-1. Project Instructions.
-2. This CURRENT VIEW.
-3. Live GitHub sources required by the task.
-4. Only the task-specific decisions/FROZEN items that alter its baseline.
-5. Task inputs and required output.
+For an ordinary operational chat, recover only the necessary context:
 
-If the new chat is replacing the Chat Madre, also read `docs/chat_madre_succession_protocol.md`
-and complete its read-only readiness gate before opening new work.
+1. Applicable Project Instructions.
+2. Agent Operating Guide §1-bis when pertinent.
+3. This CURRENT VIEW and task-relevant GitHub LIVE sources.
+4. Effective YAML, state/pointer → manifest → artifact → hash and task-specific decisions/FROZEN only when needed.
+5. Task inputs, authorization boundaries and expected output.
 
-Do not reconstruct the whole project history by default.
+**New Chat Madre successor — protected first turn:** verify Andrea's explicit nomination and original source. Keep the entire first turn READ-ONLY, apply the specialist v2 protocol, report `PASS / PASS WITH LIMITATIONS / STOP`, then **STOP for Andrea even after PASS**. No automatic restart or promotion. An optional handoff is HISTORY, not an authorization, prerequisite or nomination; its absence alone is not STOP.
 
-## New-chat setup discipline
+Do not reconstruct the entire project history by default, or treat a Notion/static snapshot as technical CURRENT.
 
-Every Chat Madre dispatch must include a recommended setup, the reason, and a fallback Chat setup.
+## New-chat delegation and setup discipline
 
-- Prefer Work when autonomous multi-step execution materially helps and Work is available.
-- Otherwise prefer GPT-5.6 Sol — High for governance, audit, methodology, complex refactor, difficult debugging, or cross-source verification.
-- Prefer GPT-5.6 Sol — Medium for bounded operational tasks with clear inputs and acceptance criteria.
-- Do not default to the maximum reasoning level when a lower level is sufficient.
-- If available model/mode options change, verify the current product availability before recommending a setup.
+Every Chat Madre dispatch must state mandate, task-specific LIVE sources, scope and exclusions, permissions, expected evidence/output, `SESSION CLOSE`, `STOP`, a recommended setup, its reason and a fallback Chat setup.
+
+- **Chat is the default** for bounded tasks. Recommend Work only if multi-step execution materially helps and Work is available; always give a Chat fallback.
+- Verify current model, mode and reasoning options in the product interface before naming a specific one. Do not hard-code obsolete model labels.
+- Choose the least intensive reasoning level sufficient for the task, not the maximum by default.
+- A setup suggestion or QA PASS does not grant authority. Protected changes and substantial decisions remain subject to Andrea's approval.
 
 ## Desktop Commander discipline
 
