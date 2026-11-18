@@ -1,12 +1,13 @@
 # MARS — CHAT MADRE SUCCESSION PROTOCOL
 
-**Status:** OPERATIVE
-**Version:** v1
-**Effective:** 2026-10-06
+**Status:** PROPOSED — awaiting Andrea review (v1 remains operative on `main` until approved merge)
+**Version:** v2 — proposed 2026-11-18
+**V1 archival copy:** [chat_madre_succession_protocol_v1.md](chat_madre_succession_protocol_v1.md)
+**Global protocol:** [Agent Operating Guide §1-bis](https://app.notion.com/p/4070b32ce54781f1aa75fe1ebf66a68c)
 
 ## Purpose
 
-This protocol governs succession of the MARS Chat Madre without depending on conversation memory.
+This document adds MARS-specific technical checks to the Agent Operating Guide §1-bis, which is the sole global protocol for nomination, bootstrap, succession, delegation and common authorizations. It is not an alternative global succession procedure.
 Its goal is to transfer only the minimum current operational context while preserving persistent authority,
 history, FROZEN decisions, reproducibility, provenance, and the Acquisition/Core ↔ MARS boundary.
 
@@ -24,82 +25,71 @@ During succession, authority remains domain-specific:
 - issues → GitHub Issues where applicable;
 - history → Git commits, PRs, releases, old chats, handoffs and preserved generations.
 
-Andrea remains the final decision authority.
+Andrea remains the final decision authority. Only Andrea may nominate the Chat Madre CURRENT, with an identifiable original decision and effective date; a title, handoff, prior chat or self-declaration does not nominate or grant permissions.
+Project Instructions govern static safety, Agent OS §1-bis governs the common procedure, and GitHub LIVE with effective YAML and the state/manifest/artifact/hash chain govern MARS technical facts.
+If a procedural v1 clause conflicts with §1-bis, apply the approved global contract while preserving these compatible MARS technical checks.
+A predecessor remains HISTORY after the nomination, with no retroactive transfer of authority.
 A technical PASS is not an approval of a methodological or structural change.
 Silence or absence of an answer is never approval.
 
 ## Succession trigger
 
-Use this protocol when the current Chat Madre is being replaced, intentionally compacted, or can no longer
-reliably carry the current operational context.
+A change of Chat Madre CURRENT occurs only after Andrea authorizes and names the successor. The original nomination source, conversation identity and effective date must be verified before attributing the role.
 
-Succession is not required for every ordinary new operational chat.
+A compacted or ordinary operational chat is not automatically a successor. Loss of context alone does not grant a new chat the CURRENT role. Succession is not required for every ordinary new operational chat.
 
 ## Phase 1 — Freeze new work
 
-Before handoff, the outgoing Chat Madre must stop opening new workstreams.
-It may only close or persist the minimum context needed for safe succession.
+After Andrea's succession decision, the outgoing Chat Madre, if available, stops opening new substantial workstreams. It may close active work safely or provide a short optional handoff, without making new substantive decisions.
 
 Do not reopen FROZEN items, change methodology, mutate canonical acquisition policy, or rewrite history as part of succession.
 
 ## Phase 2 — Persist the minimum current context
 
-Persist only what is not already recoverable from authoritative sources.
-Prefer pointers over narrative duplication.
+An ordinary succession handoff is **optional**, not a precondition and not an emergency fallback if absent. Reconstruct CURRENT from the original LIVE sources. If useful and possible, persist one short, versioned handoff in an already governed destination. Prefer pointers over narrative duplication.
 
-The succession packet should contain, when applicable:
-
+If created, the handoff may contain:
 - current objective and active workstream;
 - exact branch/worktree or run identifier;
 - unresolved blocker or pending Andrea decision;
 - task-specific FROZEN references that materially constrain the next action;
 - current process handle/PID only if a legitimate long-running local job is still active;
-- exact next action that was authorized but not yet completed.
+- exact next action authorized but not yet completed.
 
-Do not copy the whole conversation history into the packet.
+Never copy whole conversations, registries, private data or secrets. A handoff is **HISTORY/DERIVED EVIDENCE**: it does not establish CURRENT, modify permissions or override GitHub LIVE.
 
 ## Phase 3 — Successor bootstrap
 
-The successor Chat Madre performs a read-only bootstrap first:
+The successor's **entire first turn is rigorously READ-ONLY**. No Notion/GitHub or local writes, tests, CI, workflow, pointer, FROZEN or production changes. Perform only the following bounded checks:
 
-1. read the Project Instructions;
-2. read `docs/governance_current.md` live from GitHub;
-3. read this succession protocol;
-4. inspect only the live GitHub/config/state files required by the active task;
-5. read only the specific FROZEN decisions/artifacts that alter that task;
-6. inspect the succession packet, if one exists;
-7. compare any handoff claim against the current live authority before acting.
+1. Verify Andrea's explicit nomination, original source, effective date and the identity of the designated conversation. If not verifiable: STOP on actions requiring CURRENT authority.
+2. Read the Project Instructions actually applicable, then the [Agent Operating Guide §1-bis](https://app.notion.com/p/4070b32ce54781f1aa75fe1ebf66a68c).
+3. Read `docs/governance_current.md` on GitHub `main`, and this MARS specialist protocol. Check branch/commit LIVE; note stale CURRENT views as gaps rather than treating history as technical authority.
+4. Inspect only the live GitHub, effective YAML, state/pointer → manifest → artifact → hash chain and task-specific FROZEN evidence actually required for the active mandate.
+5. Consult an optional handoff only as history; verify any claim against original LIVE sources. A missing handoff alone is **not** STOP.
+6. Distinguish VERIFIED, APPROVED, PROPOSED, HISTORY, UNKNOWN/STALE and GAP/PENDING_SYNC, and identify the exact resume point.
 
-Old chats and historical documents are supporting history only.
-A stale handoff must never override newer live state.
+No task restarts or promotion at the end of this first turn.
 
 ## Phase 4 — Freshness and readiness gate
 
-Before new work, classify succession readiness as:
+Report one explicit gate based on the READ-ONLY evidence:
 
-- `PASS` — current authority is consistent and the next action is unambiguous;
-- `PASS WITH LIMITATIONS` — work may continue, but named gaps or stale references remain;
-- `STOP` — there is an unresolved authority conflict, missing required artifact, or unsafe ambiguity.
+- `PASS` — nomination and indispensable LIVE authority verified; no blocking conflicts.
+- `PASS WITH LIMITATIONS` — safe bootstrap complete but specifically identified gaps or stale references remain; explain what cannot yet be done.
+- `STOP` — required nomination, indispensable source, authorization or safe interpretation cannot be established.
 
-When status is `STOP`, ask Andrea rather than resolving the conflict by assumption.
+**After EVERY gate, including PASS, the successor must STOP for Andrea's review and explicit next mandate.** PASS is readiness, not self-authorization. No automatic continuation of suspended work.
+
+Selective fail-closed rule: absence of an optional handoff does not block independent recovery; if Notion is unavailable, declare it and proceed only with harmless READ-ONLY checks supported by other sufficient sources. Never substitute a snapshot for CURRENT or resolve authority conflict by assumption.
 
 ## Mandatory setup recommendation for every new chat
 
-Whenever the Chat Madre opens or assigns a new chat, the dispatch must include:
+Whenever the Chat Madre opens or assigns a new operational chat, the dispatch must specify the **preferred setup**, **reason**, and **fallback Chat setup**. Chat is the default for bounded tasks; recommend Work only when multi-step execution materially helps and is actually available.
 
-- **preferred setup**;
-- **reason**;
-- **fallback Chat setup**.
+Verify the models, modes and reasoning levels available in the current product interface before recommending any named option. Select the least intensive sufficient setup for the task; do not hard-code historical model labels or assume maximum reasoning is always needed.
 
-Current recommendation rule:
-
-- use **Work** when the task materially benefits from autonomous multi-step execution and Work is available;
-- otherwise use **GPT-5.6 Sol — High** for governance, audit, methodology, complex refactor, difficult debugging, or cross-source verification;
-- use **GPT-5.6 Sol — Medium** for bounded operational tasks with clear inputs, outputs, and acceptance criteria;
-- do not default to the maximum reasoning level when a lower level is sufficient;
-- if product model/mode availability has changed, verify what is actually available before recommending a setup.
-
-A dispatch is incomplete if it omits the setup recommendation.
+The dispatch must also state scope, sources, permissions and exclusions, intended evidence, output, SESSION CLOSE and STOP. No new authority follows from a setup recommendation.
 
 ## Desktop Commander discipline
 
@@ -126,7 +116,7 @@ When useful, the outgoing or operational chat should return:
 
 `RESULT / EVIDENCE / CHANGES / BLOCKERS / NEXT`
 
-For a Chat Madre succession, also include:
+If an optional Chat Madre succession handoff is prepared, also include:
 
 - `READINESS`: PASS / PASS WITH LIMITATIONS / STOP;
 - `CURRENT POINTERS`: only the persistent sources needed to resume;
@@ -146,4 +136,4 @@ Stop before:
 - assuming a resolution to a real authority conflict;
 - treating a stale Project/Drive/OneDrive copy as newer than live GitHub/config/state authority.
 
-Succession is complete only after the successor has passed the read-only readiness gate.
+A successor must STOP for Andrea after the first READ-ONLY gate even on PASS. Readiness alone does not complete the authorized operational handover or restart suspended tasks; await Andrea's explicit review/mandate.
