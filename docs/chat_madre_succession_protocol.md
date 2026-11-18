@@ -1,7 +1,7 @@
 # MARS — CHAT MADRE SUCCESSION PROTOCOL
 
-**Status:** PROPOSED — awaiting Andrea review (v1 remains operative on `main` until approved merge)
-**Version:** v2 — proposed 2026-11-18
+**Status:** OPERATIVE / APPROVED by Andrea — 2026-11-18 (effective upon merge to `main`)
+**Version:** v2 — approved 2026-11-18
 **V1 archival copy:** [chat_madre_succession_protocol_v1.md](chat_madre_succession_protocol_v1.md)
 **Global protocol:** [Agent Operating Guide §1-bis](https://app.notion.com/p/4070b32ce54781f1aa75fe1ebf66a68c)
 
