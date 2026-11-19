@@ -10,6 +10,22 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from scripts.latest_completed_meta import (
+    REQUIRED_BUNDLE_FILES,
+    _check_uncoordinated_output_destination,
+    _preflight_uncoordinated_file_output,
+)
+
+
+def _preflight_bundle_destination(bundle_dir: Path) -> None:
+    """Check every output before mkdir, computation, or any artifact write."""
+    bundle_dir = Path.cwd() / bundle_dir
+    _check_uncoordinated_output_destination(bundle_dir)
+    if bundle_dir.exists() and not bundle_dir.is_dir():
+        raise ValueError("Bundle destination must be a directory")
+    for name in REQUIRED_BUNDLE_FILES:
+        _preflight_uncoordinated_file_output(bundle_dir / name)
+
 
 PUBLIC_RANKING_COLUMNS = (
     "Rank",
@@ -420,6 +436,8 @@ def build_bundle(
     meta_label: str = "Pocket",
     public_prefix: str = "public/latest-meta",
 ) -> dict[str, Any]:
+    _preflight_bundle_destination(bundle_dir)
+
     import matplotlib.pyplot as plt
     import pandas as pd
     import yaml

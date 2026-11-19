@@ -4,6 +4,8 @@ import argparse
 import csv
 import hashlib
 import json
+import os
+import stat
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -18,6 +20,179 @@ README_START = "<!-- latest-completed-meta:start -->"
 README_END = "<!-- latest-completed-meta:end -->"
 REQUIRED_BUNDLE_FILES = ("fragment.md", "heatmap.png", "ranking.csv", "manifest.json")
 PUBLIC_BUNDLE_FILES = ("heatmap.png", "ranking.csv", "manifest.json")
+
+
+def _resolve_public_destination(path: Path) -> Path:
+    # Python 3.14 non-strict resolve tolerates symlink loops. Only a missing
+    # path may fall back to non-strict resolution; ambiguity must fail closed.
+    try:
+        try:
+            return path.resolve(strict=True)
+        except FileNotFoundError:
+            resolved = path.resolve(strict=False)
+            # A missing component followed by '..' can hide an existing loop
+            # from the first strict traversal; check the normalized view too.
+            try:
+                return resolved.resolve(strict=True)
+            except FileNotFoundError:
+                return resolved
+    except (OSError, RuntimeError) as exc:
+        raise ValueError("Cannot validate public destination identity") from exc
+
+
+def _check_uncoordinated_output_destination(
+    target_dir: Path, *, inspect_artifact_aliases: bool = False,
+    cleanup_tree: bool = False, identity_roots: Sequence[Path] = (),
+) -> None:
+    """Reject TCG public, state and cloud namespaces for uncoordinated output."""
+    declared = Path(target_dir).expanduser()
+    lexical = Path(os.path.abspath(declared))
+    resolved = _resolve_public_destination(declared)
+
+    def protected(path: Path) -> bool:
+        parts = tuple(part.casefold() for part in path.parts)
+        pairs = tuple(zip(parts, parts[1:]))
+        return (
+            ("public", "tcg-live") in pairs
+            or ("meta", "tcg") in pairs
+            or (".github", "tcg-live-latest-completed-meta-state.json") in pairs
+        )
+
+    if protected(lexical) or protected(resolved):
+        raise ValueError("Uncoordinated output cannot target protected TCG public namespace or state")
+
+    # Canonical links can point out of their protected namespace. Inspect
+    # both ancestries, plus this checkout, to retain that reverse identity.
+    roots = {Path(__file__).resolve().parents[1], *lexical.parents, *resolved.parents,
+             *identity_roots}
+    canonical_paths = {
+        root / relative for root in roots for relative in (
+            "public/tcg-live", "Meta/TCG",
+            ".github/tcg-live-latest-completed-meta-state.json",
+        )
+    }
+    # Preserve R6's case-insensitive recognition of declared Meta ancestors.
+    canonical_paths.update(
+        ancestor / "TCG" for ancestor in (*lexical.parents, *resolved.parents)
+        if ancestor.name.casefold() == "meta"
+    )
+    if inspect_artifact_aliases or cleanup_tree:
+        # Direct writers can follow a protected artifact link pointing OUT of
+        # a namespace. Inspect those namespace entries as well as their roots.
+        # Follow directory aliases with an inode visited set to bound cycles.
+        def unreadable(error: OSError) -> None:
+            raise ValueError("Cannot inspect protected TCG destination identity") from error
+
+        entries = set()
+        for namespace in canonical_paths:
+            if not _resolve_public_destination(namespace).is_dir():
+                continue
+            visited = set()
+            try:
+                for base, directories, files in os.walk(
+                    namespace, followlinks=True, onerror=unreadable,
+                ):
+                    base_path = Path(base)
+                    info = base_path.stat()
+                    identity = (info.st_dev, info.st_ino)
+                    if identity in visited:
+                        if cleanup_tree:
+                            raise ValueError("Cannot inspect cyclic protected TCG destination identity")
+                        directories[:] = []
+                        continue
+                    visited.add(identity)
+                    entries.update(base_path / name for name in directories + files)
+            except OSError as exc:
+                raise ValueError("Cannot inspect protected TCG destination identity") from exc
+        canonical_paths.update(entries)
+    # Recursive deletion affects arbitrary existing entries, not only future
+    # producer artifacts. Compare their inode identities too, so a canonical
+    # hard link to a stale file cannot lose an entry unnoticed. Do not follow
+    # directory links in the tree being deleted (matching rmtree semantics).
+    cleanup_identities = set()
+    if cleanup_tree:
+        try:
+            # A first replay has no stale tree. Still run canonical identity
+            # checks below; only an absent root has no entries to inspect.
+            try:
+                lexical.lstat()
+            except FileNotFoundError:
+                cleanup_walk = ()
+            else:
+                cleanup_walk = os.walk(lexical, followlinks=False, onerror=unreadable)
+            for base, directories, files in cleanup_walk:
+                for entry in (Path(base), *(Path(base) / n for n in directories + files)):
+                    physical_entry = _resolve_public_destination(entry)
+                    if protected(entry) or protected(physical_entry):
+                        raise ValueError("Uncoordinated cleanup cannot delete protected TCG contents")
+                    info = entry.lstat()
+                    cleanup_identities.add((info.st_dev, info.st_ino))
+                directories[:] = [n for n in directories
+                                  if not (Path(base) / n).is_junction()]
+        except OSError as exc:
+            raise ValueError("Cannot inspect cleanup destination identity") from exc
+    for canonical in canonical_paths:
+        try:
+            tcg_physical = _resolve_public_destination(canonical)
+            same_file = resolved.exists() and canonical.exists() and resolved.samefile(canonical)
+        except (OSError, RuntimeError) as exc:
+            raise ValueError("Cannot validate protected TCG destination identity") from exc
+        if same_file or resolved == tcg_physical or tcg_physical in resolved.parents:
+            raise ValueError("Uncoordinated output cannot target protected TCG public namespace or state")
+        if cleanup_tree:
+            try:
+                info = canonical.stat()
+            except FileNotFoundError:
+                info = None
+            except OSError as exc:
+                raise ValueError("Cannot inspect protected TCG destination identity") from exc
+            if (resolved in tcg_physical.parents or lexical in canonical.parents
+                    or (info is not None and (info.st_dev, info.st_ino) in cleanup_identities)):
+                raise ValueError("Uncoordinated cleanup cannot delete protected TCG contents")
+
+
+def _preflight_uncoordinated_file_output(
+    path: Path, *, identity_roots: Sequence[Path] = (),
+) -> None:
+    """Preflight a direct writer; no mutation and no concurrent-link guarantee.
+
+    Multiple hard links are refused conservatively: resolving a pathname cannot
+    enumerate every other name for that inode, including protected aliases.
+    """
+    # Match Path.open semantics: a literal ~ component is not expanded.
+    path = Path.cwd() / path
+    _check_uncoordinated_output_destination(
+        path, inspect_artifact_aliases=True, identity_roots=identity_roots,
+    )
+    try:
+        info = Path(path).stat()
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        raise ValueError("Cannot validate output file identity") from exc
+    if not stat.S_ISREG(info.st_mode):
+        raise ValueError("Output destination must be a regular file")
+    if info.st_nlink != 1:
+        raise ValueError("Uncoordinated output cannot overwrite a multiply-linked file")
+
+
+def _check_pocket_public_destination(target_dir: Path) -> None:
+    """Compatibility entrypoint for the shared uncoordinated-output policy."""
+    _check_uncoordinated_output_destination(target_dir)
+
+
+def _preflight_pocket_public_destinations(
+    target_dir: Path, readme_path: Path, state_path: Path,
+) -> None:
+    """Validate every legacy write target before any bundle/README/state mutation."""
+    for destination in (
+        *(Path(target_dir) / name for name in PUBLIC_BUNDLE_FILES),
+        Path(readme_path),
+        Path(state_path),
+    ):
+        _check_pocket_public_destination(destination)
+
+
 PUBLIC_RANKING_COLUMNS = (
     "Rank",
     "Deck",
@@ -251,6 +426,7 @@ def publish_bundle(
     target_dir: Path,
     dry_run: bool = False,
 ) -> dict[str, Any]:
+    _preflight_pocket_public_destinations(target_dir, readme_path, state_path)
     plan = read_json(plan_path)
     validate_bundle(bundle_dir, plan)
     updated_readme = replace_readme_block(
@@ -316,6 +492,13 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "plan":
+        # Validate both outputs before either replacement or append, including
+        # when the second destination is forbidden and the first is legitimate.
+        for destination in (args.output, args.github_output):
+            if destination is not None:
+                _check_pocket_public_destination(destination)
+                if destination.is_dir():
+                    raise IsADirectoryError(f"Output destination is a directory: {destination}")
         plan = build_publication_plan(
             read_catalog(args.catalog),
             read_json(args.state, missing=None),

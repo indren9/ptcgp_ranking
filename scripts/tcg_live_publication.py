@@ -8,8 +8,13 @@ from pathlib import Path
 import tempfile
 from typing import Any, Mapping
 
-from scripts.latest_completed_meta import validate_bundle
+from scripts.latest_completed_meta import _resolve_public_destination, validate_bundle
 from scripts.latest_completed_meta_producer import build_bundle
+from scripts.tcg_live_publication_snapshot import validated_tcg_snapshot
+from scripts.tcg_live_publication_lock import (
+    PublicationLease,
+    PublicationLockedError,
+)
 
 
 PUBLIC_FILES = (
@@ -17,6 +22,77 @@ PUBLIC_FILES = (
     "heatmap.png",
     "manifest.json",
 )
+
+
+def _check_tcg_pocket_destinations(
+    *, state_path: Path, target_dir: Path, repo_root: Path | None = None,
+) -> None:
+    """Reject Pocket state/public aliases before any TCG lock or write.
+
+    Both declared and resolved identities are checked. This preflight cannot
+    protect against a concurrently retargeted link (TOCTOU is out of scope).
+    """
+    state = Path(os.path.abspath(Path(state_path).expanduser()))
+    target = Path(os.path.abspath(Path(target_dir).expanduser()))
+    output_files = tuple(target / name for name in PUBLIC_FILES)
+    destinations = (state, target, *output_files)
+    physical = {path: _resolve_public_destination(path) for path in destinations}
+    roots = {Path(__file__).resolve().parents[1]}
+    if repo_root is not None:
+        roots.add(Path(repo_root).resolve())
+    for path in (state, target, physical[state], physical[target]):
+        roots.update(path.parents)
+        roots.add(path.parent)
+
+    def parts_contain(path: Path, parent: str, child: str) -> bool:
+        parts = tuple(part.casefold() for part in path.parts)
+        return any(a == parent and b == child for a, b in zip(parts, parts[1:]))
+
+    if parts_contain(state, ".github", "latest-completed-meta-state.json") or (
+        parts_contain(physical[state], ".github", "latest-completed-meta-state.json")
+    ):
+        raise ValueError("TCG state cannot target Pocket publication state")
+    if any(
+        parts_contain(view, "public", "latest-meta")
+        for view in (target, physical[target])
+    ):
+        raise ValueError("TCG public destination cannot target Pocket")
+
+    pocket_states = (root / ".github" / "latest-completed-meta-state.json" for root in roots)
+    pocket_public = (root / "public" / "latest-meta" for root in roots)
+    protected = (*pocket_states, *pocket_public)
+    protected += tuple(
+        root / "public" / "latest-meta" / name
+        for root in roots for name in PUBLIC_FILES
+    )
+    for canonical in protected:
+        actual = _resolve_public_destination(canonical)
+        for destination in destinations:
+            resolved = physical[destination]
+            try:
+                same_inode = (
+                    canonical.exists() and destination.exists()
+                    and canonical.samefile(destination)
+                )
+            except (OSError, RuntimeError) as exc:
+                raise ValueError("Cannot validate TCG/Pocket destination identity") from exc
+            if same_inode or resolved == actual or (
+                canonical.name.casefold() == "latest-meta"
+                and actual in resolved.parents
+            ):
+                raise ValueError("TCG destination aliases a protected Pocket entry")
+
+    # Refuse ambiguous existing hardlinked endpoints, even though os.replace
+    # normally replaces the directory entry rather than another hard link.
+    for destination in (state, *output_files):
+        try:
+            info = destination.stat()
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            raise ValueError("Cannot validate TCG destination link identity") from exc
+        if info.st_nlink != 1:
+            raise ValueError("TCG destination cannot use a multiply-linked file")
 
 
 def _validation_plan(
@@ -189,11 +265,12 @@ def publish_tcg_live_bundle(
     state_path: Path,
     target_dir: Path,
     dry_run: bool = False,
+    _lease: PublicationLease | None = None,
 ) -> dict[str, Any]:
-    validate_bundle(
-        bundle_dir,
-        _validation_plan(plan),
-    )
+    _check_tcg_pocket_destinations(state_path=state_path, target_dir=target_dir)
+    # Validate exact read-once bytes, not a mutable path that is read
+    # again later. The same payloads are retained for local writes.
+    validated = validated_tcg_snapshot(bundle_dir, plan)
 
     state = plan.get("state_after_publish")
 
@@ -212,6 +289,29 @@ def publish_tcg_live_bundle(
     if dry_run:
         return result
 
+    # Only a coordinated transaction may write a TCG public snapshot.
+    # A stand-alone local publisher could disagree with a OneDrive snapshot.
+    if _lease is None:
+        raise PublicationLockedError(
+            "TCG local publication requires a coordinated full-destination lease"
+        )
+    _lease.assert_destination(
+        state_path=state_path, target_dir=target_dir
+    )
+    _lease.assert_plan(plan)
+    if "state_before_publish" not in plan:
+        raise ValueError(
+            "TCG plan is missing state_before_publish (freshness evidence)"
+        )
+    from scripts.tcg_live_latest_completed import read_json
+    current = read_json(state_path, missing=None)
+    if current != plan["state_before_publish"]:
+        raise RuntimeError(
+            "TCG publication state changed after planning; re-plan required"
+        )
+    # Source files cannot change these validated in-memory bytes.
+    payloads = validated.payloads
+    _lease.assert_bundle_hashes(validated.hashes)
     snapshot = _snapshot(
         target_dir=target_dir,
         state_path=state_path,
@@ -221,7 +321,7 @@ def publish_tcg_live_bundle(
         for name in PUBLIC_FILES:
             _atomic_write(
                 target_dir / name,
-                (bundle_dir / name).read_bytes(),
+                payloads[name],
             )
 
         _atomic_write(

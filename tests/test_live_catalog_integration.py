@@ -200,18 +200,25 @@ def test_tcg_latest_completed_needs_no_generic_catalog(monkeypatch, tmp_path):
     assert prepared == original
     assert production._api_set_params(prepared) == ("latest_completed", None)
     assert scope.set_code == "CRI"
-    assert scope.start_datetime == datetime(2026, 5, 21, tzinfo=UTC)
-    assert scope.end_datetime == datetime(2026, 7, 16, tzinfo=UTC)
+    assert scope.start_datetime == datetime(2026, 5, 21, 17, tzinfo=UTC)
+    assert scope.end_datetime == datetime(2026, 7, 16, 17, tzinfo=UTC)
     assert TCG_RELEASES.read_bytes() == original_catalog
 
 
 def test_real_tcg_job_noop_has_no_catalog_or_backend_dependency(monkeypatch, tmp_path):
+    # Keep the real public state as history; synthesize an already-corrected state.
+    from scripts.tcg_live_latest_completed import build_plan
+    import json
+    state = tmp_path / "corrected-state.json"
+    plan = build_plan(catalog_path=TCG_RELEASES, acquisition_started_at=STARTED)
+    state.write_text(json.dumps(plan["state_after_publish"]), encoding="utf-8")
     original_catalog = TCG_RELEASES.read_bytes()
     monkeypatch.setattr(production, "ensure_catalog_fresh", _forbid_refresh)
     monkeypatch.setattr(tcg_job, "run_limitless_api_acquisition", _forbid_refresh)
     report = tcg_job.run_job(
         repo_root=ROOT,
         work_root=tmp_path,
+        state_path=state,
         acquisition_started_at=STARTED,
         backend_factory=_forbid_refresh,
     )

@@ -10,6 +10,7 @@ from scripts.latest_completed_meta import (
     CatalogEntry,
     build_publication_plan,
     publish_bundle,
+    _preflight_pocket_public_destinations,
     validate_bundle,
 )
 from sources.limitless.tournament_api.release_catalog import (
@@ -238,6 +239,8 @@ def publish_bundle_rollback_safe(
             dry_run=True,
         )
 
+    # Do not snapshot/restore protected destinations when preflight rejects.
+    _preflight_pocket_public_destinations(target_dir, readme_path, state_path)
     snapshot = _snapshot_publication_files(
         readme_path=readme_path,
         state_path=state_path,
