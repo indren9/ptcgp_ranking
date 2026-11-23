@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+import hashlib
 import json
 from pathlib import Path
 
@@ -14,6 +15,8 @@ from sources.limitless.tournament_api.release_catalog import (
 
 
 CATALOG_PATH = Path("data/reference/pocket_releases.json")
+V3_FIXTURE_PATH = Path(__file__).resolve().parent / "fixtures" / "pocket_releases_2026-09-03-v3.json"
+V3_FIXTURE_SHA256 = "3ece52aa2c90b953f4dc9fff7f9994f857d89a27c79ffdaa7e6bc5bb9226597e"
 EXPECTED_CODES = (
     "A1",
     "A1a",
@@ -36,6 +39,8 @@ EXPECTED_CODES = (
     "B3b",
     "B4",
     "B4a",
+    "B4b",
+    "C1",
 )
 
 
@@ -72,7 +77,7 @@ def test_reference_catalog_has_strict_utc_order_and_coherent_next_chain():
 
 def test_reference_catalog_snapshot_has_complete_provenance():
     payload = _raw_catalog()
-    assert payload["catalog_version"] == "pocket-releases-2026-09-03-v3"
+    assert payload["catalog_version"] == "pocket-releases-2026-11-19-v4"
     assert payload["source"] == "https://pocket.limitlesstcg.com/cards"
 
     for item in payload["releases"]:
@@ -149,7 +154,11 @@ def test_completed_b4_scope_uses_b4a_release_boundary():
 
 
 def test_current_b4a_scope_uses_frozen_acquisition_started_at():
-    catalog = _catalog()
+    # Historical replay must use the actual v3 snapshot, not today's v4 catalog.
+    fixture_bytes = V3_FIXTURE_PATH.read_bytes()
+    assert hashlib.sha256(fixture_bytes).hexdigest() == V3_FIXTURE_SHA256
+    catalog = load_release_catalog_snapshot(V3_FIXTURE_PATH)
+    assert catalog.catalog_version == "pocket-releases-2026-09-03-v3"
     started = datetime(2026, 9, 3, 10, 0, tzinfo=UTC)
     release = resolve_release(
         catalog,
@@ -157,6 +166,7 @@ def test_current_b4a_scope_uses_frozen_acquisition_started_at():
         acquisition_started_at=started,
     )
     assert release.code == "B4a"
+    assert release.is_current is True
     scope = scope_for_release(release, acquisition_started_at=started)
     assert scope.start_datetime == datetime(2026, 8, 27, 1, 0, tzinfo=UTC)
     assert scope.end_datetime == started
