@@ -55,7 +55,13 @@ def _prepare(tmp_path, cfg, *, live=True, started=STARTED):
 
 
 def test_pocket_auto_freezes_refreshed_selection_for_context_and_scope(monkeypatch, tmp_path):
+    from hashlib import sha256
+
+    # Replay the historical B4a preflight against the immutable v3 snapshot.
+    fixture = ROOT / "tests/fixtures/pocket_releases_2026-09-03-v3.json"
+    assert sha256(fixture.read_bytes()).hexdigest() == "3ece52aa2c90b953f4dc9fff7f9994f857d89a27c79ffdaa7e6bc5bb9226597e"
     cfg = _pocket_config()
+    cfg["source"]["tournament_api"]["release_catalog"] = str(fixture)
     original = deepcopy(cfg)
     original_catalog = POCKET_RELEASES.read_bytes()
     calls = []
@@ -77,7 +83,7 @@ def test_pocket_auto_freezes_refreshed_selection_for_context_and_scope(monkeypat
     assert production._api_set_params(prepared) == ("code", "B4a")
     assert expansion.code == scope.set_code == "B4a"
     assert "set=B4a" in url
-    assert catalog_path == POCKET_RELEASES.resolve()
+    assert catalog_path == fixture.resolve()
     assert scope.start_datetime == datetime(2026, 8, 27, 1, tzinfo=UTC)
     assert scope.end_datetime == STARTED
     assert cfg == original
@@ -140,7 +146,13 @@ def test_analysis_without_acquisition_does_not_refresh_catalog(monkeypatch, tmp_
 
 
 def test_production_auto_preflight_completes_before_acquisition(monkeypatch, tmp_path):
+    from hashlib import sha256
+
+    # Historical B4a window: keep the canonical v4 catalog untouched.
+    fixture = ROOT / "tests/fixtures/pocket_releases_2026-09-03-v3.json"
+    assert sha256(fixture.read_bytes()).hexdigest() == "3ece52aa2c90b953f4dc9fff7f9994f857d89a27c79ffdaa7e6bc5bb9226597e"
     cfg = _pocket_config()
+    cfg["source"]["tournament_api"]["release_catalog"] = str(fixture)
     config_path = tmp_path / "pocket.yaml"
     config_path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
     config_bytes = config_path.read_bytes()
