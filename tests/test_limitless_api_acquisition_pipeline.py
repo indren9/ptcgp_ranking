@@ -206,8 +206,16 @@ def test_reference_catalog_has_verified_b3b_b4_b4a_boundaries():
     assert by_code["B4a"].release_datetime == datetime(
         2026, 8, 27, 1, 0, tzinfo=UTC
     )
-    assert by_code["B4a"].next_release_datetime is None
-    assert by_code["B4a"].is_current is True
+    assert by_code["B4a"].next_release_datetime == datetime(2026, 9, 30, 1, 0, tzinfo=UTC)
+    assert by_code["B4a"].is_current is False
+
+    assert by_code["B4b"].release_datetime == datetime(2026, 9, 30, 1, 0, tzinfo=UTC)
+    assert by_code["B4b"].next_release_datetime == datetime(2026, 10, 29, 1, 0, tzinfo=UTC)
+    assert by_code["B4b"].is_current is False
+
+    assert by_code["C1"].release_datetime == datetime(2026, 10, 29, 1, 0, tzinfo=UTC)
+    assert by_code["C1"].next_release_datetime is None
+    assert by_code["C1"].is_current is True
 
 def test_fixture_to_full_b8_pipeline_and_deterministic_selection(tmp_path):
     client = FakeClient()
@@ -240,7 +248,7 @@ def test_manifest_is_populated_and_public(tmp_path):
 
     assert payload["source"] == "Limitless Tournament API"
     assert payload["software"]["git_revision"] == "38d14a3"
-    assert payload["scope"]["catalog_version"] == "pocket-releases-2026-09-03-v3"
+    assert payload["scope"]["catalog_version"] == "pocket-releases-2026-11-19-v4"
     assert payload["selection"]["tournament_ids"] == ["t1", "t2"]
     assert len(payload["raw"]["snapshot_refs"]) == 9
     assert set(payload["normalized"]["hashes"]) == {"tournaments", "participants", "pairings"}
