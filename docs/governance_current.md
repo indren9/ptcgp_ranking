@@ -31,6 +31,19 @@ Observed during the 2026-10-05 governance review:
 
 These observations are context, not permanent authority. Re-check live sources when a task depends on current state.
 
+## P2 — local TCG operational alignment (2026-11-27)
+
+**Owner decision:** WP4 accepted, P2 CLOSED in the [P2 WBS](https://app.notion.com/p/4230b32ce547811983cafed6a7286d13).
+This entry records the approved local operation, not a merge or a new production certification. It is prepared on an isolated review branch; GitHub main remains authoritative until the separately approved integration.
+
+- Local TCG deployment: `4800dadcdf17a823229f6804f88cf9a2d017060d` (parent WP3/G2 `1e6cf865c640f9e03b69c4fd24e5f0626623b8ab`), based on main `d39c7eca97c8e0eb85fda770085f77fb4a13674b`. Both source commits are retained intact.
+- TCG daily 10:15 local, dedicated checkout, common launcher and global mutex, explicit `--publish-private`; Pocket daily 09:15 and its original checkout unchanged. Public GitHub TCG demonstration is independent and not auto-refreshed.
+- Local private TCG ranking is per completed expansion; verified manifests determine latest-completed. Persistent local canonical RAW with private OneDrive archive backup replaces mandatory S3 **only on this local private route**. See [TCG production contract addendum](ptcg_live_production.md#p2-local-private-operation--2026-11-27) and [RAW contract](tcg-private-local-raw-contract.md).
+- At the WP4 gate: 30C latest-completed, DLR CURRENT; the installed C.4 catalog blob retains its original candidate provenance. That provenance is historical; owner approval of local deployment is recorded separately. No FROZEN artifact was rewritten.
+- G4 bootstrap published the approved 30C bundle privately without new acquisition. G6 ordinary scheduled-task exercise passed: 30C NOOP, zero network, zero publications, exit 0, mutex released. G6 did not exercise a future real rollover. See the RAW contract for evidence hashes and limitations.
+
+[Issue #38](https://github.com/indren9/ptcgp_ranking/issues/38) architecture standby remains in force; [Issue #36](https://github.com/indren9/ptcgp_ranking/issues/36) remains open and [PR #37](https://github.com/indren9/ptcgp_ranking/pull/37) remains held. This alignment does not import the broader PR or authorize its merge, future tests, service deactivation, new roadmap work or methodology changes.
+
 ## MARS / Core
 
 Do not redefine methodology in this file.
