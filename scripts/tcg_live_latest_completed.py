@@ -82,11 +82,16 @@ def build_plan(
         (previous or {}).get("code") or ""
     ).strip()
 
-    changed = (
-        not previous_code
-        or previous_code.casefold()
-        != completed.code.casefold()
+    # A corrected boundary or catalog revision is a different snapshot,
+    # even if the expansion code did not change. Preserve historical state.
+    same_window = (
+        isinstance(previous, Mapping)
+        and all(
+            previous.get(key) == current_window[key]
+            for key in ("code", "name", "start", "end", "catalog_version")
+        )
     )
+    changed = not same_window
 
     action = (
         "publish_required"

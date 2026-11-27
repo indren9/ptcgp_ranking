@@ -36,7 +36,7 @@ STARTED = datetime(
 )
 
 
-def test_frozen_state_resolves_to_noop():
+def test_preserved_old_state_requires_corrected_window():
     state = read_json(STATE)
 
     plan = build_plan(
@@ -45,7 +45,8 @@ def test_frozen_state_resolves_to_noop():
         acquisition_started_at=STARTED,
     )
 
-    assert plan["action"] == "noop"
+    assert plan["action"] == "publish_required"
+    assert plan["reason"] == "latest_completed_changed"
 
     window = plan["latest_completed_window"]
 
@@ -53,11 +54,11 @@ def test_frozen_state_resolves_to_noop():
     assert window["name"] == "Chaos Rising Live window"
 
     assert window["start"] == (
-        "2026-05-21T00:00:00Z"
+        "2026-05-21T17:00:00Z"
     )
 
     assert window["end"] == (
-        "2026-07-16T00:00:00Z"
+        "2026-07-16T17:00:00Z"
     )
 
 

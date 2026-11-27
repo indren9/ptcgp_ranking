@@ -25,6 +25,7 @@ from scripts.tcg_live_latest_completed import (
     build_plan,
     read_json,
 )
+from storage.tcg_private_set_layout import plan_set_publication, publish_set_bundle
 from scripts.tcg_live_publication import (
     build_tcg_live_bundle,
     publish_tcg_live_bundle,
@@ -205,7 +206,10 @@ def run_job(
     ),
     publish: bool = False,
     public_target: Path | None = None,
+    publish_private: bool = False,
 ) -> dict[str, Any]:
+    if publish_private and publish:
+        raise ValueError("public and private-only modes are mutually exclusive")
     repo_root = repo_root.resolve()
     work_root = work_root.resolve()
 
@@ -238,15 +242,16 @@ def run_job(
         or datetime.now(UTC)
     )
 
-    state = read_json(
+    # The private publication path must not depend on GitHub public state.
+    state = None if publish_private else read_json(
         state_path,
         missing=None,
     )
 
-    plan = build_plan(
-        catalog_path=catalog_path,
-        state=state,
-        acquisition_started_at=started,
+    plan = (
+        plan_set_publication(catalog_path=catalog_path, acquisition_started_at=started)
+        if publish_private else
+        build_plan(catalog_path=catalog_path, state=state, acquisition_started_at=started)
     )
 
     if plan["action"] == "noop":
@@ -401,7 +406,7 @@ def run_job(
     publication_result = None
     onedrive_publication_result = None
 
-    if publish:
+    if publish or publish_private:
         bundle_dir = work_root / "bundle"
 
         if bundle_dir.exists():
@@ -417,7 +422,13 @@ def run_job(
         )
         log.info("LOCAL_PRODUCTION = PASS")
 
-        if onedrive_publication_enabled(cfg):
+        if publish_private:
+            if not onedrive_publication_enabled(cfg):
+                raise RuntimeError("private publication is disabled by profile")
+            onedrive_publication_result = publish_set_bundle(
+                bundle_dir=bundle_dir, plan=plan
+            ).to_dict()
+        elif onedrive_publication_enabled(cfg):
             try:
                 onedrive_publication_result = publish_tcg_bundle(
                     bundle_dir=bundle_dir,
@@ -433,27 +444,27 @@ def run_job(
                 len(onedrive_publication_result["skipped_identical"]),
             )
 
-        target = (
-            public_target
-            or repo_root
-            / "public"
-            / "tcg-live"
-            / "latest-meta"
-        )
+        if publish:
+            target = (
+                public_target
+                or repo_root
+                / "public"
+                / "tcg-live"
+                / "latest-meta"
+            )
 
-        publication_result = publish_tcg_live_bundle(
-            bundle_dir=bundle_dir,
-            plan=plan,
-            state_path=state_path,
-            target_dir=target,
-            dry_run=False,
-        )
+            publication_result = publish_tcg_live_bundle(
+                bundle_dir=bundle_dir,
+                plan=plan,
+                state_path=state_path,
+                target_dir=target,
+                dry_run=False,
+            )
 
     return {
         "action": (
-            "published"
-            if publish
-            else "candidate_ready"
+            "published" if publish else
+            "published_private" if publish_private else "candidate_ready"
         ),
         "reason": plan["reason"],
         "latest_completed_window":
@@ -477,7 +488,9 @@ def run_job(
         ),
         "publication": publication_result,
         "onedrive_publication": onedrive_publication_result,
-        "published": bool(publish),
+        "published": bool(publish or publish_private),
+        "published_public": bool(publish),
+        "published_private": bool(publish_private),
     }
 
 
@@ -523,6 +536,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
+        "--publish-private",
+        action="store_true",
+        help="Publish only the validated private OneDrive bundle (no GitHub writes).",
+    )
+
+    parser.add_argument(
         "--allow-public-write",
         action="store_true",
         help=(
@@ -537,6 +556,8 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     args = build_parser().parse_args()
 
+    if args.publish_private and (args.publish or args.allow_public_write):
+        raise SystemExit("--publish-private excludes all public-write flags")
     if args.publish and not args.allow_public_write:
         raise SystemExit(
             "--allow-public-write is required "
@@ -548,6 +569,7 @@ def main() -> int:
         work_root=args.work_root,
         state_path=args.state,
         publish=args.publish,
+        publish_private=args.publish_private,
     )
 
     if args.report is not None:
