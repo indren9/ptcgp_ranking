@@ -16,6 +16,21 @@ The repository also keeps a public TCG Live demonstration snapshot. That public
 example is intentionally refreshable but is not a continuously updated service
 and carries no freshness SLA.
 
+## P2 local private operation — 2026-11-27
+
+**Owner accepted / P2 CLOSED (local deployment).** This dated addendum records the P2 extension; the original frozen contract, historical run results and hashes below are preserved as history. In particular the September CRI boundaries and public demonstration state below are not the current local private catalog or ranking.
+
+- The operative catalog for P2 is `data/reference/ptcg_live_windows.json`, version `tcgl-expansion-boundaries-2026-11-07-issue36-c4-post-dlr-branch-v1`, Git blob `1e3ccbe003355a5a778fcf41582ec435cfc33768` from PR #37 Gate C.4. The original candidate_provenance records its preparation-time authority and is retained byte-for-byte; later local deployment is authorized in the P2 WBS, not by editing that historical metadata.
+- Approved half-open windows (UTC): CRI [2026-05-21 17:00, 2026-07-16 17:00); PBL [2026-07-16 17:00, 2026-09-15 17:00); 30C [2026-09-15 17:00, 2026-11-05 17:00); DLR [2026-11-05 17:00, open). At the WP4 exercise, 30C is latest-completed and DLR is CURRENT.
+- The local private controller runs daily at 10:15 via the common launcher, with the global mutex and TCG sleep protection. Its explicit `--publish-private` path is independent of the public GitHub state and mutually exclusive with public flags.
+- The private plan compares complete window identity (code/name/start/end/catalog version). A verified matching private completed set yields NOOP, with zero acquisition and no publication. A new completed window requires the canonical acquisition, persistent RAW, restore and exact OFFLINE replay checks before publication.
+- Private layout: `OneDrive/Giochi/Pokemon/TCG/Ranking/standard/<CODE>__<SANITIZED_NAME>/`; files `rankings/mars/mars_ranking_latest.csv`, `matrices/heatmaps/wr_heatmap_latest.png`, `run/run_manifest_latest.json`. The consumer `latest_completed()` verifies directory identity, manifest, output hashes and latest UTC end; no duplicate mutable latest pointer. The publisher stages then renames one directory on the local filesystem; cloud synchronization is not atomic.
+- RAW persistence: see [local RAW contract](tcg-private-local-raw-contract.md). The persistent primary is outside the checkout/cache and the backup is a private OneDrive ZIP per run; S3 compatibility remains for other paths. No automatic fallback from S3.
+- TEMP CURRENT / identity binding and earlier guarded flat-layout helpers remain candidate or historical paths, not the daily private completed-set job. CURRENT DLR replay in WP3 used a temporary wrapper; native TEMP/binding and future real rollover are not certified by the G6 NOOP.
+- Public TCG demonstration and prior artifacts retain their independent state; no automatic public refresh or migration of historical generations. Pocket, canonical Tournament API, effective YAML, Core/MARS methodology and FROZEN remain unchanged.
+
+Authority, deployed source revisions, QA and evidence: [P2 WBS](https://app.notion.com/p/4230b32ce547811983cafed6a7286d13) and [RAW contract](tcg-private-local-raw-contract.md). This review branch is not itself an authorization for remote integration.
+
 ## Canonical acquisition source
 
 - Provider: Limitless

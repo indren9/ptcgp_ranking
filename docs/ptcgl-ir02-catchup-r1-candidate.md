@@ -1,5 +1,7 @@
 # MARS P2 — IR-02 · Catch-up catalog candidate R1 (26/11/2026)
 
+> **HISTORY — 26/11/2026.** Original preparation-session scope and STOP retained below. The catalog bytes were subsequently included in the owner-accepted local P2 deployment on 27/11/2026. This does not merge PR #37, rewrite original C.4 candidate provenance or alter historical FROZEN windows. Current local operation and limitations: [production addendum](ptcg_live_production.md#p2-local-private-operation--2026-11-27).
+
 **Status:** LOCAL CANDIDATE / NOT CERTIFIED / NOT DEPLOYED.
 **Authority:** Andrea GO to prepare a minimal, versioned correction based on PR #37. This does **not** authorize tests/CI, PR #37 merge, main modifications, production acquisition, publication, or changing FROZEN artifacts.
 **Git baseline:** `d39c7eca97c8e0eb85fda770085f77fb4a13674b`.

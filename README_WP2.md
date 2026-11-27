@@ -1,5 +1,7 @@
 # MARS P2 — WP2 R3 · Patch candidata isolata
 
+> **HISTORY — 25/11/2026.** Original WP2 candidate note retained for traceability. Its STOP statements and implementation status describe that session, not the accepted local WP4 deployment of 27/11/2026. The operative private completed-set path now uses `storage/tcg_private_set_layout.py` and `storage/tcg_private_raw.py`; the original flat-layout planner/publisher and `patches/apply_private_job_patch.py` are historical candidate materials, not operational instructions. Do not run the patcher against the deployed job. See [production addendum](docs/ptcg_live_production.md#p2-local-private-operation--2026-11-27) and [RAW contract](docs/tcg-private-local-raw-contract.md).
+
 **Data:** 2026-11-25 · **Baseline autoritativa:** `indren9/ptcgp_ranking` main commit `d39c7eca97c8e0eb85fda770085f77fb4a13674b` · **Owner GO:** WRITE locale isolato soltanto.
 
 **Stato:** PARTIAL / IMPLEMENTATION CANDIDATE. Nessun test, acquisizione LIVE, CI, scheduler, OneDrive, modifica di `main`, Git remoto o deploy eseguiti.
