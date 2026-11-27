@@ -13,7 +13,7 @@ import pytest
 from scripts.latest_completed_meta import PUBLIC_RANKING_COLUMNS
 from storage import tcg_private_set_layout as route
 
-ROOT=Path(r"C:\dev\Pokemon\ptcgp-p2-combined-wp2-ir02-r1-20261126")
+ROOT = Path(__file__).resolve().parents[1]
 CATALOG=ROOT/"data/reference/ptcg_live_windows.json"
 RUN=datetime(2026,11,26,9,tzinfo=UTC)
 PNG=base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL/nwAAAABJRU5ErkJggg==")
