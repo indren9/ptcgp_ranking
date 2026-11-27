@@ -80,9 +80,10 @@ def test_production_checkout_is_main_and_captures_base_sha():
         if step.get("name") == "Create publisher token"
     )
     assert app_token["uses"] == "actions/create-github-app-token@v3"
-    assert app_token["with"]["app-id"] == (
-        "${{ vars.MARS_PUBLISHER_APP_ID }}"
+    assert app_token["with"]["client-id"] == (
+        "${{ vars.MARS_PUBLISHER_CLIENT_ID }}"
     )
+    assert "app-id" not in app_token["with"]
     assert app_token["with"]["private-key"] == (
         "${{ secrets.MARS_PUBLISHER_PRIVATE_KEY }}"
     )
