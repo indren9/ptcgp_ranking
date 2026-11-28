@@ -228,6 +228,10 @@ def _write_run_manifest(result: "DeckRankingResult") -> Path:
                 "tournament_api_network_calls",
                 "tournament_api_replay_run_id",
                 "tournament_api_run_id",
+                "qr_manifest_sha256",
+                "qr_status",
+                "qr_error",
+                "qr_archive_error",
                 "wildcard_full_scrape",
             }
         },
@@ -2237,6 +2241,10 @@ def run_deck_ranking(
         result.frames.update(frames)
         result.outputs.update(outputs)
         result.diagnostics.update(diagnostics)
+
+    if run_mars and result.diagnostics["source_scope"][:1] == ["POCKET"]:
+        from pipelines.pocket_qr import stage_for_result
+        stage_for_result(result, base)
 
     if result.frames or result.outputs:
         manifest_path = _write_run_manifest(result)

@@ -150,3 +150,8 @@ mars:
   BT_TOL: 1.0e-6
 
   EPS: 1.0e-12
+
+# Isolated QR V1 candidate; activation only after review.
+qr_decklists:
+  enabled: false
+  database: data/reference/pocket_qr_cards.json

@@ -156,6 +156,10 @@ jobs:
 
           echo "changed=true" >> "$GITHUB_OUTPUT"
 
+      - name: Install QR regression dependencies
+        if: steps.diff.outputs.changed == 'true'
+        run: python -m pip install -r requirements-qr.txt
+
       - name: Run full regression before publication
         if: steps.diff.outputs.changed == 'true'
         run: pytest -q --basetemp="$RUNNER_TEMP/pytest"

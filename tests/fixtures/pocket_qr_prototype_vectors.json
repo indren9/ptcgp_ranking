@@ -1,0 +1,129 @@
+{
+  "prototype_sha256": "0303440b1b212b36ffd01ab1b1416277525b998d6072e43ff766f8513e7ef23e",
+  "vectors": [
+    {
+      "name": "Mega Altaria ex Espeon",
+      "pokemon_ids": [
+        12660,
+        12660,
+        18350,
+        18350,
+        16440,
+        16440,
+        12780,
+        11840,
+        10740
+      ],
+      "trainer_ids": [
+        40,
+        40,
+        990,
+        990,
+        320,
+        170,
+        30,
+        30,
+        1280,
+        1430,
+        1140
+      ],
+      "energy_ids": [
+        5
+      ],
+      "payload": "C5iWqJiWqJiaXpiaXpiXwJiXKpiWnpiWnpibgJicFpia9AkAMXQAMXQAR64AR64AQDgAQDgAMewALkAAKfQBBQ=="
+    },
+    {
+      "name": "Mega Altaria ex Greninja",
+      "pokemon_ids": [
+        12780,
+        12780,
+        11840,
+        870,
+        870,
+        890,
+        890,
+        11910,
+        11910
+      ],
+      "trainer_ids": [
+        40,
+        40,
+        990,
+        990,
+        320,
+        30,
+        30,
+        480,
+        480,
+        1290,
+        1290
+      ],
+      "energy_ids": [
+        5
+      ],
+      "payload": "C5iWqJiWqJiaXpiaXpiXwJiWnpiWnpiYYJiYYJibipibigkAMewAMewALkAAA2YAA2YAA3oAA3oALoYALoYBBQ=="
+    },
+    {
+      "name": "Suicune ex Baxcalibur",
+      "pokemon_ids": [
+        15430,
+        15430,
+        15450,
+        15450,
+        10400,
+        10400,
+        15460
+      ],
+      "trainer_ids": [
+        40,
+        40,
+        1740,
+        1740,
+        370,
+        30,
+        30,
+        480,
+        480,
+        70,
+        1700,
+        1700,
+        820
+      ],
+      "energy_ids": [
+        3
+      ],
+      "payload": "DZiWqJiWqJidTJidTJiX8piWnpiWnpiYYJiYYJiWxpidJJidJJiZtAcAPEYAPEYAPFoAPFoAKKAAKKAAPGQBAw=="
+    },
+    {
+      "name": "Hoopa ex Mega Sableye ex",
+      "pokemon_ids": [
+        20640,
+        20640,
+        19390,
+        3910
+      ],
+      "trainer_ids": [
+        320,
+        320,
+        40,
+        40,
+        1740,
+        370,
+        430,
+        1060,
+        1060,
+        30,
+        30,
+        1280,
+        610,
+        20,
+        1520,
+        1520
+      ],
+      "energy_ids": [
+        7
+      ],
+      "payload": "EJiXwJiXwJiWqJiWqJidTJiX8piYLpiapJiapJiWnpiWnpibgJiY4piWlJiccJiccAQAUKAAUKAAS74AD0YBBw=="
+    }
+  ]
+}

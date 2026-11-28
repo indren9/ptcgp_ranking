@@ -201,6 +201,8 @@ def _validate_artifact(artifact: PublicationArtifact) -> dict[str, Any] | None:
         _validate_xlsx(path)
     elif artifact.kind == "manifest":
         return _load_manifest(path)
+    elif artifact.kind == "qr_manifest":
+        _load_manifest(path)
     elif artifact.kind == "wildcard_csv":
         _validate_csv(path, exact_public_columns=False)
     else:
@@ -400,15 +402,86 @@ def publish_pocket_result(
         set_name=set_name,
     )
     target = canonical_game_root("POCKET", meta_root=meta_root) / format_code / set_directory
-    return publish_transaction(
-        game="POCKET",
-        source_root=source_run,
-        target_root=target,
-        artifacts=artifacts,
-        allowed_paths=POCKET_ALLOWED_PATHS,
-        manifest_relative_path=POCKET_REQUIRED_PATHS[3],
-        failure_injector=failure_injector,
-    )
+    from storage.pocket_qr_publication import prepare_qr_publication, validate_bundle
+    from pipelines.pocket_qr import archive_current
+    active = target / "decklists" / "qr"
+    qr_result = None
+    qr_error = None
+    diag = manifest.get("diagnostics", {})
+    expected = diag.get("qr_manifest_sha256")
+    try:
+        qr_items = prepare_qr_publication(result, source_run, manifest, format_code, set_code)
+        # Reuse only a fully validated identical bundle; even then the pipeline
+        # has already regenerated and decoded every list for this run.
+        same = False
+        if qr_items and active.is_dir() and not active.is_symlink():
+            try:
+                validate_bundle(active, ranking=Path(result.outputs["mars_ranking"]),
+                    format_code=format_code, set_code=set_code, manifest_hash=expected,
+                    run_id=diag["tournament_api_run_id"], identity=diag["deck_identity_map"])
+                same = True
+            except Exception:
+                pass
+        if not same:
+            archive_current(active)
+        if qr_items:
+            # QR subtransaction is optional; its manifest is installed last.
+            # The enclosing run manifest is the only CURRENT authority.
+            qr_items = [PublicationArtifact(a.source,a.relative_path,
+                "manifest" if a.kind=="qr_manifest" else a.kind,a.kind=="qr_manifest") for a in qr_items]
+            qr_result = publish_transaction(game="POCKET",source_root=source_run,target_root=target,
+                artifacts=qr_items,allowed_paths={a.relative_path for a in qr_items},
+                manifest_relative_path="decklists/qr/manifest.json",failure_injector=failure_injector)
+    except Exception as exc:
+        qr_error=type(exc).__name__
+        try:
+            archive_current(active)
+        except Exception as archive_exc:
+            qr_error += ":retirement:" + type(archive_exc).__name__
+    # Preserve the source run manifest; a private QR publication failure gets
+    # an explicit derived manifest with no QR pointer, not a stale success.
+    def commit_core(items):
+        return publish_transaction(game="POCKET",source_root=source_run,target_root=target,
+            artifacts=items,allowed_paths=POCKET_ALLOWED_PATHS,
+            manifest_relative_path=POCKET_REQUIRED_PATHS[3],failure_injector=failure_injector)
+    try:
+        if qr_error:
+            import logging
+            logging.getLogger("ptcgp").warning("Private QR publication failed: %s",qr_error)
+            private_manifest=dict(manifest)
+            private_manifest["outputs"]={k:v for k,v in manifest.get("outputs",{}).items() if k!="qr_manifest"}
+            private_manifest["diagnostics"]={k:v for k,v in diag.items() if k!="qr_manifest_sha256"}
+            private_manifest["diagnostics"].update(qr_status="ERROR",qr_publication_error=qr_error,
+                qr_source_run_manifest_sha256=sha256_file(Path(result.outputs["run_manifest"])))
+            with tempfile.TemporaryDirectory(prefix=".qr-publish-",dir=source_run) as temp:
+                derived=Path(temp)/"run_manifest_latest.json"
+                derived.write_text(json.dumps(private_manifest,ensure_ascii=False,indent=2),encoding="utf-8")
+                core=commit_core([PublicationArtifact(derived,a.relative_path,a.kind,a.manifest) if a.manifest else a for a in artifacts])
+        else:
+            core=commit_core(artifacts)
+    except Exception:
+        # Do not restore old QR after partial rank replacement. A missing QR
+        # directory is fail-closed and the next valid run can recover.
+        if qr_result is not None:
+            committed=target/POCKET_REQUIRED_PATHS[3]
+            try:
+                current=_load_manifest(committed).get("diagnostics",{}).get("qr_manifest_sha256") if committed.is_file() else None
+                if current!=expected or sha256_file(target/POCKET_REQUIRED_PATHS[0])!=sha256_file(Path(result.outputs["mars_ranking"])):
+                    archive_current(active)
+            except Exception:
+                try: archive_current(active)
+                except Exception: pass
+        raise
+    if qr_result is None:
+        if qr_error:
+            return PublicationResult(game=core.game,canonical_game=core.canonical_game,target_root=core.target_root,
+                status=core.status,published=core.published,skipped_identical=core.skipped_identical,
+                source_hashes=core.source_hashes,events=("QR_PUBLICATION_ERROR:"+qr_error,)+core.events)
+        return core
+    return PublicationResult(game=core.game,canonical_game=core.canonical_game,target_root=core.target_root,
+        status=core.status,published=qr_result.published+core.published,
+        skipped_identical=qr_result.skipped_identical+core.skipped_identical,
+        source_hashes={**qr_result.source_hashes,**core.source_hashes},events=qr_result.events+core.events)
 
 
 def publish_tcg_bundle(
