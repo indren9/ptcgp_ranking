@@ -145,3 +145,8 @@ mars:
   BT_TOL: 1.0e-6
 
   EPS: 1.0e-12
+
+# Pocket QR V1 production activation.
+qr_decklists:
+  enabled: true
+  database: data/reference/pocket_qr_cards.json

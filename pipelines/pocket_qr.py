@@ -4,7 +4,8 @@ No acquisition, MARS scoring, or publication side effects at import.
 from pathlib import Path
 from collections import Counter, defaultdict
 import base64, csv, hashlib, json, re, tempfile, os, unicodedata
-from .qr_candidate_validation import QRGap, validate_decklist, validate_filenames
+from .qr_candidate_validation import (QRGap, validate_decklist, validate_filenames, ranked_filename,
+    LEGACY_FILENAME_POLICY, RANK_FILENAME_POLICY)
 from .qr_selection_r1 import extract, ratio, tie, canon, sha
 
 DB_COMMIT="75dbced2cf909dd300134dbb23a031e22f3e8fe7"
@@ -99,7 +100,7 @@ def write_png(path,payload):
     if read!=payload or decode(read)!=decode(payload): raise ValueError("PNG decode mismatch")
     return sha(path.read_bytes())
 
-def top_rows(ranking_path,identity):
+def top_rows(ranking_path,identity,filename_policy=RANK_FILENAME_POLICY):
     with Path(ranking_path).open(encoding="utf-8-sig",newline="") as f: rows=list(csv.DictReader(f))
     top=rows[:10]
     if not top or [int(r["Rank"]) for r in top]!=list(range(1,len(top)+1)): raise ValueError("invalid ranking order")
@@ -107,7 +108,15 @@ def top_rows(ranking_path,identity):
     if len(set(ids))!=len(ids): raise ValueError("duplicate ranking ids")
     names={x["deck_id"]:x["deck_name"] for x in identity}
     if len(names)!=len(identity) or any(i not in names for i in ids): raise ValueError("missing/ambiguous identity map")
-    return [(i,names[i],f) for i,f in zip(ids,validate_filenames([names[i] for i in ids]))]
+    # Keep legacy sanitization/collision rules, even when ranks distinguish names.
+    safe_names=validate_filenames([names[i] for i in ids])
+    if filename_policy==LEGACY_FILENAME_POLICY:
+        filenames=safe_names
+    elif filename_policy==RANK_FILENAME_POLICY:
+        filenames=[ranked_filename(int(row["Rank"]),names[i]) for row,i in zip(top,ids)]
+    else:
+        raise QRGap("UNKNOWN_FILENAME_POLICY")
+    return [(i,names[i],f) for i,f in zip(ids,filenames)]
 
 def export_qr(*,ranking_path,identity,raw_root,run_id,fmt,setcode,database,output_root):
     ranking_path=Path(ranking_path); root=Path(output_root); dest=root/"decklists"/"qr"
@@ -127,7 +136,7 @@ def export_qr(*,ranking_path,identity,raw_root,run_id,fmt,setcode,database,outpu
                 r.update(filename=filename,sha256=write_png(build/filename,r["payload"]),status="QR_ROUNDTRIP_PASS")
             else:r["status"]="GAP"
             entries.append(r)
-        manifest=dict(schema="pocket_qr_v1",policy=POLICY,tie_break=["tournament_id","player_id","slot"],
+        manifest=dict(schema="pocket_qr_v1",policy=POLICY,filename_policy=RANK_FILENAME_POLICY,tie_break=["tournament_id","player_id","slot"],
             ranking_sha256=ranking_sha,proof=proof,database_commit=DB_COMMIT,database_sha256=db.digest,
             prototype_sha256=PROTOTYPE_SHA,entries=entries,game="POCKET",format=fmt,set_code=setcode)
         (build/"manifest.json").write_bytes(canon(manifest)+b"\n")

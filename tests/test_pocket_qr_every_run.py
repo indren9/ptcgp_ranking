@@ -75,6 +75,7 @@ def test_every_run_actual_pipeline_and_private_publisher(tmp_path,monkeypatch):
     n=len(calls);assert n==2
     dest=publish(a);active=dest/"decklists/qr"
     assert len(list(active.glob("*.png")))==2
+    assert sorted(p.name[:4] for p in active.glob("*.png"))==["01__","02__"]
     b=run("seed1")
     assert b.outputs["mars_ranking"].read_bytes()==rank
     assert len(calls)==2*n
@@ -91,6 +92,10 @@ def test_every_run_actual_pipeline_and_private_publisher(tmp_path,monkeypatch):
     d=run("seed3")
     assert d.outputs["mars_ranking"].read_bytes()!=rank
     publish(d)
+    first=json.loads(old)["entries"]
+    swapped=json.loads(d.outputs["qr_manifest"].read_bytes())["entries"]
+    assert [x["archetype"] for x in swapped]==list(reversed([x["archetype"] for x in first]))
+    assert all(x["filename"].startswith(f'{x["rank"]:02d}__') for x in swapped)
     seed("seed4",[])
     gap=run("seed4")
     assert read(gap)["diagnostics"]["qr_status"]=="GAP"

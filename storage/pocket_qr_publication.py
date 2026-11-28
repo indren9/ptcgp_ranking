@@ -2,12 +2,12 @@
 from pathlib import Path
 import csv,json,os,tempfile
 from pipelines.pocket_qr import POLICY,DB_SHA,PROTOTYPE_SHA,decode,top_rows
-from pipelines.qr_candidate_validation import safe_filename
+from pipelines.qr_candidate_validation import LEGACY_FILENAME_POLICY, RANK_FILENAME_POLICY
 from .onedrive_publisher import PublicationError, PublicationArtifact, sha256_file
 
 QR_MANIFEST_PATH="decklists/qr/manifest.json"
 
-def validate_bundle(qr_dir, *, ranking, format_code, set_code, manifest_hash, run_id, identity):
+def validate_bundle(qr_dir, *, ranking, format_code, set_code, manifest_hash, run_id, identity, require_rank_prefix=False):
     root=Path(qr_dir)
     path=root/"manifest.json"
     if path.is_symlink() or not path.is_file() or sha256_file(path)!=manifest_hash:
@@ -19,7 +19,12 @@ def validate_bundle(qr_dir, *, ranking, format_code, set_code, manifest_hash, ru
         raise PublicationError("QR ranking/RAW binding mismatch")
     if j.get("database_sha256")!=DB_SHA or j.get("prototype_sha256")!=PROTOTYPE_SHA:
         raise PublicationError("QR codec/database provenance mismatch")
-    top=top_rows(ranking,identity); entries=j.get("entries",[])
+    filename_policy=j.get("filename_policy",LEGACY_FILENAME_POLICY)
+    if filename_policy not in {LEGACY_FILENAME_POLICY,RANK_FILENAME_POLICY}:
+        raise PublicationError("Unknown QR filename policy")
+    if require_rank_prefix and filename_policy!=RANK_FILENAME_POLICY:
+        raise PublicationError("New QR publication requires rank prefix")
+    top=top_rows(ranking,identity,filename_policy); entries=j.get("entries",[])
     if len(entries)!=len(top): raise PublicationError("QR entry count mismatch")
     expected={"manifest.json"}
     artifacts=[]
@@ -57,4 +62,4 @@ def prepare_qr_publication(result,source_run,manifest,format_code,set_code):
     if manifest.get("outputs",{}).get("qr_manifest")!=str(source):
         raise PublicationError("Run manifest QR path mismatch")
     return validate_bundle(path.parent,ranking=Path(result.outputs["mars_ranking"]),format_code=format_code,set_code=set_code,
-        manifest_hash=expected,run_id=diag["tournament_api_run_id"],identity=diag["deck_identity_map"])
+        manifest_hash=expected,run_id=diag["tournament_api_run_id"],identity=diag["deck_identity_map"],require_rank_prefix=True)

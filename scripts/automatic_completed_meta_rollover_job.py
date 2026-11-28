@@ -73,6 +73,8 @@ def _write_production_config(
         yaml.safe_load(source_path.read_text(encoding="utf-8")) or {}
     )
 
+    # Public/shadow rollover never generates private decklist evidence.
+    cfg.setdefault("qr_decklists", {})["enabled"] = False
     source = cfg.setdefault("source", {})
     source["provider"] = "limitless"
     source["game"] = "POCKET"

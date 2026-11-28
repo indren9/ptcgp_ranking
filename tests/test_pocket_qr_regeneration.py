@@ -44,12 +44,12 @@ def test_regeneration_and_private_publication(tmp_path,monkeypatch):
     a=path.read_bytes()
     first=publish_pocket_result(result,meta_root=target)
     private=Path(first.target_root)/"decklists/qr"
-    assert {p.name for p in private.iterdir()}=={"Alpha.png","manifest.json"}
+    assert {p.name for p in private.iterdir()}=={"01__Alpha.png","manifest.json"}
     assert generate("deck-a","Alpha","r1").read_bytes()==a
     assert not (path.parent.parent/"qr_history").exists()
     path=generate("deck-b","Beta","r2")
     assert path.read_bytes()!=a
-    assert {p.name for p in path.parent.iterdir()}=={"Beta.png","manifest.json"}
+    assert {p.name for p in path.parent.iterdir()}=={"01__Beta.png","manifest.json"}
     history=list((path.parent.parent/"qr_history").glob("*/qr/manifest.json"))
     assert len(history)==1 and history[0].read_bytes()==a
     def fail(phase,item):
@@ -63,7 +63,7 @@ def test_regeneration_and_private_publication(tmp_path,monkeypatch):
     assert (Path(degraded.target_root)/"rankings/mars/mars_ranking_latest.csv").read_bytes()==ranking.read_bytes()
     second=publish_pocket_result(result,meta_root=target)
     assert second.published[-1]=="run/run_manifest_latest.json"
-    assert {p.name for p in private.iterdir()}=={"Beta.png","manifest.json"}
+    assert {p.name for p in private.iterdir()}=={"01__Beta.png","manifest.json"}
     history=list((private.parent/"qr_history").glob("*/qr/manifest.json"))
     assert any(p.read_bytes()==a for p in history)
     assert not publish_pocket_result(result,meta_root=target).published
@@ -74,8 +74,8 @@ def test_regeneration_and_private_publication(tmp_path,monkeypatch):
         publish_pocket_result(result,meta_root=target,failure_injector=fail_core)
     assert not private.exists()  # old rank already replaced; never restore Beta
     assert publish_pocket_result(result,meta_root=target).status=="PASS"
-    assert {p.name for p in private.iterdir()}=={"Gamma.png","manifest.json"}
-    (path.parent/"Gamma.png").write_bytes(b"corrupt")
+    assert {p.name for p in private.iterdir()}=={"01__Gamma.png","manifest.json"}
+    (path.parent/"01__Gamma.png").write_bytes(b"corrupt")
     degraded=publish_pocket_result(result,meta_root=target)
     assert degraded.status=="PASS" and not private.exists()
     assert json.loads(committed.read_bytes())["diagnostics"]["qr_status"]=="ERROR"

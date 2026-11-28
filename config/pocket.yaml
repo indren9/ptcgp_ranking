@@ -153,5 +153,5 @@ mars:
 
 # Isolated QR V1 candidate; activation only after review.
 qr_decklists:
-  enabled: false
+  enabled: true
   database: data/reference/pocket_qr_cards.json
