@@ -54,6 +54,17 @@ def safe_filename(label):
         raise QRGap("UNSAFE_FILENAME")
     return stem + ".png"
 
+LEGACY_FILENAME_POLICY = "ARCHETYPE_ONLY_V1"
+RANK_FILENAME_POLICY = "MARS_RANK_PREFIX_V1"
+
+def ranked_filename(rank, label):
+    if type(rank) is not int or not 1 <= rank <= 10:
+        raise QRGap("INVALID_RANK")
+    name = f"{rank:02d}__{safe_filename(label)}"
+    if len(name.encode("utf-8")) > 255 or len(name.encode("utf-16-le")) // 2 > 255:
+        raise QRGap("UNSAFE_FILENAME")
+    return name
+
 def validate_filenames(labels):
     names = [safe_filename(x) for x in labels]
     if len({x.casefold() for x in names}) != len(names):

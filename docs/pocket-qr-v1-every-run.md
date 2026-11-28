@@ -48,6 +48,17 @@ Update it separately when new cards appear; no runtime network refresh or
 guessing of card IDs or energies. Private manifests can contain tournament
 evidence and player IDs; do not include them in public publication.
 
+## Rank-prefixed filenames
+
+New bundles declare `filename_policy: MARS_RANK_PREFIX_V1` and use
+`NN__<safe archetype name>.png` (01–10), derived from the actual Rank
+column. GAP positions are never renumbered. Legacy manifests without the
+field retain their archetype-only naming for readback/history; new private
+publication requires the rank-prefix policy. Existing bundles are archived
+intact on replacement, not renamed in place. Historical exports use the
+same generator, in separate version-specific directories. Public and
+shadow rollover configs explicitly keep QR disabled.
+
 ## Activation / rollback (separate approval required)
 
 1. Review exact PR head, entire CI, and current C1 evidence. Merge only after
