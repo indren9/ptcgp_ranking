@@ -92,13 +92,23 @@ def write_png(path,payload):
     import qrcode,cv2
     from PIL import Image
     import numpy as np
-    qr=qrcode.QRCode(version=9,error_correction=qrcode.constants.ERROR_CORRECT_H,box_size=10,border=4)
-    qr.add_data(payload);qr.make(fit=False)
-    qr.make_image(fill_color="black",back_color="white").save(path)
-    with Image.open(path) as im: pixels=np.asarray(im.convert("L"))
-    read,_,_=cv2.QRCodeDetector().detectAndDecode(pixels)
-    if read!=payload or decode(read)!=decode(payload): raise ValueError("PNG decode mismatch")
-    return sha(path.read_bytes())
+    # Keep the original automatically chosen mask whenever it roundtrips.
+    # If OpenCV cannot read it, try standard QR masks in deterministic order.
+    # Never accept a different nonempty payload or bypass pixel validation.
+    expected=decode(payload)
+    for mask in (None,*range(8)):
+        qr=qrcode.QRCode(version=9,error_correction=qrcode.constants.ERROR_CORRECT_H,
+                         box_size=10,border=4,mask_pattern=mask)
+        qr.add_data(payload);qr.make(fit=False)
+        qr.make_image(fill_color="black",back_color="white").save(path)
+        with Image.open(path) as im: pixels=np.asarray(im.convert("L"))
+        read,_,_=cv2.QRCodeDetector().detectAndDecode(pixels)
+        if not read:
+            continue
+        if read!=payload or decode(read)!=expected:
+            raise ValueError("PNG decode mismatch")
+        return sha(path.read_bytes())
+    raise ValueError("PNG decode mismatch")
 
 def top_rows(ranking_path,identity,filename_policy=RANK_FILENAME_POLICY):
     with Path(ranking_path).open(encoding="utf-8-sig",newline="") as f: rows=list(csv.DictReader(f))
